@@ -101,3 +101,5 @@ Run the test suite from the repository root:
 ```sh
 .venv/bin/python -m pytest
 ```
+
+[![M8ven Score](https://m8ven.ai/badge/mcp/josemlwdf-handy-coder-mcp-3gwvmw?v=1d901f8cb0cc2cb278d13d9c50718027)](https://m8ven.ai/mcp/josemlwdf-handy-coder-mcp-3gwvmw?s=readme)
