@@ -38,6 +38,19 @@ class CodeIndexTests(unittest.TestCase):
         (self.root / "B.cs").unlink()
         self.assertEqual(code_index.index_codebase()["removed"], 1)
 
+    def test_skips_virtualenv_variants_and_generated_directories(self):
+        for rel in (
+            ".venv-wsl/nested/VirtualEnv.cs",
+            ".venv/nested/VirtualEnv.cs",
+            "node_modules/pkg/Dependency.cs",
+        ):
+            path = self.root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("class Ignored {}", encoding="utf-8")
+
+        paths = {path.relative_to(self.root).as_posix() for path in code_index._files(self.root)}
+        self.assertEqual(paths, {"A.cs"})
+
     def test_input_validation_and_isolation(self):
         self.assertEqual(code_index.code_navigator("search_code", query=" ")["error_code"], "missing_parameter")
         self.assertEqual(code_index.code_navigator("nope")["error_code"], "invalid_action")

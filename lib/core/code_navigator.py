@@ -16,7 +16,7 @@ def index_codebase(
         )),
     ] = None,
 ) -> dict:
-    """Incrementally scan C# files into the per-workspace index."""
+    """Incrementally scan C# files in an isolated worker process."""
     try:
         return code_index.index_codebase(exclusions=exclude_dirs)
     except code_index.IndexErrorBase as exc:
@@ -42,6 +42,7 @@ def code_navigator(
 def register(mcp):
     mcp.tool(description=describe(
         "Incrementally index local C# source files in .handy-coder/code_index.sqlite3. "
+        "Runs on demand in an isolated worker process; startup does not scan the workspace. "
         "Optional exclude_dirs adds directory names to the default exclusions. "
         "Reports scanned, parsed, skipped, removed, and failed files."
     ))(index_codebase)

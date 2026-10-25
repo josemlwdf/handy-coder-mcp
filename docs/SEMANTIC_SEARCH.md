@@ -273,7 +273,7 @@ Before implementation, inspect the existing MCP server structure, SDK version, i
 
 Integrate with those conventions instead of rewriting the server architecture.
 
-Call the indexing function during the existing initialization lifecycle. If the server framework does not offer a suitable startup hook, use the smallest compatible initialization mechanism.
+Register the indexing tool without scanning the workspace during startup. Run each requested index operation in the existing isolated worker process.
 
 Avoid indexing synchronously on every incoming search request.
 
@@ -306,7 +306,7 @@ Add a small set of realistic search queries from actual coding-agent tasks and e
 
 ## 10. Integration and limitations
 
-The server registers `index_codebase` and `code_navigator` and runs an incremental index during startup. The database is workspace-local at `.handy-coder/code_index.sqlite3`; the indexer does not modify C# source files.
+The server registers `index_codebase` and `code_navigator` but does not scan the workspace during startup. Call `index_codebase` to build or refresh the index; that tool runs in an isolated worker process. The database is workspace-local at `.handy-coder/code_index.sqlite3`; the indexer does not modify C# source files.
 
 Search uses SQLite FTS5 over symbol and source text. It splits identifiers into lexical tokens, but does not use embeddings or infer concepts that are absent from the indexed text. `find_references` reports syntax-based candidates and cannot resolve overloads, inheritance, aliases, or dynamic dispatch like a C# compiler.
 

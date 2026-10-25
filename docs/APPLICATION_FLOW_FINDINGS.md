@@ -7,7 +7,7 @@ Handy Coder MCP is a local coding-assistant server, not a graphical application.
 ## Main flow
 
 1. **Install and configure.** The user installs the Python package, then configures an MCP client to launch `handy-coder-mcp` over stdio. The client can supply `--root` (or `HANDY-CODER_ROOT`) and optionally a shell. If root is omitted, IDE/work-directory detection is attempted, then the server's script directory is the fallback.
-2. **Server startup.** The server resolves and validates the workspace directory, creates `.handy-coder/`, configures the shell, and logs the authorized root to stderr. It registers the tools and checks that their JSON schemas use supported argument types. It then indexes C# files and starts the stdio MCP server. A startup indexing error currently aborts startup.
+2. **Server startup.** The server resolves and validates the workspace directory, creates `.handy-coder/`, configures the shell, and logs the authorized root to stderr. It registers the tools, checks that their JSON schemas use supported argument types, and starts the stdio MCP server without scanning C# files.
 3. **Discover tools.** Once connected, the assistant can call `get_capabilities` to see registered tools and optional runtime dependencies. `get_tool_details` supplies full argument documentation for a selected tool; ordinary tool descriptions and schema descriptions are shortened to keep discovery responses compact.
 4. **Inspect and navigate.** Typical entry points are `find_files`, `search_text`, and `read_files`. For C#, `code_navigator` searches the local index, retrieves current symbol source, or finds likely syntactic references. File operations are workspace-relative, with reads capped at 2 MiB per file.
 5. **Make a change.** `apply_edits` modifies existing content; `create_file` creates files and refuses to overwrite an existing path unless asked. The server checks resolved paths against the configured root. Tool handlers generally run in worker processes with a 30 second deadline. The supervisor also checks subagent tool scope and commit-nudge rules around calls.
@@ -18,7 +18,7 @@ Handy Coder MCP is a local coding-assistant server, not a graphical application.
 
 - **Clear operational boundary:** The workspace root is configured centrally and path resolution checks both lexical and resolved paths, which helps prevent `..` and symlink escapes for file tools. Terminal command safety is explicitly described as heuristic, not OS isolation.
 - **Good discovery layering:** Capability status and on-demand full tool details help an assistant choose tools without loading every long description at once.
-- **Mixed startup strictness:** C# indexing is documented as an optional navigation feature, but its startup failure is fatal in `main()`. This can prevent unrelated tools from being used if the indexer or its dependencies fail.
+- **C# indexing is on demand:** A large workspace no longer delays MCP startup. The `index_codebase` tool runs the scan in an isolated worker process when requested.
 - **IDE root selection is a critical branch:** The README records a known issue where multiple VS Code instances can cause the wrong working directory to be selected. Since this root governs file access and command working directories, client configuration with an explicit `--root` is the clearest route.
 - **Optional availability is not uniform:** Some tools are always registered but may report unavailable runtime support; others are registered only in the main inventory and their capabilities are environment-dependent. Calling `get_capabilities` first reduces dead ends.
 - **Validation is a user/assistant-driven loop:** Tools report results, but the code does not impose a universal sequence requiring diagnostics or tests after each edit. The client or assistant has to choose and interpret checks.
@@ -41,8 +41,7 @@ This section separates actions the server performs as part of normal operation f
 - **Create workspace state.** Startup creates `.handy-coder/` under the selected workspace, even before the assistant requests orchestration or indexing.
 - **Log the active boundary.** The resolved root and shell are written to stderr. Home-directory or filesystem-root workspaces also produce a warning because scans may be large.
 - **Register and validate tools.** The server registers the tool modules, checks tool argument schemas for unsupported types, and terminates startup if the schema check fails.
-- **Index C# files.** The server runs the C# indexer once before accepting MCP calls. The local index is stored at `.handy-coder/code_index.sqlite3`; the indexer skips its configured excluded/generated directories. An indexing error currently terminates startup.
-- **Start the stdio server and worker supervisor.** Tool handlers are wrapped so most execute in bounded worker processes. A semaphore limits concurrent workers to eight; the default worker deadline is 30 seconds, with a longer deadline derived from the requested timeout for terminal/build tools. A small set of handlers runs in-process.
+- **Start the stdio server and worker supervisor.** The server accepts MCP calls without scanning C# files. Tool handlers are wrapped so most execute in bounded worker processes. A semaphore limits concurrent workers to eight; the default worker deadline is 30 seconds, with a longer deadline derived from the requested timeout for terminal/build tools. A small set of handlers runs in-process.
 
 ### Automatic around tool calls
 

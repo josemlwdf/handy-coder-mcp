@@ -39,7 +39,7 @@ Descriptions in the MCP tool list are brief. Call `get_tool_details` with a regi
 - `subagent_complete`
 - `subagent_cancel`
 
-`index_codebase` runs during server startup and can also be called to refresh the index. The index is local and incremental; see [Local C# code navigation](./SEMANTIC_SEARCH.md) for its behavior and limitations.
+`index_codebase` runs on demand in an isolated worker process and can be called to build or refresh the index. The server starts without scanning the workspace. The index is local and incremental; see [Local C# code navigation](./SEMANTIC_SEARCH.md) for its behavior and limitations.
 
 `web_search` and `web_fetch_docs` make outbound requests and require network access when called. The C# indexer uses the installed Tree-sitter C# parser and SQLite FTS5. See [optional feature setup](./SETUP.md) for details.
 

@@ -123,15 +123,6 @@ def main() -> None:
         module.register(mcp)
     _assert_tool_argument_types_known(mcp)
 
-    try:
-        result = code_navigator.index_codebase()
-        if result.get("error"):
-            raise RuntimeError(result["message"])
-        print(f"[handy-coder-mcp] C# index: {result}", file=sys.stderr)
-    except Exception as exc:
-        print(f"[handy-coder-mcp] Startup indexing failed: {exc}", file=sys.stderr)
-        raise SystemExit(1) from exc
-
     worker_supervisor.supervise_fastmcp_tools(mcp)
     error_handler.install(mcp)
     mcp.run(transport="stdio")

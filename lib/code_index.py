@@ -156,7 +156,12 @@ def _extract(source: bytes):
 def _files(root: Path, exclusions=None):
     excluded = DEFAULT_EXCLUDES | set(exclusions or ())
     for base, dirs, names in os.walk(root, followlinks=False):
-        dirs[:] = sorted(d for d in dirs if d not in excluded and not (Path(base) / d).is_symlink())
+        dirs[:] = sorted(
+            d for d in dirs
+            if d not in excluded
+            and not d.startswith(".venv-")
+            and not (Path(base) / d).is_symlink()
+        )
         for name in sorted(names):
             if name.endswith(".cs"):
                 path = Path(base) / name
