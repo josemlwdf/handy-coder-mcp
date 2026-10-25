@@ -64,9 +64,9 @@ mcpServers:
     command: wsl
     args:
       - -d
-      - kali-linux
-      - /opt/handy-coder-mcp/.venv/bin/python
-      - /opt/handy-coder-mcp/handy_coder_mcp.py
+      - ubuntu
+      - /path/to/handy-coder-mcp/.venv/bin/python
+      - /path/to/handy-coder-mcp/handy_coder_mcp.py
     env: {}
 ```
 
