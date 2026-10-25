@@ -13,7 +13,7 @@ Tools blocked by missing packages, binaries, environment variables, or adapters 
 
 ## Local C# code navigation
 
-The server stores the workspace-specific SQLite database at `.handy-coder/code_index.sqlite3`. Call `index_codebase` to index C# source files; it updates changed files and removes entries for deleted files. Generated and tool-owned directories (including `.git`, `.handy-coder`, virtual environments, `Library`, `Temp`, `obj`, and `bin`) are excluded by default.
+The server stores the workspace-specific SQLite database at `.handy-coder/code_index.sqlite3`. Call `index_codebase` to index C# source files; it updates changed files and removes entries for deleted files. Every dot-prefixed directory is skipped during indexing, along with generated directories such as `Library`, `Temp`, `obj`, and `bin`. These directories remain present in the workspace and visible to file listing tools.
 
 The `index_codebase` and `code_navigator` tools use the Tree-sitter C# parser and SQLite FTS5, included in the project dependencies. No remote index, embedding service, or vector database is used. The server starts without indexing; call `index_codebase` to build or refresh the index. Indexing runs in an isolated worker process, and parser or FTS5 initialization errors are reported by that tool.
 

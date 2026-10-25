@@ -11,8 +11,8 @@ def index_codebase(
     exclude_dirs: Annotated[
         list[str] | None,
         Field(description=(
-            "Optional directory names to skip in addition to the default exclusions (they add to, and do not replace, the defaults). "
-            "Default exclusions: " + ", ".join(sorted(code_index.DEFAULT_EXCLUDES)) + "."
+            "Optional directory names to skip in addition to the default exclusions. All dot-prefixed directories are always skipped. "
+            "Other default exclusions: " + ", ".join(sorted(code_index.DEFAULT_EXCLUDES)) + "."
         )),
     ] = None,
 ) -> dict:
@@ -43,7 +43,7 @@ def register(mcp):
     mcp.tool(description=describe(
         "Incrementally index local C# source files in .handy-coder/code_index.sqlite3. "
         "Runs on demand in an isolated worker process; startup does not scan the workspace. "
-        "Optional exclude_dirs adds directory names to the default exclusions. "
+        "All dot-prefixed directories and common generated directories are skipped. Optional exclude_dirs adds more names to skip. "
         "Reports scanned, parsed, skipped, removed, and failed files."
     ))(index_codebase)
     mcp.tool(description=describe(

@@ -115,7 +115,7 @@ All paths stored in the database should be relative to the project root. Resolve
 
 Index `.cs` files initially, including relevant project source and local package source where appropriate.
 
-Exclude irrelevant or generated directories by default, including:
+Do not descend into any dot-prefixed directory. Also exclude irrelevant or generated directories by default, including:
 - `.git`
 - `.handy-coder`
 - `Library`

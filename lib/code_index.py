@@ -159,7 +159,7 @@ def _files(root: Path, exclusions=None):
         dirs[:] = sorted(
             d for d in dirs
             if d not in excluded
-            and not d.startswith(".venv-")
+            and not d.startswith(".")
             and not (Path(base) / d).is_symlink()
         )
         for name in sorted(names):

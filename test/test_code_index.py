@@ -42,6 +42,7 @@ class CodeIndexTests(unittest.TestCase):
         for rel in (
             ".venv-wsl/nested/VirtualEnv.cs",
             ".venv/nested/VirtualEnv.cs",
+            ".hidden-cache/nested/Hidden.cs",
             "node_modules/pkg/Dependency.cs",
         ):
             path = self.root / rel
@@ -50,6 +51,7 @@ class CodeIndexTests(unittest.TestCase):
 
         paths = {path.relative_to(self.root).as_posix() for path in code_index._files(self.root)}
         self.assertEqual(paths, {"A.cs"})
+        self.assertTrue((self.root / ".hidden-cache").is_dir())
 
     def test_input_validation_and_isolation(self):
         self.assertEqual(code_index.code_navigator("search_code", query=" ")["error_code"], "missing_parameter")
