@@ -27,7 +27,7 @@ from pydantic import Field
 from ..support import describe
 
 SKILLS_DIR_ENV = "HANDY-CODER_SKILLS_DIR"
-BASELINE_SKILLS = frozenset({"grill-me", "handoff", "mcp-audit", "mcp-tools-only", "plan"})
+BASELINE_SKILLS = frozenset({"grill-me", "handoff", "mcp-audit", "mcp-tools-only", "plan", "troubleshoot"})
 MAX_SKILL_BYTES = 256 * 1024
 MAX_DESCRIPTION_CHARS = 300
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
@@ -259,6 +259,8 @@ def skills_manage(
         except OSError as exc:
             return _error("io_error", f"{exc.strerror or 'Delete failed'}: {name}")
     if action == "save":
+        if name in BASELINE_SKILLS:
+            return _error("protected_skill", f"Baseline skill cannot be replaced: {name}")
         # Metadata values are plain single-line strings in the simple frontmatter format.
         if not version.strip() or any(c in version for c in "\r\n:"):
             return _error("invalid_version", "version must be a non-empty single-line value without ':'")
@@ -269,12 +271,21 @@ def skills_manage(
 
 
 def register(mcp):
+    listed = _list_skills()
+    skill_lines = [
+        f"- {item['name']}: {item['description']}"
+        for item in listed["skills"]
+    ]
+    skill_catalog = "\n".join(skill_lines) if skill_lines else "(No skills are currently installed.)"
     return mcp.tool(description=describe(
         "Manage reusable skills stored as Markdown files in the skills directory. "
+        "Installed skills and their descriptions at server startup:\n"
+        f"{skill_catalog}\n"
         "Actions: list returns name, description, invokable, tags and version; search filters those fields; get/export returns full Markdown; delete requires confirm=true, protects baseline skills, and keeps a .bak backup; "
         'save creates a skill from name, description and content (optional tags as an array of strings, for example ["python", "testing"], and version; fails with already_exists '
         "unless overwrite=true). Failures return error_code (missing_argument, invalid_name, "
         "invalid_description, content_has_frontmatter, skill_too_large, not_found, already_exists, "
         "io_error, confirmation_required, protected_skill, backup_exists, path_escape). "
+        "Baseline skills (including troubleshoot) cannot be deleted or replaced. "
         "When to use: Discover, load, or record skills that guide how to perform a task."
     ))(skills_manage)
