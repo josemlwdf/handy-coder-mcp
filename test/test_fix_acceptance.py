@@ -11,7 +11,7 @@ from mcp.server.fastmcp import FastMCP
 
 from lib import error_handler, support, tool_details, worker_supervisor
 from lib.core import (
-    apply_edits, commit_nudge, create_file, find_files, git_manage,
+    apply_edits, create_file, find_files, git_manage,
     html_syntax_check, orchestrator_tasks, read_files, terminal_exec, web_search_tool,
 )
 from lib.subagents import tools as subagent_tools
@@ -23,7 +23,7 @@ def _build_server():
     tool_details.install(mcp)
     for module in (
         read_files, create_file, apply_edits, terminal_exec, find_files, git_manage,
-        commit_nudge, html_syntax_check, web_search_tool, orchestrator_tasks,
+        html_syntax_check, web_search_tool, orchestrator_tasks,
     ):
         module.register(mcp)
     worker_supervisor.supervise_fastmcp_tools(mcp)
@@ -49,7 +49,6 @@ class RepeatedWritesLeaveNoSubagentFrameTests(unittest.TestCase):
         (self.root / "seed.txt").write_text("seed\n", encoding="utf-8")
         subprocess.run(["git", "add", "seed.txt"], cwd=self.root, check=True)
         subprocess.run(["git", "commit", "-m", "init", "--quiet"], cwd=self.root, check=True)
-        commit_nudge._reset_for_tests()
 
         self.manager = SubagentManager()
         for patcher in (
@@ -59,90 +58,58 @@ class RepeatedWritesLeaveNoSubagentFrameTests(unittest.TestCase):
         ):
             patcher.start()
             self.addCleanup(patcher.stop)
-        os.environ.pop("HANDY_CODER_COMMIT_SUBAGENT", None)
         self.mcp = _build_server()
 
     def tearDown(self):
         self.temp.cleanup()
         support.configure(str(Path(__file__).resolve().parents[1]))
-        commit_nudge._reset_for_tests()
 
-    def test_five_writes_in_a_row_leave_no_frame_and_html_check_runs(self):
-        body = "\n".join(f"line {i}" for i in range(40)) + "\n"
+    def test_repeated_writes_have_no_nudge_gate_or_frame(self):
+        body = "line " * 40
         results = []
-        deferred = False
-        for index in range(3):
-            result = _call(self.mcp, "create_file", {"path": f"f{index}.txt", "content": body})
-            results.append(result)
-            if "commit_nudge" in result:
-                deferred_result = _call(
-                    self.mcp,
-                    "defer_commit",
-                    {"action": "defer", "reason": "finish this test batch", "calls": 5},
-                )
-                self.assertTrue(deferred_result["ok"])
-                deferred = True
+        for index in range(8):
+            results.append(_call(self.mcp, "create_file", {
+                "path": f"f{index}.txt", "content": body, "summary": "add test file",
+            }))
         for index in range(2):
-            result = _call(self.mcp, "apply_edits", {
-                "edits": [{"path": f"f{index}.txt", "pattern": "line 1\\b", "replacement": "changed"}],
-            })
-            results.append(result)
+            results.append(_call(self.mcp, "apply_edits", {
+                "edits": [{"path": f"f{index}.txt", "pattern": "line", "replacement": "changed"}],
+                "summary": "rewrite first word",
+            }))
         for result in results:
             self.assertNotIn("error_code", result, result)
-        self.assertTrue(deferred, "expected a nudge and bounded defer")
-        nudges = [r["commit_nudge"] for r in results if "commit_nudge" in r]
-        self.assertTrue(nudges, "expected at least one commit nudge on the real call path")
-        for nudge in nudges:
-            self.assertIsNone(nudge["task_id"])
-            self.assertEqual(nudge["task_status"], "disabled")
+            self.assertNotIn("commit_nudge", result)
+        readable = _call(self.mcp, "read_files", {"paths": ["f0.txt"]})
+        self.assertNotIn("error_code", readable, readable)
+        status = _call(self.mcp, "git_manage", {"action": "status"})
+        self.assertNotIn("error_code", status, status)
         self.assertIsNone(self.manager.open_frame())
 
-        (self.root / "page.html").write_text("<p>ok</p>\n", encoding="utf-8")
+        (self.root / "page.html").write_text("<p>ok</p>", encoding="utf-8")
         check = _call(self.mcp, "html_syntax_check", {"path": "page.html"})
-        self.assertNotEqual(check.get("error_code"), "subagent_scope_violation", check)
         self.assertNotIn("error_code", check, check)
 
-    def test_commit_nudge_blocks_tools_until_commit_or_bounded_defer(self):
-        content = "\n".join(f"line {index}" for index in range(90)) + "\n"
-        nudge = _call(
-            self.mcp,
-            "create_file",
-            {"path": "nudge.txt", "content": content},
-        )
-        self.assertIn("commit_nudge", nudge)
+    def test_defer_commit_tool_is_not_registered(self):
+        names = {tool.name for tool in self.mcp._tool_manager.list_tools()}
+        self.assertNotIn("defer_commit", names)
 
-        for name, arguments in (
-            ("read_files", {"paths": ["nudge.txt"]}),
-            ("git_manage", {"action": "status"}),
-        ):
-            with self.subTest(tool=name):
-                blocked = _call(self.mcp, name, arguments)
-                self.assertEqual(blocked["error_code"], "commit_gate_blocked", blocked)
-                self.assertIn("successful commit", blocked["message"])
-
-        deferred = _call(
-            self.mcp,
-            "defer_commit",
-            {"action": "defer", "reason": "finish a small follow-up", "calls": 1},
-        )
-        self.assertTrue(deferred["ok"])
-        readable = _call(self.mcp, "read_files", {"paths": ["nudge.txt"]})
-        self.assertNotIn("error_code", readable, readable)
-
-        write = _call(
-            self.mcp,
-            "create_file",
-            {"path": "deferred.txt", "content": "one more bounded change\n"},
-        )
-        self.assertNotIn("error_code", write, write)
-        blocked_again = _call(self.mcp, "read_files", {"paths": ["nudge.txt"]})
-        self.assertEqual(blocked_again["error_code"], "commit_gate_blocked", blocked_again)
-        second_defer = _call(
-            self.mcp,
-            "defer_commit",
-            {"action": "defer", "reason": "try again", "calls": 1},
-        )
-        self.assertEqual(second_defer["error_code"], "defer_already_used", second_defer)
+    def test_write_tools_require_one_line_summary(self):
+        (self.root / "a.txt").write_text("one", encoding="utf-8")
+        missing = _call(self.mcp, "create_file", {"path": "m.txt", "content": "x"})
+        self.assertIn("error_code", missing)
+        self.assertFalse((self.root / "m.txt").exists())
+        multiline = _call(self.mcp, "create_file", {"path": "m.txt", "content": "x", "summary": "a\nb"})
+        self.assertEqual(multiline["error_code"], "invalid_summary", multiline)
+        self.assertFalse((self.root / "m.txt").exists())
+        blank = _call(self.mcp, "apply_edits", {
+            "edits": [{"path": "a.txt", "pattern": "one", "replacement": "two"}], "summary": "  ",
+        })
+        self.assertEqual(blank["error_code"], "invalid_summary", blank)
+        self.assertEqual((self.root / "a.txt").read_text(encoding="utf-8"), "one")
+        ok = _call(self.mcp, "apply_edits", {
+            "edits": [{"path": "a.txt", "pattern": "one", "replacement": "two"}], "summary": "change one to two",
+        })
+        self.assertNotIn("error_code", ok, ok)
 
 
 class InvalidCallsAreStructuredTests(unittest.TestCase):
@@ -158,7 +125,6 @@ class InvalidCallsAreStructuredTests(unittest.TestCase):
         support.configure(str(Path(__file__).resolve().parents[1]))
 
     CASES = (
-        ("defer_commit", {"action": "defer", "calls": 999}),
         ("web_search", {"query": ["not", "a", "string"]}),
         ("orchestrator_update_task_status", {"status": "bogus", "task_contains": "x"}),
         ("git_manage", {"action": 123}),

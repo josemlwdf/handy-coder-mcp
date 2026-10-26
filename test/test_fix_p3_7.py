@@ -41,10 +41,10 @@ class PathEscapeWordingTests(unittest.TestCase):
 
     def test_apply_edits(self):
         edit = apply_edits.Edit(path="../outside.txt", pattern="x", replacement="y")
-        self.assert_wording(apply_edits.apply_edits(edits=[edit]), "../outside.txt")
+        self.assert_wording(apply_edits.apply_edits(edits=[edit], summary="test change"), "../outside.txt")
 
     def test_create_file(self):
-        result = create_file.create_file(path="../outside.txt", content="x")
+        result = create_file.create_file(path="../outside.txt", content="x", summary="test change")
         self.assertEqual(result["error_code"], "path_escape")
         self.assert_wording(result, "../outside.txt")
 

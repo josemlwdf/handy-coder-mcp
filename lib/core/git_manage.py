@@ -543,20 +543,6 @@ def git_manage(
         result["mode"] = mode
         return result
     result = _route_failure_to_stderr(run_process([git, action, *git_args], cwd=selected_path))
-    if action == "commit":
-        # Always nudge the agent to verify the outcome instead of trusting exit code alone.
-        if result.get("exit_code") == 0:
-            result["hint"] = (
-                "Commit reported success, but verify it was applied: run git_manage action='log' "
-                "args=['--oneline','-n','1'] to confirm your message is the latest commit, and "
-                "git_manage action='status' to confirm no intended files remain uncommitted."
-            )
-        else:
-            result["hint"] = (
-                "The commit was NOT applied. Run git_manage action='status' to check for staged changes "
-                "(use action='add' first if nothing is staged), fix the reported problem, retry, then "
-                "verify with git_manage action='log' args=['--oneline','-n','1']."
-            )
     if action == "status" and result.get("exit_code") == 0:
         porcelain = run_process([git, "status", "--porcelain=v1", "--untracked-files=all"], cwd=selected_path)
         entries = []

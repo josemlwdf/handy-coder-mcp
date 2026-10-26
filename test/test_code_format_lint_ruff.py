@@ -120,7 +120,7 @@ def test_ruff_lint_and_format_fix_work_with_a_real_workspace():
                     ["sample.py"], language="python", config_file="ruff.toml"
                 )
                 fixed = code_format_lint.code_format_lint(
-                    ["sample.py"], fix=True, language="python", config_file="ruff.toml"
+                    ["sample.py"], fix=True, language="python", config_file="ruff.toml", summary="test change"
                 )
                 formatted_source = source.read_text(encoding="utf-8")
         finally:

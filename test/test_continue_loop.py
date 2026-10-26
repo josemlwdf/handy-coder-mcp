@@ -1,13 +1,16 @@
 import json
-import os
+import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from unittest.mock import patch
 
+from lib import support
 from lib.subagents import loop
 from lib.subagents.continue_config import ContinueModel
 from lib.subagents.roles import get_role
+from lib.subagents import tools as subagent_tools
 
 KEY = 'sk-secret-1234'
 HDR = 'hdr-secret-5678'
@@ -82,6 +85,47 @@ class FakeServerTests(unittest.TestCase):
         self.run_continue(make_model('openai', self.base, max_tokens=999999))
         self.assertLessEqual(SEEN[-1][2]['max_tokens'], 4096)
 
+    def test_loop_write_records_its_summary(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_root = str(support.ROOT)
+            pending_before = list(subagent_tools._PENDING_CHANGE_SUMMARIES)
+            support.configure(temp_dir)
+            subagent_tools._PENDING_CHANGE_SUMMARIES.clear()
+            responses = [
+                json.dumps({
+                    "tool": "create_file",
+                    "args": {
+                        "path": "loop-created.txt",
+                        "content": "created",
+                        "summary": "Create a loop-written file",
+                    },
+                }),
+                json.dumps({"final": "file created"}),
+            ]
+            try:
+                with patch.object(loop, "complete_once", side_effect=responses):
+                    result = loop.run_loop(
+                        "continue:openai",
+                        get_role("coder"),
+                        "create a file",
+                        None,
+                        None,
+                        continue_model=make_model("openai", self.base),
+                    )
+
+                self.assertEqual(result[0], "file created")
+                self.assertTrue((Path(temp_dir) / "loop-created.txt").is_file())
+                self.assertEqual(
+                    subagent_tools._PENDING_CHANGE_SUMMARIES,
+                    [{
+                        "summary": "Create a loop-written file",
+                        "paths": ["loop-created.txt"],
+                    }],
+                )
+            finally:
+                support.configure(previous_root)
+                subagent_tools._PENDING_CHANGE_SUMMARIES[:] = pending_before
+
     def test_openai_sends_bearer_key_and_extra_headers(self):
         self.run_continue(make_model('openai', self.base, headers={'X-Extra': 'e1'}))
         headers = SEEN[-1][1]
@@ -118,24 +162,13 @@ class FakeServerTests(unittest.TestCase):
             self.run_continue(model)
         self.assertNotIn(KEY, str(ctx.exception))
 
-    def test_write_role_gate(self):
-        coder = get_role('coder')
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop('SUBAGENT_LOOP_WRITE', None)
-            with self.assertRaises(RuntimeError) as ctx:
-                self.run_continue(make_model('openai', self.base), role=coder)
-        self.assertIn('SUBAGENT_LOOP_WRITE=1', str(ctx.exception))
-        self.assertEqual(SEEN, [])
-        with patch.dict(os.environ, {'SUBAGENT_LOOP_WRITE': '1'}):
-            result = self.run_continue(make_model('openai', self.base), role=coder)
-        self.assertIn('openai ok', result[0])
-        self.assertIn('openai ok', self.run_continue(make_model('openai', self.base), role=coder, allow_write=True)[0])
-
-    def test_committer_is_gated_too(self):
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop('SUBAGENT_LOOP_WRITE', None)
-            with self.assertRaises(RuntimeError):
-                self.run_continue(make_model('openai', self.base), role=get_role('committer'))
+    def test_write_roles_run_on_loop_backend_without_opt_in(self):
+        for name in ('coder', 'planner', 'committer'):
+            with self.subTest(role=name):
+                SEEN.clear()
+                result = self.run_continue(make_model('openai', self.base), role=get_role(name))
+                self.assertIn('openai ok', result[0])
+                self.assertEqual(len(SEEN), 1)
 
     def test_cancel_before_first_completion(self):
         class Event:
@@ -234,6 +267,35 @@ class HelperTests(unittest.TestCase):
             self.assertEqual(loop._ALLOWED_TOOLS['subagent_result'](task_id='t_1'), {'result': 'ok'})
             result.assert_called_once_with(task_id='t_1')
 
+    def test_on_progress_reports_turns_and_tokens_before_final(self):
+        role = get_role('explorer')
+        replies = iter([
+            json.dumps({'tool': 'subagent_status', 'args': {'task_id': 't_1'}}),
+            json.dumps({'final': '- finding: done'}),
+        ])
+        progress = []
+
+        result = loop.run_loop(
+            'sampling', role, 't', None, None,
+            sampling_fn=lambda *_a: next(replies),
+            on_progress=lambda turns, tokens: progress.append((turns, tokens)),
+        )
+        self.assertEqual([p[0] for p in progress], [1, 2])
+        self.assertTrue(all(p[1] > 0 for p in progress))
+        self.assertEqual(progress[-1], (result[1], result[2]))
+
+    def test_manager_update_progress_only_while_active(self):
+        from lib.subagents.manager import SubagentManager
+
+        manager = SubagentManager()
+        task = manager.create_task('explorer', 'x', 'sampling', None, None)
+        manager.start_task(task.task_id)
+        manager.update_progress(task.task_id, 3, 120)
+        self.assertEqual((manager.get_task(task.task_id).turns_used, manager.get_task(task.task_id).tokens_used), (3, 120))
+        manager.cancel_task(task.task_id)
+        manager.update_progress(task.task_id, 9, 999)
+        self.assertEqual(manager.get_task(task.task_id).turns_used, 3)
+
     def test_provider_support(self):
         for name in ('openai', 'anthropic', 'ollama', 'openrouter', 'deepseek', 'mistral', 'groq', 'together', 'lmstudio'):
             self.assertTrue(loop.continue_provider_supported(name), name)
@@ -270,8 +332,9 @@ class HelperTests(unittest.TestCase):
 
     def test_subagent_status_tool_is_available_to_loop(self):
         role = get_role('explorer')
+        missing_task_id = 'definitely-missing-task-id'
         replies = iter([
-            json.dumps({'tool': 'subagent_status', 'args': {'task_id': 't_1'}}),
+            json.dumps({'tool': 'subagent_status', 'args': {'task_id': missing_task_id}}),
             json.dumps({'final': '- finding: continued'}),
         ])
         seen_messages = []

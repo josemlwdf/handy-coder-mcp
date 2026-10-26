@@ -16,7 +16,6 @@ Descriptions in the MCP tool list are brief. Call `get_tool_details` with a regi
 - `run_tests`
 - `build_project` — detects and builds Python, Node, or .NET projects with structured diagnostics.
 - `git_manage` — successful `init` creates `test/` and `tmp/` and maintains `.gitignore`; `add` updates `.gitignore` before staging.
-- `defer_commit` — reopens tools for a bounded number of successful write calls; available once per commit cycle.
 - `web_search` — searches the public web with DuckDuckGo Lite.
 - `index_codebase` — incrementally indexes workspace C# files in `.handy-coder/code_index.sqlite3`.
 - `code_navigator` — searches indexed symbols, returns current symbol source, or finds likely syntactic usages.
@@ -42,5 +41,3 @@ Descriptions in the MCP tool list are brief. Call `get_tool_details` with a regi
 `index_codebase` runs on demand in an isolated worker process and can be called to build or refresh the index. The server starts without scanning the workspace. The index is local and incremental; see [Local C# code navigation](./SEMANTIC_SEARCH.md) for its behavior and limitations.
 
 `web_search` and `web_fetch_docs` make outbound requests and require network access when called. The C# indexer uses the installed Tree-sitter C# parser and SQLite FTS5. See [optional feature setup](./SETUP.md) for details.
-
-The debugger, browser, LSP lookup, and standalone semantic-search modules under `lib/extras` are not registered by the main server and are not exposed as MCP tools.

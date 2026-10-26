@@ -22,21 +22,22 @@ class CreateFileTests(unittest.TestCase):
         support.WORKING_DIRECTORY = self._saved_wd
 
     def test_creates_file_with_content(self):
-        result = create_file.create_file("hello.txt", "a\nb\n")
+        result = create_file.create_file("hello.txt", "a\nb\n", summary="test change")
         self.assertTrue(result["created"])
         self.assertFalse(result["overwritten"])
         self.assertEqual(result["path"], "hello.txt")
         self.assertEqual(result["bytes"], 4)
         self.assertEqual(result["lines"], 2)
+        self.assertIn("+a\n+b\n", result["diff"])
         self.assertEqual((self.root / "hello.txt").read_bytes(), b"a\nb\n")
 
     def test_creates_empty_file_by_default(self):
-        result = create_file.create_file("empty.txt")
+        result = create_file.create_file("empty.txt", summary="test change")
         self.assertTrue(result["created"])
         self.assertEqual((self.root / "empty.txt").read_text(), "")
 
     def test_creates_parent_directories(self):
-        result = create_file.create_file("pkg/sub/mod.py", "x = 1\n")
+        result = create_file.create_file("pkg/sub/mod.py", "x = 1\n", summary="test change")
         self.assertTrue(result["created"])
         written = (self.root / "pkg/sub/mod.py").read_text()
         self.assertEqual(written, "x = 1\n")
@@ -44,28 +45,30 @@ class CreateFileTests(unittest.TestCase):
         self.assertEqual(result["lines"], len(written.splitlines()))
 
     def test_parent_missing_when_create_parents_false(self):
-        result = create_file.create_file("nope/file.txt", "x", create_parents=False)
+        result = create_file.create_file("nope/file.txt", "x", create_parents=False, summary="test change")
         self.assertEqual(result["error_code"], "parent_missing")
         self.assertFalse((self.root / "nope").exists())
 
     def test_existing_file_is_not_overwritten_by_default(self):
         (self.root / "keep.txt").write_text("original")
-        result = create_file.create_file("keep.txt", "new")
+        result = create_file.create_file("keep.txt", "new", summary="test change")
         self.assertEqual(result["error_code"], "already_exists")
         self.assertFalse(result["created"])
         self.assertEqual((self.root / "keep.txt").read_text(), "original")
 
     def test_overwrite_replaces_existing_file(self):
         (self.root / "swap.txt").write_text("original")
-        result = create_file.create_file("swap.txt", "new", overwrite=True)
+        result = create_file.create_file("swap.txt", "new", overwrite=True, summary="test change")
         self.assertFalse(result["created"])
         self.assertTrue(result["overwritten"])
         self.assertEqual((self.root / "swap.txt").read_text(), "new")
+        self.assertIn("-original", result["diff"])
+        self.assertIn("+new", result["diff"])
 
     def test_path_escape_is_rejected(self):
         for path in ("../outside.txt", "/etc/handy-coder_escape.txt"):
             with self.subTest(path=path):
-                result = create_file.create_file(path, "x")
+                result = create_file.create_file(path, "x", summary="test change")
                 self.assertEqual(result["error_code"], "path_escape")
 
     def test_symlink_escape_is_rejected(self):
@@ -75,35 +78,35 @@ class CreateFileTests(unittest.TestCase):
             os.symlink(outside.name, self.root / "link")
         except (OSError, NotImplementedError):
             self.skipTest("symlinks not supported")
-        result = create_file.create_file("link/evil.txt", "x")
+        result = create_file.create_file("link/evil.txt", "x", summary="test change")
         self.assertEqual(result["error_code"], "path_escape")
         self.assertFalse((Path(outside.name) / "evil.txt").exists())
 
     def test_directory_target_is_rejected(self):
         (self.root / "adir").mkdir()
-        result = create_file.create_file("adir", "x", overwrite=True)
+        result = create_file.create_file("adir", "x", overwrite=True, summary="test change")
         self.assertEqual(result["error_code"], "not_a_file")
 
     def test_workspace_root_is_rejected(self):
-        result = create_file.create_file(".", "x", overwrite=True)
+        result = create_file.create_file(".", "x", overwrite=True, summary="test change")
         self.assertEqual(result["error_code"], "not_a_file")
 
     def test_parent_that_is_a_file_is_rejected(self):
         (self.root / "afile").write_text("x")
-        result = create_file.create_file("afile/child.txt", "x")
+        result = create_file.create_file("afile/child.txt", "x", summary="test change")
         self.assertIn(result["error_code"], {"not_a_directory", "io_error"})
 
     def test_oversized_content_is_rejected(self):
-        result = create_file.create_file("big.txt", "x" * (support.MAX_READ_BYTES + 1))
+        result = create_file.create_file("big.txt", "x" * (support.MAX_READ_BYTES + 1), summary="test change")
         self.assertEqual(result["error_code"], "file_too_large")
         self.assertFalse((self.root / "big.txt").exists())
 
     def test_newlines_are_written_verbatim(self):
-        create_file.create_file("crlf.txt", "a\r\nb\r\n")
+        create_file.create_file("crlf.txt", "a\r\nb\r\n", summary="test change")
         self.assertEqual((self.root / "crlf.txt").read_bytes(), b"a\r\nb\r\n")
 
     def test_html_write_preserves_content_checks_final_saved_content_and_creates_no_asset_folders(self):
-        result = create_file.create_file("index.html", "<html><body><img src='x'></body></html>")
+        result = create_file.create_file("index.html", "<html><body><img src='x'></body></html>", summary="test change")
         saved = (self.root / "index.html").read_text(encoding="utf-8")
         self.assertEqual(saved, "<html><body><img src='x'></body></html>")
         self.assertEqual(result["bytes"], len(saved.encode("utf-8")))
@@ -114,25 +117,92 @@ class CreateFileTests(unittest.TestCase):
         (self.root / "static/html").mkdir(parents=True)
         (self.root / "static/html/keep.html").write_text("keep")
         (self.root / "page.htm").write_text("old")
-        result = create_file.create_file("page.htm", "<p>new</p>", overwrite=True)
+        result = create_file.create_file("page.htm", "<p>new</p>", overwrite=True, summary="test change")
         self.assertTrue(result["overwritten"])
         self.assertTrue((self.root / "static/html/keep.html").exists())
         self.assertTrue(result["syntax_check"]["ok"])
 
     def test_non_html_result_shape_unchanged(self):
-        result = create_file.create_file("plain.txt", "ok")
+        result = create_file.create_file("plain.txt", "ok", summary="test change")
         self.assertNotIn("syntax_check", result)
         self.assertNotIn("asset_folders", result)
 
-    def test_html_formatter_failure_keeps_write_and_reports_status(self):
+    def test_html_formatter_failure_keeps_raw_write_and_diff(self):
         from unittest.mock import patch
 
         with patch("lib.utils.html_prettify.prettify_html", return_value=("<p>x</p>", {
             "ok": False, "changed": False, "error": "formatter failed",
         })):
-            result = create_file.create_file("failure.html", "<p>x</p>", format_content=True)
+            result = create_file.create_file("failure.html", "<p>x</p>", format_content=True, summary="test change")
         self.assertEqual((self.root / "failure.html").read_text(encoding="utf-8"), "<p>x</p>")
-        self.assertFalse(result["formatter"]["ok"])
+        self.assertIn("+<p>x</p>", result["diff"])
+        self.assertNotIn("formatter", result)
+
+    def test_html_formatting_runs_after_raw_diff_is_captured(self):
+        from unittest.mock import patch
+
+        target = self.root / "formatted.html"
+
+        def format_after_diff(content):
+            self.assertEqual(target.read_text(encoding="utf-8"), "<p>x</p>")
+            return "<p>\nx\n</p>\n", {"ok": True, "changed": True}
+
+        with patch("lib.utils.html_prettify.prettify_html", side_effect=format_after_diff):
+            result = create_file.create_file(
+                "formatted.html", "<p>x</p>", format_content=True, summary="test change"
+            )
+        self.assertEqual(target.read_text(encoding="utf-8"), "<p>\nx\n</p>\n")
+        self.assertIn("+<p>x</p>", result["diff"])
+        self.assertNotIn("formatter", result)
+
+    def test_javascript_formatting_runs_after_raw_diff_is_captured(self):
+        from unittest.mock import patch
+
+        target = self.root / "script.js"
+
+        def format_after_diff(paths, *, fix, language, summary):
+            self.assertEqual(paths, ["script.js"])
+            self.assertTrue(fix)
+            self.assertEqual(language, "auto")
+            self.assertEqual(summary, "test change")
+            self.assertEqual(target.read_text(encoding="utf-8"), "const x=1")
+            target.write_text("const x = 1;\n", encoding="utf-8")
+            return {"ok": True}
+
+        with patch(
+            "lib.extras.code_format_lint.code_format_lint",
+            side_effect=format_after_diff,
+        ) as formatter:
+            result = create_file.create_file(
+                "script.js", "const x=1", format_content=True, summary="test change"
+            )
+
+        formatter.assert_called_once()
+        self.assertEqual(target.read_text(encoding="utf-8"), "const x = 1;\n")
+        self.assertIn("+const x=1", result["diff"])
+        self.assertNotIn("const x = 1;", result["diff"])
+
+    def test_python_line_ending_processing_runs_after_raw_diff_is_captured(self):
+        from unittest.mock import patch
+
+        target = self.root / "script.py"
+
+        def process_after_diff(path):
+            self.assertEqual(Path(path).read_bytes(), b"value = 1\r\n")
+            Path(path).write_bytes(b"value = 1\n")
+            return {"ok": True, "changes": ["unix_line_endings"], "uncertain": []}
+
+        with patch(
+            "lib.utils.python_postprocess.process_python_file",
+            side_effect=process_after_diff,
+        ):
+            result = create_file.create_file(
+                "script.py", "value = 1\r\n", post_process_python=True, summary="test change"
+            )
+
+        self.assertEqual(target.read_bytes(), b"value = 1\n")
+        self.assertIn("+value = 1\r\n", result["diff"])
+        self.assertNotIn("unix_line_endings", result["diff"])
 
     def test_html_checker_structural_cases_and_lines(self):
         cases = (("<div><span>x</span></div>", True), ("<img><br><input>", True),
@@ -148,7 +218,7 @@ class CreateFileTests(unittest.TestCase):
         from unittest.mock import patch
         submitted = "<div></div>"
         with patch("lib.utils.html_prettify.prettify_html", return_value=("<div>", {"ok": True, "changed": True})):
-            result = create_file.create_file("broken.html", submitted, format_content=True)
+            result = create_file.create_file("broken.html", submitted, format_content=True, summary="test change")
         self.assertFalse(result["syntax_check"]["ok"])
         self.assertEqual((self.root / "broken.html").read_text(encoding="utf-8"), "<div>")
         self.assertEqual(result["bytes"], len((self.root / "broken.html").read_bytes()))
@@ -157,10 +227,10 @@ class CreateFileTests(unittest.TestCase):
         from unittest.mock import patch
         with patch("lib.utils.python_postprocess.process_python_file") as process, \
              patch("lib.extras.code_format_lint.code_format_lint") as formatter:
-            create_file.create_file("plain.py", "x=1\n")
+            create_file.create_file("plain.py", "x=1\n", summary="test change")
             process.assert_not_called()
             formatter.assert_not_called()
-            create_file.create_file("opt.py", "x=1\n", post_process_python=True, format_content=True)
+            create_file.create_file("opt.py", "x=1\n", post_process_python=True, format_content=True, summary="test change")
             process.assert_called_once()
             formatter.assert_called_once()
 

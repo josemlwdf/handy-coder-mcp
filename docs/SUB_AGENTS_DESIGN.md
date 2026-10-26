@@ -280,7 +280,7 @@ This addendum supersedes the sections above where they conflict.
 - **Cooperative is explicit only.** `delegated_to_host` and its frame (five-minute TTL, tool allowlist) happen only when `SUBAGENT_BACKEND=cooperative` is set.
 - **Continue backend.** Default-on in auto mode (`SUBAGENT_CONTINUE=0` turns it off; `SUBAGENT_BACKEND=continue` forces it), it reuses a chat model from the user's Continue config. Auto order: sampling, provider key in the environment, Continue, Ollama. It spends the user's own credits or local model.
 - **Trust.** The workspace `.continue/config.yaml` is untrusted, so `${{ secrets.* }}` references in it are not resolved. Keys and header values are redacted from error text and never appear in `get_capabilities`.
-- **Loop write gate.** Loop backends run read-only roles. Roles that can write or commit need `SUBAGENT_LOOP_WRITE=1`, because loop tool calls run in a server thread with a deadline and are not isolated in the worker process.
+- **Loop writes.** Loop backends run every role, including write-capable ones. Loop tool calls run in a server thread with a deadline and are not isolated in the worker process; workspace confinement comes from `support.inside()`.
 - **Cancel.** `subagent_cancel(confirm=true)` sets a per-task event that the loop checks each turn and before each tool call. An HTTP request already in flight still completes.
 
 ## Continue loop interoperability notes
@@ -289,6 +289,12 @@ This addendum supersedes the sections above where they conflict.
 - Some Continue-compatible models return tool calls inside textual `<function_calls>` blocks. The loop parses those calls in order and executes them within the role's tool-call budget; any excess calls from that response are skipped and the model is asked for a final answer.
 - A response that is not a recognized tool call or JSON action is accepted as plain-text final output. The role's result validator still runs before the task is marked complete.
 - Loop backends can call `subagent_status` and `subagent_result`, subject to each role's allowlist.
-- Write smoke checks confirmed workspace path escape rejection and that the commit gate blocks loop initiated writes while a commit is required. A disposable committer run staged and committed only the requested file, leaving an unrelated file unstaged.
+- Write smoke checks confirmed workspace path escape rejection. A disposable committer run staged and committed only the requested file, leaving an unrelated file unstaged.
+
+## Summary-driven automatic commits
+
+- Successful `create_file` and `apply_edits` calls retain the supplied summary and changed workspace-relative paths in process memory. Failed writes, dry runs, and no-op edits are not counted; each successful tool call contributes one summary.
+- After five recorded changes, the server dispatches the existing `committer` role with that batch. The committer checks Git status and staged/unstaged diffs, verifies listed untracked files against their summaries, skips absent changes, and stages only clearly matched paths. Ambiguous or unrelated changes are left untouched; it aborts if unrelated paths are already staged and cannot be excluded safely.
+- The write-tool result includes the committer dispatch status. If no subagent backend is available or dispatch fails, that state is surfaced in the result rather than silently treated as committed.
 
 See `docs/AGENT_README.md` for the full list of environment variables.

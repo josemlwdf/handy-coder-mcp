@@ -27,6 +27,7 @@ from pydantic import Field
 from ..support import describe
 
 SKILLS_DIR_ENV = "HANDY-CODER_SKILLS_DIR"
+DEFAULT_SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
 BASELINE_SKILLS = frozenset({"grill-me", "handoff", "mcp-audit", "mcp-tools-only", "plan", "troubleshoot"})
 MAX_SKILL_BYTES = 256 * 1024
 MAX_DESCRIPTION_CHARS = 300
@@ -37,7 +38,7 @@ def _skills_dir() -> Path:
     override = os.environ.get(SKILLS_DIR_ENV, "").strip()
     if override:
         return Path(override).expanduser()
-    return Path(__file__).resolve().parents[2] / "skills"
+    return DEFAULT_SKILLS_DIR
 
 
 def _error(code: str, message: str, **extra) -> dict:
@@ -270,7 +271,24 @@ def skills_manage(
     return _error("invalid_action", f"Unknown action: {action}")
 
 
+def _default_skill_catalog() -> str:
+    """Return baseline/default skills with descriptions from the built-in skills directory."""
+    lines: list[str] = []
+    for name in sorted(BASELINE_SKILLS):
+        path = DEFAULT_SKILLS_DIR / f"{name}.md"
+        description = "(description unavailable)"
+        try:
+            if path.is_file():
+                text = path.read_text(encoding="utf-8")
+                description = _entry(name, text)["description"] or description
+        except (OSError, UnicodeDecodeError):
+            pass
+        lines.append(f"- {name}: {description}")
+    return "\n".join(lines)
+
+
 def register(mcp):
+    baseline_catalog = _default_skill_catalog()
     listed = _list_skills()
     skill_lines = [
         f"- {item['name']}: {item['description']}"
@@ -279,6 +297,8 @@ def register(mcp):
     skill_catalog = "\n".join(skill_lines) if skill_lines else "(No skills are currently installed.)"
     return mcp.tool(description=describe(
         "Manage reusable skills stored as Markdown files in the skills directory. "
+        "Default baseline skills and descriptions:\n"
+        f"{baseline_catalog}\n"
         "Installed skills and their descriptions at server startup:\n"
         f"{skill_catalog}\n"
         "Actions: list returns name, description, invokable, tags and version; search filters those fields; get/export returns full Markdown; delete requires confirm=true, protects baseline skills, and keeps a .bak backup; "

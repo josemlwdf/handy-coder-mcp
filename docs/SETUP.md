@@ -4,7 +4,7 @@ Install JavaScript formatting support with `pip install '.[javascript-format]'`.
 
 HTML files created or modified by `create_file` and `apply_edits` are automatically prettified with BeautifulSoup (`html.parser`). BeautifulSoup is installed as a required project dependency; formatter failures are reported while the requested file write is kept.
 
-The main server registers `code_format_lint` and `web_fetch_docs` from `lib/extras`, plus `web_search` and local C# navigation tools. Other modules under `lib/extras` are not exposed unless explicitly registered.
+The main server registers `code_format_lint` and `web_fetch_docs` from `lib/extras`, plus `web_search` and local C# navigation tools.
 
 Use `get_capabilities` first to confirm what is configured and currently available. Its `tools` section is the runtime source of truth for optional tool availability.
 For optional tools, each `tools.<name>` entry may include `missing_requirements` and `setup_docs` to speed troubleshooting.

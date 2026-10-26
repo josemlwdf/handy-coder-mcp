@@ -9,6 +9,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 from ..support import inside, run_process, describe, path_escape_message
+from ..utils.change_summary import SUMMARY_DESCRIPTION, validate_summary
 from ..utils.python_postprocess import process_python_file
 
 
@@ -148,7 +149,12 @@ def code_format_lint(
     config_file: Annotated[str | None, Field(description="Optional workspace-relative formatter/linter config file.")] = None,
     ignore: Annotated[list[str] | None, Field(description="Optional rule codes to ignore for Ruff.")] = None,
     severity: Annotated[Literal["all", "error", "warning"], Field(description="Ruff severity filter; all by default.")] = "all",
+    summary: Annotated[str | None, Field(description=SUMMARY_DESCRIPTION + " Required when fix=true; ignored otherwise.")] = None,
 ) -> dict:
+        if fix:
+            summary_error = validate_summary(summary)
+            if summary_error:
+                return {"supported": True, "ok": False, "error_code": "invalid_summary", "message": summary_error}
         if not paths:
             raise ValueError("paths must contain at least one workspace path")
         resolved = []
@@ -327,6 +333,6 @@ def register(mcp):
         "tools_skipped entries include the tool name and the reason (e.g. not_installed). "
         "Report entries include error_code='tool_not_installed' when a tool binary cannot be started. "
         "Language selection failures return ok=false with error_code mixed_languages, unsupported_language or language_mismatch and a message; no tool is run. "
-        "When fix=true, diffs contains unified diffs of changed files. "
+        "Requires summary (a one-line, concise description of the change) when fix=true; otherwise it is ignored, and a missing summary returns error_code='invalid_summary'. When fix=true, diffs contains unified diffs of changed files. "
         "When to use: Check or format selected files."
     ))(code_format_lint)

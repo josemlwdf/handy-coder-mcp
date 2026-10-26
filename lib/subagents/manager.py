@@ -112,6 +112,15 @@ class SubagentManager:
                 task.updated_at = time.time()
             return task
 
+    def update_progress(self, task_id: str, turns: int, tokens: int) -> None:
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None or task.state not in {"queued", "running"}:
+                return
+            task.turns_used = turns
+            task.tokens_used = tokens
+            task.updated_at = time.time()
+
     def mark_delegated(self, task_id: str, frame: Frame) -> None:
         with self._lock:
             self._sweep_locked()

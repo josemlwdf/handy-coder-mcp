@@ -1,5 +1,6 @@
-import difflib
 import ast
+import difflib
+import logging
 import re
 from pathlib import Path
 from typing import Annotated
@@ -7,6 +8,10 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field
 from ..support import inside, describe, path_escape_message
 from ..utils.html_prettify import prettify_html
+from ..utils.change_summary import SUMMARY_DESCRIPTION, validate_summary
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class Position(BaseModel):
@@ -42,6 +47,39 @@ def _expand(match: re.Match, template: str, expand_groups: bool) -> str:
     return match.expand(template) if expand_groups else template
 
 
+def _format_written_file(path: Path, relative_path: str, summary: str) -> None:
+    suffix = path.suffix.lower()
+    try:
+        if suffix in {".html", ".htm"}:
+            formatted, status = prettify_html(path.read_bytes().decode("utf-8"))
+            if not status.get("ok"):
+                _LOGGER.warning(
+                    "Automatic HTML formatting failed for %s: %s",
+                    relative_path,
+                    status.get("error", "unknown formatter error"),
+                )
+                return
+            path.write_bytes(formatted.encode("utf-8"))
+        elif suffix == ".py" or suffix in {
+            ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+            ".json", ".css", ".scss", ".md",
+        }:
+            from ..extras.code_format_lint import code_format_lint
+
+            language = "python" if suffix == ".py" else "auto"
+            status = code_format_lint(
+                [relative_path], fix=True, language=language, summary=summary,
+            )
+            if not status.get("ok"):
+                _LOGGER.warning(
+                    "Automatic formatting failed for %s: %s",
+                    relative_path,
+                    status.get("message", status.get("error", "formatter reported failure")),
+                )
+    except Exception as exc:
+        _LOGGER.warning("Could not automatically format %s: %s", relative_path, exc)
+
+
 def apply_edits(
     edits: Annotated[
         list[Edit],
@@ -61,7 +99,12 @@ def apply_edits(
         bool,
         Field(description="If true, replacement is a Python re replacement template: \\1 and \\g<name> insert capture groups and backslash escapes are interpreted. Defaults to false (replacement text is literal)."),
     ] = False,
+    *,
+    summary: Annotated[str, Field(description=SUMMARY_DESCRIPTION)],
 ) -> dict:
+    summary_error = validate_summary(summary)
+    if summary_error:
+        return {"error_code": "invalid_summary", "message": summary_error, "edits": [], "dry_run": dry_run}
     # Phase 1: Validate and stage all edits in memory
     original_contents: dict[str, str] = {}
     staged_contents: dict[str, str] = {}
@@ -84,7 +127,8 @@ def apply_edits(
         resolved_key = str(p)
         if resolved_key not in original_contents:
             try:
-                disk_text = p.read_text(encoding="utf-8")
+                with p.open("r", encoding="utf-8", newline="") as handle:
+                    disk_text = handle.read()
             except UnicodeDecodeError:
                 return _edit_error("binary_file", edit_index, f"File is not valid UTF-8 (binary or non-text): {name}", dry_run)
             except OSError as exc:
@@ -198,26 +242,21 @@ def apply_edits(
             "matches": match_count,
         })
 
-    # Prettify the final staged HTML once per file, after all regex edits.
-    files = []
-    for resolved_key, new_text in staged_contents.items():
-        path = Path(resolved_key)
-        if path.suffix.lower() not in {".html", ".htm"} or new_text == original_contents[resolved_key]:
-            continue
-        relative_path = path.relative_to(inside(".")).as_posix()
-        formatted, status = prettify_html(new_text)
-        if status["ok"]:
-            new_text = formatted
-            staged_contents[resolved_key] = formatted
-        original = original_contents[resolved_key]
-        files.append({
-            "path": relative_path,
+    # Capture each file's raw agent edit before any automatic formatting.
+    root = inside(".")
+    files = [
+        {
+            "path": Path(resolved_key).relative_to(root).as_posix(),
             "diff": "".join(difflib.unified_diff(
-                original.splitlines(True), new_text.splitlines(True),
-                fromfile=relative_path, tofile=relative_path,
+                original_contents[resolved_key].splitlines(True),
+                new_text.splitlines(True),
+                fromfile=Path(resolved_key).relative_to(root).as_posix(),
+                tofile=Path(resolved_key).relative_to(root).as_posix(),
             )),
-            "formatter": status,
-        })
+        }
+        for resolved_key, new_text in staged_contents.items()
+        if new_text != original_contents[resolved_key]
+    ]
 
     # Phase 2: Write all staged changes to disk; roll back on failure.
     # Skipped entirely when dry_run=True.
@@ -226,17 +265,24 @@ def apply_edits(
         try:
             for resolved_key, new_text in staged_contents.items():
                 if new_text != original_contents[resolved_key]:
-                    Path(resolved_key).write_text(new_text, encoding="utf-8")
+                    Path(resolved_key).write_bytes(new_text.encode("utf-8"))
                     written.append(resolved_key)
         except OSError as exc:
             for key in reversed(written):
                 try:
-                    Path(key).write_text(original_contents[key], encoding="utf-8")
+                    Path(key).write_bytes(original_contents[key].encode("utf-8"))
                 except OSError:
                     pass
             raise RuntimeError(f"Write failed; all edits rolled back: {exc}") from exc
 
-    root = inside(".")
+        # Format only after every raw edit has been written and its diff captured.
+        for entry in files:
+            try:
+                path = inside(entry["path"], must_exist=True)
+                _format_written_file(path, entry["path"], summary)
+            except (OSError, ValueError) as exc:
+                _LOGGER.warning("Could not resolve file for automatic formatting %s: %s", entry["path"], exc)
+
     written_files = [Path(key).relative_to(root).as_posix() for key in written]
     response = {"edits": results, "files": files, "written_files": written_files, "dry_run": dry_run}
     if max_replacements is not None and not replace_all:
@@ -262,14 +308,15 @@ def _adds_import(before: str, after: str) -> bool:
 def register(mcp):
     return mcp.tool(description=describe(
         "Apply regex edits to workspace files; replace_all defaults to false; dry_run=true validates without writing. "
+        "Requires summary: a one-line, concise description of the change. "
         "Validates and stages the entire batch before writing; a later invalid edit leaves earlier edits unapplied. "
         "Edits are processed in order against staged content, so repeated/overlapping edits on the same file are order-sensitive. "
         "Each edit requires pattern and replacement; legacy old_str/new_str aliases are rejected by schema validation. "
         "pattern is a Python regular expression (re module); replacement text is literal unless expand_groups=true (Python re template: \\1, \\g<name>). "
         "replace_all=true replaces all matches, or at most max_replacements when provided. case_insensitive=true ignores case. position is an object with 1-based line and col keys and limits search to the first match starting at or after that coordinate. "
         "Error messages include the zero-based edit index ([edit N]) for easy identification. "
-        "Edit failures return error_code (invalid_regex, invalid_replacement, no_match, not_found, path_escape, not_a_file, binary_file, io_error, invalid_edit) "
+        "Edit failures return error_code (invalid_summary, invalid_regex, invalid_replacement, no_match, not_found, path_escape, not_a_file, binary_file, io_error, invalid_edit) "
         "with edit_index and message instead of raising; nothing is written. "
-        "Each edit result includes matches (count of replacements made) and its edit diff. Changed HTML files are prettified once after staging and are summarized in files with one original-to-final diff and formatter status per file; dry runs preview this without writing. written_files lists the workspace-relative paths of files actually written to disk (only files whose content changed; always empty on dry_run), whereas files only summarizes HTML prettification. A dependency_hint is returned only when an edit adds a Python import. "
+        "Each edit result includes matches (count of replacements made) and its edit diff. Changed files are summarized in files with the exact original-to-edited diff before automatic formatting is applied to disk; formatter details are not included in the result. dry_run previews the exact edits without formatting or writing. written_files lists the workspace-relative paths of files actually written to disk (only files whose content changed; always empty on dry_run), while files contains raw per-file diffs. A dependency_hint is returned only when an edit adds a Python import. "
         "Returns unified diffs. When to use: Make localized changes."
     ))(apply_edits)

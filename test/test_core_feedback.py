@@ -88,8 +88,8 @@ class CoreFeedbackTests(unittest.TestCase):
 
         read_result = self.mcp.tools["read_files"]([str(file_path)])
         edit_result = self.mcp.tools["apply_edits"]([apply_edits.Edit(
-            path=str(file_path), old_str="old", new_str="new"
-        )])
+            path=str(file_path), pattern="old", replacement="new"
+        )], summary="test change")
 
         # read_files: relative path is always present; no host-leaking resolved_path.
         self.assertEqual(read_result["files"][0]["path"], "sample.txt")
@@ -371,9 +371,9 @@ class CoreFeedbackTests(unittest.TestCase):
         file_a.write_text("hello world\n", encoding="utf-8")
 
         result = self.mcp.tools["apply_edits"]([
-            apply_edits.Edit(path="a.txt", old_str="hello", new_str="goodbye"),
-            apply_edits.Edit(path="a.txt", old_str="DOES_NOT_EXIST", new_str="x"),
-        ])
+            apply_edits.Edit(path="a.txt", pattern="hello", replacement="goodbye"),
+            apply_edits.Edit(path="a.txt", pattern="DOES_NOT_EXIST", replacement="x"),
+        ], summary="test change")
         self.assertEqual(result.get("error_code"), "no_match")
 
         # File a.txt must be unchanged because the batch was rejected
@@ -408,6 +408,7 @@ class CoreFeedbackTests(unittest.TestCase):
         result = self.mcp.tools["search_text"]("(unclosed", is_regex=True)
 
         self.assertEqual(result.get("error_code"), "invalid_regex")
+        self.assertIn("message", result)
         self.assertIn("matches", result)
         self.assertEqual(result["matches"], [])
 
@@ -513,9 +514,9 @@ class CoreFeedbackTests(unittest.TestCase):
 
     def test_create_file_octal_permission_strings(self):
         from lib.core import create_file
-        self.assertEqual(create_file.create_file("mode.txt", permissions="0755")["created"], True)
+        self.assertEqual(create_file.create_file("mode.txt", permissions="0755", summary="test change")["created"], True)
         self.assertEqual((self.root / "mode.txt").stat().st_mode & 0o777, 0o755)
-        invalid = create_file.create_file("bad-mode.txt", permissions="0899")
+        invalid = create_file.create_file("bad-mode.txt", permissions="0899", summary="test change")
         self.assertEqual(invalid["error_code"], "invalid_permissions")
 
     def test_git_transition_actions_schema_and_clean_guard(self):
@@ -622,8 +623,7 @@ class CoreFeedbackTests(unittest.TestCase):
 
         def fake_monotonic():
             call_count[0] += 1
-            # After the first call (start_time) always return a value far in
-            # the future so the 15 s guard fires immediately.
+            # Subsequent calls advance past the deadline to stop the scan.
             if call_count[0] > 1:
                 return real_monotonic() + 100.0
             return real_monotonic()
@@ -633,6 +633,54 @@ class CoreFeedbackTests(unittest.TestCase):
 
         self.assertTrue(result["truncated"])
         self.assertEqual(result.get("truncation_reason"), "time_limit")
+
+    def test_code_search_deadline_interrupts_directory_enumeration(self):
+        for index in range(25):
+            (self.root / f"f{index}.txt").write_text("needle\n", encoding="utf-8")
+
+        original_scandir = os.scandir
+        entries_seen = [0]
+
+        class AdvancingScandir:
+            def __init__(self, path):
+                self.entries = original_scandir(path)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                self.entries.close()
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                entry = next(self.entries)
+                entries_seen[0] += 1
+                return entry
+
+        with (
+            patch("lib.support.os.scandir", side_effect=AdvancingScandir),
+            patch("lib.core.code_search.time.monotonic", side_effect=lambda: entries_seen[0]),
+        ):
+            result = self.mcp.tools["search_text"]("needle")
+
+        self.assertTrue(result["truncated"])
+        self.assertEqual(result.get("truncation_reason"), "time_limit")
+        self.assertLess(entries_seen[0], 25)
+
+    def test_code_search_skips_oversized_files_without_reading_them(self):
+        large_file = self.root / "simulations.db"
+        with large_file.open("wb") as database:
+            database.truncate(support.MAX_READ_BYTES + 1)
+
+        with patch.object(
+            Path, "read_text", side_effect=AssertionError("large file read")
+        ) as read_text:
+            result = self.mcp.tools["search_text"]("needle")
+
+        self.assertEqual(result["matches"], [])
+        read_text.assert_not_called()
 
     def test_find_files_globstar_matches_zero_intermediate_dirs(self):
         """src/**/*.py must match src/foo.py (zero intermediate directories)."""
@@ -692,9 +740,9 @@ class CoreFeedbackTests(unittest.TestCase):
         f.write_text("hello world\n", encoding="utf-8")
 
         result = self.mcp.tools["apply_edits"]([
-            apply_edits.Edit(path="target.txt", old_str="hello", new_str="hi"),
-            apply_edits.Edit(path="target.txt", old_str="NOPE", new_str="x"),
-        ])
+            apply_edits.Edit(path="target.txt", pattern="hello", replacement="hi"),
+            apply_edits.Edit(path="target.txt", pattern="NOPE", replacement="x"),
+        ], summary="test change")
         self.assertIn("[edit 1]", result.get("message", ""))
         self.assertEqual(result.get("edit_index"), 1)
 
@@ -704,9 +752,9 @@ class CoreFeedbackTests(unittest.TestCase):
         f.write_text("hello world\n", encoding="utf-8")
 
         result = self.mcp.tools["apply_edits"]([
-            apply_edits.Edit(path="rx.txt", old_str="hello", new_str="hi"),
-            apply_edits.Edit(path="rx.txt", old_str="(unclosed", new_str="x"),
-        ])
+            apply_edits.Edit(path="rx.txt", pattern="hello", replacement="hi"),
+            apply_edits.Edit(path="rx.txt", pattern="(unclosed", replacement="x"),
+        ], summary="test change")
 
         self.assertEqual(result.get("error_code"), "invalid_regex")
         self.assertEqual(result.get("edit_index"), 1)
@@ -720,9 +768,9 @@ class CoreFeedbackTests(unittest.TestCase):
         f.write_text("hello world\n", encoding="utf-8")
 
         result = self.mcp.tools["apply_edits"]([
-            apply_edits.Edit(path="nm.txt", old_str="hello", new_str="hi"),
-            apply_edits.Edit(path="nm.txt", old_str="NOPE", new_str="x"),
-        ])
+            apply_edits.Edit(path="nm.txt", pattern="hello", replacement="hi"),
+            apply_edits.Edit(path="nm.txt", pattern="NOPE", replacement="x"),
+        ], summary="test change")
 
         self.assertEqual(result.get("error_code"), "no_match")
         self.assertEqual(result.get("edit_index"), 1)
@@ -743,7 +791,8 @@ class CoreFeedbackTests(unittest.TestCase):
         for path, code in cases:
             with self.subTest(path=path):
                 result = self.mcp.tools["apply_edits"](
-                    [apply_edits.Edit(path=path, old_str="x", new_str="y")]
+                    [apply_edits.Edit(path=path, pattern="x", replacement="y")],
+                    summary="test change",
                 )
                 self.assertEqual(result.get("error_code"), code)
                 self.assertEqual(result.get("edit_index"), 0)
@@ -756,19 +805,19 @@ class CoreFeedbackTests(unittest.TestCase):
         f = self.root / "grp.txt"
         f.write_text("john smith\n", encoding="utf-8")
         edit = apply_edits.Edit(
-            path="grp.txt", old_str=r"(?P<first>\w+) (\w+)", new_str=r"\2, \g<first>"
+            path="grp.txt", pattern=r"(?P<first>\w+) (\w+)", replacement=r"\2, \g<first>"
         )
 
-        literal = self.mcp.tools["apply_edits"]([edit], dry_run=True)
+        literal = self.mcp.tools["apply_edits"]([edit], dry_run=True, summary="test change")
         self.assertIn(r"+\2, \g<first>", literal["edits"][0]["diff"])
 
-        self.mcp.tools["apply_edits"]([edit], expand_groups=True)
+        self.mcp.tools["apply_edits"]([edit], expand_groups=True, summary="test change")
         self.assertEqual(f.read_text(encoding="utf-8"), "smith, john\n")
 
         # A reference to a nonexistent group is a structured error, not an exception.
         f.write_text("john smith\n", encoding="utf-8")
-        bad = apply_edits.Edit(path="grp.txt", old_str=r"(\w+)", new_str=r"\5")
-        result = self.mcp.tools["apply_edits"]([bad], expand_groups=True)
+        bad = apply_edits.Edit(path="grp.txt", pattern=r"(\w+)", replacement=r"\5")
+        result = self.mcp.tools["apply_edits"]([bad], expand_groups=True, summary="test change")
         self.assertEqual(result.get("error_code"), "invalid_replacement")
         self.assertEqual(result.get("edit_index"), 0)
         self.assertEqual(f.read_text(encoding="utf-8"), "john smith\n")
@@ -779,8 +828,9 @@ class CoreFeedbackTests(unittest.TestCase):
         f.write_text("a a a\n", encoding="utf-8")
 
         result = self.mcp.tools["apply_edits"](
-            [apply_edits.Edit(path="multi.txt", old_str="a", new_str="b")],
+            [apply_edits.Edit(path="multi.txt", pattern="a", replacement="b")],
             replace_all=True,
+            summary="test change",
         )
         self.assertEqual(result["edits"][0]["matches"], 3)
 
@@ -790,8 +840,9 @@ class CoreFeedbackTests(unittest.TestCase):
         f.write_text("original\n", encoding="utf-8")
 
         result = self.mcp.tools["apply_edits"](
-            [apply_edits.Edit(path="dry.txt", old_str="original", new_str="changed")],
+            [apply_edits.Edit(path="dry.txt", pattern="original", replacement="changed")],
             dry_run=True,
+            summary="test change",
         )
         self.assertTrue(result["dry_run"])
         self.assertIn("diff", result["edits"][0])
@@ -803,7 +854,8 @@ class CoreFeedbackTests(unittest.TestCase):
         f.write_text("before\n", encoding="utf-8")
 
         self.mcp.tools["apply_edits"](
-            [apply_edits.Edit(path="write.txt", old_str="before", new_str="after")],
+            [apply_edits.Edit(path="write.txt", pattern="before", replacement="after")],
+            summary="test change",
         )
         self.assertEqual(f.read_text(encoding="utf-8"), "after\n")
 

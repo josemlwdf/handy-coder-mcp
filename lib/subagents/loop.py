@@ -9,7 +9,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from ..core import apply_edits, code_search, create_file, diagnostics, find_files, read_files, run_tests
-from ..core import commit_nudge, git_manage
+from ..core import git_manage
 from .roles import Role
 
 if TYPE_CHECKING:
@@ -26,7 +26,6 @@ _ALLOWED_TOOLS: dict[str, ToolFn] = {
     "apply_edits": apply_edits.apply_edits,
     "code_get_diagnostics": diagnostics.code_get_diagnostics,
     "run_tests": run_tests.run_tests,
-    "defer_commit": commit_nudge.defer_commit,
     "git_manage": git_manage.git_manage,
     # Resolve these lazily: tools imports loop during module initialization.
     "subagent_status": lambda **args: _call_subagent_tool("subagent_status", args),
@@ -44,11 +43,10 @@ _TOOL_ARGUMENTS = {
     "read_files": '{"paths": ["workspace-relative path"], "line_ranges"?: [{"path": "...", "start_line": 1, "end_line": 20}], "start_line"?: 1, "end_line"?: 20, "encoding"?: "utf-8", "include_metadata"?: false}',
     "search_text": '{"query": "text or regex", "is_regex"?: true, "path_glob"?: "...", "max_results"?: 100, "context_lines"?: 0, "include_generated"?: false, "case_insensitive"?: false, "extensions"?: [".py"]}',
     "find_files": '{"glob_pattern": "**/*.py", "exclude_pattern"?: "...", "include_generated"?: false, "file_type"?: ".py", "min_size"?: 0, "max_size"?: 10000, "sort_by"?: "path|size|modified", "include_metadata"?: false}',
-    "create_file": '{"path": "workspace-relative path", "content"?: "full file content", "overwrite"?: false, "create_parents"?: true, "permissions"?: 420, "backup"?: false, "format_content"?: false, "post_process_python"?: false}',
-    "apply_edits": '{"edits": [{"path": "...", "pattern": "Python regex", "replacement": "text", "position"?: {"line": 1, "col": 1}}], "replace_all"?: false, "max_replacements"?: 1, "case_insensitive"?: false, "dry_run"?: false, "expand_groups"?: false}',
+    "create_file": '{"path": "workspace-relative path", "summary": "one-line summary of the change", "content"?: "full file content", "overwrite"?: false, "create_parents"?: true, "permissions"?: 420, "backup"?: false, "format_content"?: false, "post_process_python"?: false}',
+    "apply_edits": '{"edits": [{"path": "...", "pattern": "Python regex", "replacement": "text", "position"?: {"line": 1, "col": 1}}], "summary": "one-line summary of the change", "replace_all"?: false, "max_replacements"?: 1, "case_insensitive"?: false, "dry_run"?: false, "expand_groups"?: false}',
     "code_get_diagnostics": '{"path"?: "...", "check"?: "ruff", "timeout_ms"?: 30000}',
     "run_tests": '{"test_framework"?: "jest|pytest|vitest", "filter_path"?: "test/test_file.py", "fail_fast"?: false, "parallel"?: 1, "coverage"?: false, "verbose"?: false}',
-    "defer_commit": '{"action"?: "defer|cancel|status", "reason"?: "why commit must wait", "calls"?: 5}',
     "git_manage": 'Use workspace-relative repo_path. Examples: {"action":"add","args":["task-owned.txt"],"repo_path":"."}; {"action":"commit","args":["-m","message"],"repo_path":"."}. For status use {"action":"status","repo_path":"."}.',
     "subagent_status": '{"task_id": "t_1"}',
     "subagent_result": '{"task_id": "t_1", "offset"?: 0}',
@@ -352,11 +350,9 @@ class SubagentCancelled(RuntimeError):
     pass
 
 
-LOOP_WRITE_TOOLS = ("create_file", "apply_edits", "git_manage")
-
 # Tool calls from loop backends run in a server thread with a deadline. They are
 # NOT isolated in the worker process (importing worker_supervisor here would be
-# circular), so write-capable roles are gated behind SUBAGENT_LOOP_WRITE=1.
+# circular); file access is confined to the workspace by support.inside().
 
 
 def _call_tool(
@@ -366,11 +362,6 @@ def _call_tool(
     *,
     tool_name: str | None = None,
 ) -> dict:
-    name = tool_name or fn.__name__
-    gate_block = commit_nudge.before_tool_call(name, args)
-    if gate_block is not None:
-        return gate_block
-
     box: dict[str, Any] = {}
 
     def target() -> None:
@@ -379,7 +370,7 @@ def _call_tool(
         except Exception as exc:  # noqa: BLE001
             box["result"] = {"error": str(exc)}
         else:
-            box["result"] = commit_nudge.after_tool_call(name, args, result)
+            box["result"] = result
 
     thread = threading.Thread(target=target, daemon=True)
     thread.start()
@@ -404,15 +395,8 @@ def run_loop(
     sampling_fn: SamplingFn | None = None,
     continue_model: "ContinueModel | None" = None,
     cancel_event: Any = None,
-    allow_write: bool | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> tuple[str, int, int]:
-    if allow_write is None:
-        allow_write = os.environ.get("SUBAGENT_LOOP_WRITE") == "1"
-    if not allow_write and any(t in role.allowed_tools for t in LOOP_WRITE_TOOLS):
-        raise RuntimeError(
-            f"role '{role.name}' can write and loop write access is not enabled (set SUBAGENT_LOOP_WRITE=1)"
-        )
-
     history: list[dict[str, str]] = []
     tool_calls = 0
     token_estimate = 0
@@ -432,6 +416,8 @@ def run_loop(
         _check_cancel(cancel_event)
         token_estimate += max(1, len(assistant_text) // 4)
         history.append({"role": "assistant", "content": assistant_text})
+        if on_progress is not None:
+            on_progress(turn, token_estimate)
 
         action = _parse_json_action(assistant_text)
         if action["kind"] == "final":
@@ -457,6 +443,12 @@ def run_loop(
                 tool_result: Any = {"error": "tool not available in loop backends"}
             else:
                 tool_result = _call_tool(tool_fn, call["args"], tool_name=tool_name)
+                if tool_name in {"create_file", "apply_edits"}:
+                    from . import tools as subagent_tools
+
+                    tool_result = subagent_tools.after_tool_call(
+                        tool_name, tool_result, call["args"]
+                    )
 
             history.append(
                 {

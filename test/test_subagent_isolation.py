@@ -126,14 +126,10 @@ class AllowlistTests(unittest.TestCase):
             run(get_role('explorer'), [tool_action('rm_rf_everything')], tools={})
         self.assertIn('outside role allowlist', str(ctx.exception))
 
-    def test_write_role_requires_loop_write_opt_in(self):
-        provider = FakeProvider([final_action('done')])
-        with patch.object(loop, '_post_json', provider):
-            with self.assertRaises(RuntimeError) as ctx:
-                loop.run_loop('continue:openai', get_role('coder'), 't', None, None,
-                              continue_model=MODEL, allow_write=False)
-        self.assertIn('SUBAGENT_LOOP_WRITE=1', str(ctx.exception))
-        self.assertEqual(provider.payloads, [])
+    def test_write_role_runs_without_opt_in(self):
+        out, provider = run(get_role('coder'), [final_action('done')])
+        self.assertIn('done', out[0])
+        self.assertEqual(len(provider.payloads), 1)
 
 
 class CallCapTests(unittest.TestCase):

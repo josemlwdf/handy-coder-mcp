@@ -147,6 +147,7 @@ class CapabilitiesTests(unittest.TestCase):
         self.assertEqual(caps['subagents']['backend'], 'continue:openai')
         self.assertEqual(info, {
             'provider': 'openai', 'model': 'gpt-x', 'name': 'main',
+            'models': [{'provider': 'openai', 'model': 'gpt-x', 'name': 'main'}],
             'config_path': str(self.config),
         })
         dumped = json.dumps(caps)
@@ -154,11 +155,17 @@ class CapabilitiesTests(unittest.TestCase):
         self.assertNotIn('hdr-secret-9999', dumped)
         self.assertTrue(caps['env']['SUBAGENT_CONTINUE'])
 
-    def test_no_continue_section_when_opted_out(self):
+    def test_opted_out_keeps_cooperative_backend_but_still_lists_models(self):
+        # Listing models is intentional: SUBAGENT_CONTINUE=0 only stops auto mode from
+        # selecting a Continue backend; it does not hide the configured models.
         env = {'SUBAGENT_CONTINUE_CONFIG': str(self.config), 'SUBAGENT_CONTINUE': '0'}
         with patch.dict(os.environ, env, clear=True):
             caps = system_info.get_capabilities()
-        self.assertNotIn('continue', caps['subagents'])
+        self.assertEqual(caps['subagents']['backend'], 'cooperative')
+        self.assertEqual(caps['subagents']['continue'], {
+            'models': [{'provider': 'openai', 'model': 'gpt-x', 'name': 'main'}],
+            'config_path': str(self.config),
+        })
         self.assertNotIn(KEY, json.dumps(caps))
 
 

@@ -1,20 +1,10 @@
-import json
-import os
-import shlex
-import socket
-import sys
-import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from lib import support
 from lib.extras import (
-    browser,
     code_format_lint,
-    debugger,
-    lsp_lookup,
-    semantic_search,
     web_fetch,
 )
 
@@ -35,74 +25,11 @@ class Tier2ToolTests(unittest.TestCase):
     def setUpClass(cls):
         support.configure(str(Path(__file__).resolve().parents[1]))
         cls.tools = FakeMCP()
-        for module in (lsp_lookup, semantic_search, code_format_lint, web_fetch, debugger, browser):
+        for module in (code_format_lint, web_fetch):
             module.register(cls.tools)
 
-    def test_registers_six_tier_two_tools(self):
-        self.assertEqual(
-            set(self.tools.tools),
-            {
-                "lsp_symbol_lookup",
-                "vector_search_codebase",
-                "code_format_lint",
-                "web_fetch_docs",
-                "debug_session_step",
-                "browser_action",
-            },
-        )
-
-    def test_lsp_reports_unconfigured_backend(self):
-        with patch.dict(os.environ, {"HANDY-CODER_LSP_COMMAND": ""}):
-            result = self.tools.tools["lsp_symbol_lookup"](
-                "main", "README.md", lsp_lookup.Position(line=0, character=0)
-            )
-        self.assertFalse(result["supported"])
-
-    def test_lsp_rejects_negative_position(self):
-        with self.assertRaises(ValueError):
-            self.tools.tools["lsp_symbol_lookup"](
-                "main", "README.md", lsp_lookup.Position(line=-1, character=0)
-            )
-
-    def test_lsp_uses_configured_server_for_definition_request(self):
-        server = """
-import json, sys
-while True:
-    headers = {}
-    while True:
-        line = sys.stdin.buffer.readline()
-        if line in (b"\\r\\n", b"\\n"):
-            break
-        key, _, value = line.decode().partition(":")
-        headers[key.lower()] = value.strip()
-    message = json.loads(sys.stdin.buffer.read(int(headers["content-length"])))
-    if message.get("method") == "textDocument/definition":
-        body = json.dumps({"jsonrpc":"2.0","id":message["id"],"result":None}).encode()
-        sys.stdout.buffer.write(f"Content-Length: {len(body)}\\r\\n\\r\\n".encode() + body)
-        sys.stdout.buffer.flush()
-        break
-    if "id" in message:
-        body = json.dumps({"jsonrpc":"2.0","id":message["id"],"result":{}}).encode()
-        sys.stdout.buffer.write(f"Content-Length: {len(body)}\\r\\n\\r\\n".encode() + body)
-        sys.stdout.buffer.flush()
-"""
-        command = shlex.join([sys.executable, "-c", server])
-        with patch.dict(os.environ, {"HANDY-CODER_LSP_COMMAND": command}):
-            result = self.tools.tools["lsp_symbol_lookup"](
-                "main", "README.md", lsp_lookup.Position(line=0, character=0)
-            )
-        self.assertTrue(result["supported"])
-        self.assertEqual(result["definitions"], [])
-
-    def test_semantic_search_reports_missing_model(self):
-        with patch.dict(os.environ, {"HANDY-CODER_EMBEDDING_MODEL": ""}):
-            result = self.tools.tools["vector_search_codebase"]("where is auth initialized?")
-        self.assertFalse(result["supported"])
-
-    def test_web_search_reports_unconfigured_provider(self):
-        with patch.dict(os.environ, {"HANDY-CODER_SEARCH_URL": ""}):
-            result = self.tools.tools["web_fetch_docs"](search_query="python docs")
-        self.assertFalse(result["supported"])
+    def test_registers_tier_two_tools(self):
+        self.assertEqual(set(self.tools.tools), {"code_format_lint", "web_fetch_docs"})
 
     def test_web_fetch_blocks_local_network(self):
         result = self.tools.tools["web_fetch_docs"](url="http://127.0.0.1/")
@@ -117,80 +44,6 @@ while True:
         self.assertEqual(result["title"], "Docs")
         self.assertIn("Useful text", result["content"])
         self.assertNotIn("secret", result["content"])
-
-    def test_debugger_reports_missing_adapter(self):
-        with patch.dict(os.environ, {"HANDY-CODER_DAP_PORT": ""}):
-            result = self.tools.tools["debug_session_step"]("start")
-        self.assertFalse(result["supported"])
-
-    def test_debugger_rejects_non_loopback_adapter(self):
-        with patch.dict(os.environ, {
-            "HANDY-CODER_DAP_HOST": "192.168.1.10",
-            "HANDY-CODER_DAP_PORT": "5678",
-        }):
-            with self.assertRaises(ValueError):
-                debugger._configured_endpoint()
-
-    def test_debugger_drives_local_dap_session(self):
-        listener = socket.socket()
-        listener.bind(("127.0.0.1", 0))
-        listener.listen(1)
-        port = listener.getsockname()[1]
-
-        def serve():
-            connection, _ = listener.accept()
-            stream = connection.makefile("rb")
-            response_seq = 1
-            try:
-                while True:
-                    headers = {}
-                    while True:
-                        line = stream.readline()
-                        if line in (b"\r\n", b"\n"):
-                            break
-                        key, _, value = line.decode().partition(":")
-                        headers[key.lower()] = value.strip()
-                    message = json.loads(stream.read(int(headers["content-length"])))
-                    if message["command"] == "initialize":
-                        event = {"seq": response_seq, "type": "event", "event": "initialized"}
-                        response_seq += 1
-                        body = json.dumps(event).encode()
-                        connection.sendall(f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
-                    response = {
-                        "seq": response_seq, "type": "response",
-                        "request_seq": message["seq"], "success": True,
-                        "command": message["command"], "body": {},
-                    }
-                    response_seq += 1
-                    body = json.dumps(response).encode()
-                    connection.sendall(f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
-                    if message["command"] == "disconnect":
-                        return
-            finally:
-                stream.close()
-                connection.close()
-
-        thread = threading.Thread(target=serve, daemon=True)
-        thread.start()
-        tool = self.tools.tools["debug_session_step"]
-        env = {
-            "HANDY-CODER_DAP_HOST": "127.0.0.1",
-            "HANDY-CODER_DAP_PORT": str(port),
-            "HANDY-CODER_DAP_START_REQUEST": '{"command":"launch","arguments":{}}',
-        }
-        try:
-            with patch.dict(os.environ, env):
-                started = tool("start")
-                stopped = tool("stop")
-            self.assertTrue(started["supported"])
-            self.assertTrue(stopped["supported"])
-        finally:
-            listener.close()
-            thread.join(timeout=2)
-
-    def test_browser_rejects_non_http_url(self):
-        with self.assertRaises(ValueError):
-            browser._safe_url("file:///etc/passwd")
 
     def test_format_lint_requires_paths_and_confines_them(self):
         with self.assertRaises(ValueError):
@@ -210,7 +63,7 @@ while True:
                 with patch("lib.extras.code_format_lint.run_process") as run_process, \
                      patch("lib.extras.code_format_lint.process_python_file") as process_python:
                     result = self.tools.tools["code_format_lint"](
-                        ["notes.txt"], language="text", fix=True
+                        ["notes.txt"], language="text", fix=True, summary="test change"
                     )
                 self.assertEqual(target.read_text(encoding="utf-8"), "keep this text\n")
                 run_process.assert_not_called()
@@ -289,7 +142,7 @@ while True:
                 target.write_text("const value=1", encoding="utf-8")
                 with patch("lib.extras.code_format_lint._jsbeautifier_module", return_value=Formatter), \
                      patch("lib.extras.code_format_lint._tool_path", return_value=None):
-                    result = self.tools.tools["code_format_lint"](["script.js"], fix=True, language="javascript")
+                    result = self.tools.tools["code_format_lint"](["script.js"], fix=True, summary="test change", language="javascript")
                 self.assertEqual(target.read_text(encoding="utf-8"), "const value = 1;\n")
             finally:
                 _support.configure(str(Path(__file__).resolve().parents[1]))
@@ -304,13 +157,6 @@ while True:
         self.assertFalse(result["supported"])
         self.assertIn({"tool": "jsbeautifier", "reason": "not_installed"}, result["tools_skipped"])
 
-    def test_format_lint_reports_missing_local_tool(self):
-        with patch("lib.extras.code_format_lint.shutil.which", return_value=None):
-            result = self.tools.tools["code_format_lint"](
-                ["test/test_tier2.py"], language="python"
-            )
-        self.assertFalse(result["supported"])
-
     def test_web_fetch_returns_http_status_field(self):
         with patch.object(web_fetch, "_request", return_value=(
             b"<html><title>T</title><p>Hello</p></html>",
@@ -321,7 +167,10 @@ while True:
         self.assertEqual(result["http_status"], 200)
 
     def test_format_lint_returns_tools_run_and_tools_skipped(self):
-        with patch("lib.extras.code_format_lint.shutil.which", return_value=None):
+        with (
+            patch("lib.extras.code_format_lint.shutil.which", return_value=None),
+            patch("lib.extras.code_format_lint._python_tool_path", return_value=None),
+        ):
             result = self.tools.tools["code_format_lint"](
                 ["test/test_tier2.py"], language="python"
             )
@@ -348,7 +197,10 @@ while True:
 
     def test_format_lint_tools_skipped_entries_have_reason(self):
         """tools_skipped entries must be dicts with 'tool' and 'reason' keys."""
-        with patch("lib.extras.code_format_lint.shutil.which", return_value=None):
+        with (
+            patch("lib.extras.code_format_lint.shutil.which", return_value=None),
+            patch("lib.extras.code_format_lint._python_tool_path", return_value=None),
+        ):
             result = self.tools.tools["code_format_lint"](
                 ["test/test_tier2.py"], language="python"
             )
@@ -375,7 +227,7 @@ while True:
             ugly = (Path(tmp) / "ugly.py")
             ugly.write_text("x=1\n", encoding="utf-8")
             result = self.tools.tools["code_format_lint"](
-                ["ugly.py"], fix=True, language="python"
+                ["ugly.py"], fix=True, summary="test change", language="python"
             )
             _support.configure(str(Path(__file__).resolve().parents[1]))
 
@@ -413,26 +265,6 @@ while True:
         msg = result["message"]
         self.assertIn(".txt", msg)
         self.assertNotIn("Python", msg)  # not a mixed-language error
-
-    def test_lsp_config_check_runs_before_argument_validation(self):
-        """When HANDY-CODER_LSP_COMMAND is unset, supported:false is returned
-        even before argument validation would run."""
-        # README.md exists in the project root; position is valid.
-        with patch.dict(os.environ, {"HANDY-CODER_LSP_COMMAND": ""}):
-            result = self.tools.tools["lsp_symbol_lookup"](
-                "main", "README.md", lsp_lookup.Position(line=0, character=0)
-            )
-        self.assertFalse(result["supported"])
-        self.assertNotIn("error", result)
-
-    def test_debugger_config_check_runs_before_cross_field_validation(self):
-        """When HANDY-CODER_DAP_PORT is unset, supported:false is returned
-        even if breakpoint_file/line cross-field constraint would trigger."""
-        with patch.dict(os.environ, {"HANDY-CODER_DAP_PORT": ""}):
-            # line without breakpoint_file would normally raise ValueError;
-            # with no port configured we expect supported:false instead.
-            result = self.tools.tools["debug_session_step"]("start", line=10)
-        self.assertFalse(result["supported"])
 
     def test_web_fetch_offset_pages_through_content(self):
         """offset parameter must slice the extracted text at the right position."""
@@ -570,52 +402,6 @@ while True:
         self.assertFalse(result.get("ok"))
         self.assertTrue(any(r.get("error_code") == "tool_not_installed" for r in result["reports"]))
 
-    def _assert_unavailable(self, result, code, **fields):
-        self.assertFalse(result["supported"])
-        self.assertEqual(result.get("error_code"), code)
-        self.assertTrue(result.get("message"))
-        for key, value in fields.items():
-            self.assertEqual(result.get(key), value)
-            self.assertIn(value, result["message"])
-
-    def test_unavailable_optional_tools_return_error_code_and_remedy(self):
-        """Unconfigured vs missing-package must be distinguishable without parsing prose."""
-        import sys
-        from unittest.mock import MagicMock
-
-        with patch.dict(os.environ, {"HANDY-CODER_LSP_COMMAND": ""}):
-            result = self.tools.tools["lsp_symbol_lookup"](
-                "main", "README.md", lsp_lookup.Position(line=0, character=0)
-            )
-        self._assert_unavailable(result, "not_configured", env_var="HANDY-CODER_LSP_COMMAND")
-
-        with patch.dict(os.environ, {"HANDY-CODER_DAP_PORT": ""}):
-            result = self.tools.tools["debug_session_step"]("start")
-        self._assert_unavailable(result, "not_configured", env_var="HANDY-CODER_DAP_PORT")
-
-        with patch.dict(os.environ, {"HANDY-CODER_EMBEDDING_MODEL": ""}):
-            result = self.tools.tools["vector_search_codebase"]("anything")
-        self._assert_unavailable(result, "not_configured", env_var="HANDY-CODER_EMBEDDING_MODEL")
-
-        with patch.dict(os.environ, {"HANDY-CODER_EMBEDDING_MODEL": "some-model"}), \
-             patch.dict(sys.modules, {"sentence_transformers": None}):
-            result = self.tools.tools["vector_search_codebase"]("anything")
-        self._assert_unavailable(result, "dependency_missing", package="sentence-transformers")
-
-        with patch.dict(sys.modules, {"playwright": None, "playwright.sync_api": None}):
-            result = self.tools.tools["browser_action"]("get_html")
-        self._assert_unavailable(result, "dependency_missing", package="playwright")
-
-        fake_api = MagicMock()
-        fake_api.sync_playwright.return_value.start.return_value.chromium.launch.side_effect = (
-            Exception("Executable doesn't exist")
-        )
-        with patch.dict(sys.modules, {"playwright": MagicMock(), "playwright.sync_api": fake_api}):
-            result = self.tools.tools["browser_action"]("get_html")
-        self.assertFalse(result["supported"])
-        self.assertEqual(result.get("error_code"), "browser_launch_failed")
-        self.assertIn("playwright install chromium", result["message"])
-
     def test_capabilities_workspace_root_tracks_configured_root(self):
         """workspace_root must reflect support.configure(), not the import-time ROOT."""
         import tempfile as _tempfile
@@ -641,19 +427,6 @@ while True:
         self.assertIn("terminal_exec", caps["tools"])
         self.assertIn("jsbeautifier", caps["tools"]["code_format_lint"]["tools"])
         self.assertNotIn("prettier", caps["tools"]["code_format_lint"]["tools"])
-
-    def test_capabilities_reports_subagent_loop_write_flag(self):
-        """env must show whether SUBAGENT_LOOP_WRITE=1 is set; other values are off."""
-        import os as _os
-        from unittest.mock import patch as _patch
-        from lib.core import system_info
-        with _patch.dict(_os.environ, {"SUBAGENT_LOOP_WRITE": "1"}):
-            self.assertIs(system_info.get_capabilities()["env"]["SUBAGENT_LOOP_WRITE"], True)
-        with _patch.dict(_os.environ, {"SUBAGENT_LOOP_WRITE": "0"}):
-            self.assertIs(system_info.get_capabilities()["env"]["SUBAGENT_LOOP_WRITE"], False)
-        with _patch.dict(_os.environ, {}):
-            _os.environ.pop("SUBAGENT_LOOP_WRITE", None)
-            self.assertIs(system_info.get_capabilities()["env"]["SUBAGENT_LOOP_WRITE"], False)
 
 
 if __name__ == "__main__":

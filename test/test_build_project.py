@@ -16,6 +16,7 @@ class BuildProjectTests(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+        support.configure(str(Path(__file__).resolve().parents[1]))
 
     def test_ambiguous_detection_returns_choices_without_running(self):
         (self.root / "pyproject.toml").write_text("[build-system]\nbuild-backend='setuptools.build_meta'\n")

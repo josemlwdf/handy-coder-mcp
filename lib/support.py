@@ -118,6 +118,8 @@ def iter_workspace_files(
     path_glob: str | None = None,
     errors: list[dict[str, str]] | None = None,
     exclude_dirs: frozenset[str] = frozenset(),
+    deadline: float | None = None,
+    max_file_size_bytes: int | None = None,
 ) -> Iterator[tuple[Path, str]]:
     """Yield workspace files and report paths that could not be scanned."""
     root = inside(".")
@@ -126,12 +128,19 @@ def iter_workspace_files(
     pending = [root]
 
     while pending:
+        if deadline is not None and time.monotonic() >= deadline:
+            return
         directory = pending.pop()
         relative_directory = directory.relative_to(root).as_posix()
         directory_parts = directory.relative_to(root).parts
         try:
             with os.scandir(directory) as entries:
-                sorted_entries = sorted(entries, key=lambda entry: entry.name)
+                sorted_entries = []
+                for entry in entries:
+                    if deadline is not None and time.monotonic() >= deadline:
+                        return
+                    sorted_entries.append(entry)
+                sorted_entries.sort(key=lambda entry: entry.name)
         except OSError as exc:
             scan_errors.append({
                 "path": relative_directory or ".",
@@ -139,8 +148,12 @@ def iter_workspace_files(
             })
             continue
 
+        if deadline is not None and time.monotonic() >= deadline:
+            return
         child_directories = []
         for entry in sorted_entries:
+            if deadline is not None and time.monotonic() >= deadline:
+                return
             relative_path = (Path(relative_directory) / entry.name).as_posix()
             try:
                 if entry.is_dir(follow_symlinks=False):
@@ -152,6 +165,9 @@ def iter_workspace_files(
                     continue
                 if not entry.is_file(follow_symlinks=True):
                     continue
+                if max_file_size_bytes is not None and entry.is_file(follow_symlinks=False):
+                    if entry.stat(follow_symlinks=False).st_size > max_file_size_bytes:
+                        continue
                 try:
                     resolved = inside(entry.path, must_exist=True)
                 except ValueError:
@@ -205,10 +221,11 @@ def _may_match_glob_scope(path_parts: tuple[str, ...], prefix: tuple[str, ...]) 
         return prefix[:len(path_parts)] == path_parts
     return path_parts[:len(prefix)] == prefix
 
-def run_process(command: str | list[str], *, cwd: str | Path = ROOT, timeout_ms: int = DEFAULT_TIMEOUT_MS,
+def run_process(command: str | list[str], *, cwd: str | Path | None = None, timeout_ms: int = DEFAULT_TIMEOUT_MS,
                 shell: bool = False, max_output_bytes: int = MAX_OUTPUT_BYTES,
                 env: dict[str, str] | None = None, stdin: str | None = None, shell_executable: str | None = None) -> dict:
-    work = inside(cwd, must_exist=True)
+    # Resolve at call time: a `cwd=ROOT` default would freeze the import-time value.
+    work = inside(ROOT if cwd is None else cwd, must_exist=True)
     if not work.is_dir():
         raise ValueError(f"Working directory is not a directory: {work}")
     if not 1 <= int(timeout_ms) <= 600_000:
@@ -452,12 +469,6 @@ def _check_shell_token(token: str, cwd: Path, *, command_position: bool = False)
                 Path(os.path.normpath(str(target))).relative_to(ROOT)
         except ValueError:
             raise ValueError(f"Command token '{candidate}' looks like a path outside the authorized workspace. If this is not a path (e.g. a division operator), rewrite the command to avoid ambiguity.")
-
-def result_text(value: object) -> str:
-    if isinstance(value, str):
-        return value
-    import json
-    return json.dumps(value, ensure_ascii=False, indent=2)
 
 def describe(text: str, *, include_working_directory: bool = False) -> str:
     working_directory = f" Working directory: {WORKING_DIRECTORY}." if include_working_directory else ""

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Module documentation."""
+
 from __future__ import annotations
 import argparse
 import sys
@@ -20,6 +22,7 @@ def _resolve_root(candidate: str | None = None) -> str:
 
 
 def _load_fastmcp():
+    """Load fastmcp function."""
     try:
         from mcp.server.fastmcp import FastMCP
     except ModuleNotFoundError as exc:
@@ -34,52 +37,73 @@ def _load_fastmcp():
         raise SystemExit(1) from exc
     return FastMCP
 
+
 # Imports below intentionally follow _load_fastmcp(); E402 is suppressed per line.
 from lib import support, worker_supervisor  # noqa: E402
 from lib import tool_details  # noqa: E402
 from lib import error_handler  # noqa: E402
 from lib.core import (  # noqa: E402
-    read_files, create_file, apply_edits, terminal_exec, code_search, find_files,
-    diagnostics, run_tests, git_manage, build_project, commit_nudge, system_info, skills, orchestrator_bootstrap, orchestrator_tasks,
+    read_files,
+    create_file,
+    apply_edits,
+    terminal_exec,
+    code_search,
+    find_files,
+    diagnostics,
+    run_tests,
+    git_manage,
+    build_project,
+    system_info,
+    skills,
+    orchestrator_bootstrap,
+    orchestrator_tasks,
 )
 from lib.core import code_navigator  # noqa: E402
 from lib.core import web_search_tool  # noqa: E402
 from lib.core import html_syntax_check  # noqa: E402
 from lib.extras import (  # noqa: E402
-    code_format_lint, web_fetch,
+    code_format_lint,
+    web_fetch,
 )
 from lib.subagents import tools as subagent_tools  # noqa: E402
 
 
-_CHECKPOINT_COMMIT_POLICY = (
-    "Checkpoint commit policy: this workspace uses checkpoint commits. "
-    "Messages tagged [commit-nudge] or [commit-action] in tool results come from the user's "
-    "configured workflow and carry the user's standing authorization to commit. "
-    "When one appears, further tool calls (including reads) are blocked until a successful "
-    "git_manage action='commit' or a bounded defer_commit(reason). Deferral is available once "
-    "per commit cycle for up to 50 successful write calls (default 5); after it expires, tools "
-    "are blocked again until a successful commit. Outside an active deferral, only git_manage "
-    "action='commit' and defer_commit recovery/status/cancel calls pass the gate. Never push. "
-    "Do not commit unrelated or secret files; review .gitignore before committing."
-)
-
-
-def _server_instructions() -> str | None:
-    """Return the MCP server instructions, or None when commit nudges are disabled."""
-    if commit_nudge.CONFIG.enforcement == "off":
-        return None
-    return _CHECKPOINT_COMMIT_POLICY
-
-
 def _assert_tool_argument_types_known(mcp) -> None:
-    """Fail startup if a registered JSON schema exposes an unknown argument type."""
+    """Fail startup if a registered JSON schema exposes unknown or missing argument types."""
     registered = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
-    unknown = []
+    unknown: list = []
 
     def visit(schema, location: str) -> None:
+        """Visit function."""
         if isinstance(schema, dict):
-            if schema.get("type") == "unknown":
+            schema_type = schema.get("type")
+            if schema_type == "unknown":
                 unknown.append(location)
+            elif isinstance(schema_type, list) and any(
+                item == "unknown" for item in schema_type
+            ):
+                unknown.append(location)
+            properties = schema.get("properties")
+            if isinstance(properties, dict):
+                for prop_name, prop_schema in properties.items():
+                    prop_location = f"{location}.properties.{prop_name}"
+                    if not isinstance(prop_schema, dict):
+                        unknown.append(prop_location)
+                        continue
+                    has_type_marker = any(
+                        key in prop_schema
+                        for key in (
+                            "type",
+                            "$ref",
+                            "anyOf",
+                            "oneOf",
+                            "allOf",
+                            "enum",
+                            "const",
+                        )
+                    )
+                    if not has_type_marker:
+                        unknown.append(prop_location)
             for key, value in schema.items():
                 if isinstance(value, dict):
                     visit(value, f"{location}.{key}")
@@ -88,16 +112,23 @@ def _assert_tool_argument_types_known(mcp) -> None:
                         visit(item, f"{location}.{key}[{index}]")
 
     for name, tool in registered.items():
-        schema = getattr(tool, "parameters", None) or getattr(tool, "input_schema", None)
+        schema = getattr(tool, "parameters", None) or getattr(
+            tool, "input_schema", None
+        )
         if schema is None:
             unknown.append(f"{name}.<schema>")
         else:
             visit(schema, name)
-    assert not unknown, "MCP tool arguments have unknown JSON Schema types: " + ", ".join(unknown)
+    assert not unknown, (
+        "MCP tool arguments have unknown JSON Schema types: " + ", ".join(unknown)
+    )
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Workspace-confined Handy Coder MCP server")
+    """Main function."""
+    parser = argparse.ArgumentParser(
+        description="Workspace-confined Handy Coder MCP server"
+    )
     parser.add_argument("-r", "--root", default=None, help="Authorized workspace root")
     parser.add_argument("-s", "--shell", default=None, help="Override command shell")
     args = parser.parse_args()
@@ -111,14 +142,34 @@ def main() -> None:
 
     detected_ide = ide_detector.detect_ide()
     ide_info = f"; ide: {detected_ide}" if detected_ide else ""
-    print(f"[handy-coder-mcp] Authorized root: {support.ROOT}; shell: {support.SHELL}{ide_info}", file=sys.stderr)
+    print(
+        f"[handy-coder-mcp] Authorized root: {support.ROOT}; shell: {support.SHELL}{ide_info}",
+        file=sys.stderr,
+    )
     FastMCP = _load_fastmcp()
-    mcp = FastMCP("handy-coder-mcp", instructions=_server_instructions())
+    mcp = FastMCP("handy-coder-mcp")
     tool_details.install(mcp)
     for module in (
-        read_files, create_file, apply_edits, terminal_exec, code_search, find_files,
-        diagnostics, run_tests, git_manage, build_project, commit_nudge, html_syntax_check,
-        code_format_lint, web_fetch, web_search_tool, system_info, skills, orchestrator_bootstrap, orchestrator_tasks, subagent_tools, code_navigator,
+        read_files,
+        create_file,
+        apply_edits,
+        terminal_exec,
+        code_search,
+        find_files,
+        diagnostics,
+        run_tests,
+        git_manage,
+        build_project,
+        html_syntax_check,
+        code_format_lint,
+        web_fetch,
+        web_search_tool,
+        system_info,
+        skills,
+        orchestrator_bootstrap,
+        orchestrator_tasks,
+        subagent_tools,
+        code_navigator,
     ):
         module.register(mcp)
     _assert_tool_argument_types_known(mcp)

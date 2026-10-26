@@ -11,7 +11,6 @@ import threading
 import time
 from typing import Any, Callable
 
-from .core import commit_nudge
 from .subagents import tools as subagent_tools
 
 _MP_CTX = multiprocessing.get_context("spawn")
@@ -19,7 +18,6 @@ _CONCURRENT_WORKER_LIMIT = 8
 _SEMAPHORE = threading.Semaphore(_CONCURRENT_WORKER_LIMIT)
 DEFAULT_WORKER_DEADLINE = 30.0  # seconds
 _NO_WORKER_TOOLS = {
-    "defer_commit",
     # This handler closes over the live FastMCP registry and is intentionally
     # executed in-process; spawning it would re-import a non-module-level function.
     "get_tool_details",
@@ -174,10 +172,6 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
             except TypeError:
                 bound_args = dict(kwargs)
 
-            gate_block = commit_nudge.before_tool_call(_tool_name, bound_args)
-            if gate_block is not None:
-                return subagent_tools.after_tool_call(_tool_name, gate_block)
-
             scope_block = subagent_tools.before_tool_call(_tool_name, bound_args)
             if scope_block is not None:
                 return scope_block
@@ -195,7 +189,6 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
                         except (ValueError, TypeError):
                             pass
                 result = run_tool_in_worker(_target_fn, args, kwargs, deadline=deadline, mcp=mcp)
-            result = commit_nudge.after_tool_call(_tool_name, bound_args, result)
             return subagent_tools.after_tool_call(_tool_name, result, bound_args)
 
         supervised_wrapper.__signature__ = inspect.signature(original_fn)

@@ -3,7 +3,9 @@ import time
 from typing import Annotated
 
 from pydantic import Field
-from ..support import GENERATED_DIRS, describe, iter_workspace_files
+from ..support import GENERATED_DIRS, MAX_READ_BYTES, describe, iter_workspace_files
+
+SEARCH_TIME_LIMIT_SECONDS = 15.0
 
 
 def _search_text_impl(
@@ -34,13 +36,18 @@ def _search_text_impl(
     errors = []
     total_matches_seen = 0
     start_time = time.monotonic()
+    deadline = start_time + SEARCH_TIME_LIMIT_SECONDS
     exclude_dirs = frozenset() if include_generated else GENERATED_DIRS
     for path, relative_path in iter_workspace_files(
-        path_glob=path_glob, errors=errors, exclude_dirs=exclude_dirs
+        path_glob=path_glob,
+        errors=errors,
+        exclude_dirs=exclude_dirs,
+        deadline=deadline,
+        max_file_size_bytes=MAX_READ_BYTES,
     ):
         if extensions and path.suffix.lower() not in {e.lower() if e.startswith(".") else "." + e.lower() for e in extensions}:
             continue
-        if time.monotonic() - start_time > 15.0:
+        if time.monotonic() >= deadline:
             return {
                 "matches": hits,
                 "truncated": True,
@@ -50,7 +57,7 @@ def _search_text_impl(
                 "errors": errors,
             }
         try:
-            if path.stat().st_size > 2 * 1024 * 1024:
+            if path.stat().st_size > MAX_READ_BYTES:
                 continue
             file_lines = path.read_text(encoding="utf-8").splitlines()
             for line_number, line in enumerate(file_lines, 1):
@@ -71,6 +78,15 @@ def _search_text_impl(
                 "path": relative_path,
                 "message": exc.strerror or "File could not be read",
             })
+    if time.monotonic() >= deadline:
+        return {
+            "matches": hits,
+            "truncated": True,
+            "truncation_reason": "time_limit",
+            "total_matches_seen": total_matches_seen,
+            "omitted_count": total_matches_seen - len(hits),
+            "errors": errors,
+        }
     omitted = total_matches_seen - len(hits)
     result = {
         "matches": hits,
@@ -105,6 +121,7 @@ def register(mcp):
         "Generated/build directories (node_modules, __pycache__, dist, build, .venv, etc.) are skipped unless include_generated is true. "
         "total_matches_seen counts every match found; when truncated, omitted_count is how many were not returned "
         "(a lower bound if truncation_reason is time_limit). "
+        "Uses a 15-second scan deadline and skips files larger than 2 MiB. "
         'extensions is an array of strings (for example [".py", ".md"]). When to use: Find matching code or text.'
     )
     return mcp.tool(description=description)(search_text)

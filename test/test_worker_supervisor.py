@@ -1,17 +1,13 @@
 import os
-import socket
 import tempfile
-import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from pydantic import ValidationError
 
 from lib import support
-from lib.core import apply_edits, code_search, read_files, terminal_exec
-from lib.extras import debugger
+from lib.core import apply_edits, read_files, terminal_exec
 from lib.worker_supervisor import (
     run_tool_in_worker,
     supervise_fastmcp_tools,
@@ -88,15 +84,12 @@ class WorkerSupervisorTests(unittest.TestCase):
             run_tool_in_worker(sample_raising_task)
         self.assertIn("intentional worker error", str(ctx.exception))
 
-    def test_supervise_fastmcp_tools_wraps_non_debugger_tools(self):
+    def test_supervise_fastmcp_tools_wraps_registered_tools(self):
         t1 = MockTool(sample_quick_task, "quick_task")
-        t2 = MockTool(sample_hanging_task, "debug_session_step")
-        mcp = MockFastMCP([t1, t2])
+        mcp = MockFastMCP([t1])
 
         supervise_fastmcp_tools(mcp)
 
-        # both tools are wrapped; debug runs in-process while others may use worker
-        self.assertIsNot(t2.fn, sample_hanging_task)
         self.assertIsNot(t1.fn, sample_quick_task)
 
         # Wrapped tool execution calls worker
@@ -130,6 +123,7 @@ class WorkerSupervisorTests(unittest.TestCase):
                 result = tool.fn(
                     [apply_edits.Edit(path="capture.txt", pattern=r"(c)(at)", replacement=r"\2-\1")],
                     expand_groups=True,
+                    summary="test change",
                 )
 
                 self.assertNotIn("error_code", result)
@@ -151,7 +145,7 @@ class WorkerSupervisorTests(unittest.TestCase):
 
         # Edit in apply_edits
         with self.assertRaises(ValidationError):
-            apply_edits.Edit(path="a.py", old_str="x", new_str="y", unknown="forbidden")
+            apply_edits.Edit(path="a.py", pattern="x", replacement="y", unknown="forbidden")
 
         # LineRange in read_files
         with self.assertRaises(ValidationError):
@@ -175,11 +169,6 @@ class WorkerSupervisorTests(unittest.TestCase):
             if test_file.exists():
                 test_file.unlink()
 
-    def test_code_search_returns_error_code_for_invalid_regex(self):
-        res = code_search.search_text("[unclosed bracket")
-        self.assertEqual(res.get("error_code"), "invalid_regex")
-        self.assertIn("message", res)
-
     def test_apply_edits_stages_batch_and_rolls_back_on_failure(self):
         f1 = Path(support.ROOT) / "test_stage_1.txt"
         f2 = Path(support.ROOT) / "test_stage_2.txt"
@@ -188,10 +177,10 @@ class WorkerSupervisorTests(unittest.TestCase):
         try:
             # Second edit has invalid regex, first edit should not be written to disk
             edits = [
-                apply_edits.Edit(path="test_stage_1.txt", old_str="apple", new_str="orange"),
-                apply_edits.Edit(path="test_stage_2.txt", old_str="[invalid regex", new_str="parrot"),
+                apply_edits.Edit(path="test_stage_1.txt", pattern="apple", replacement="orange"),
+                apply_edits.Edit(path="test_stage_2.txt", pattern="[invalid regex", replacement="parrot"),
             ]
-            result = apply_edits.apply_edits(edits=edits)
+            result = apply_edits.apply_edits(edits=edits, summary="test change")
             self.assertEqual(result.get("error_code"), "invalid_regex")
             self.assertEqual(result.get("edit_index"), 1)
 
@@ -212,92 +201,6 @@ class WorkerSupervisorTests(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             support.inside("/etc/passwd")
         self.assertIn("escapes", str(ctx.exception).lower())
-
-    def test_debugger_worker_preserves_session_across_calls(self):
-        # Set up a mock DAP server on a loopback socket
-        server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_sock.bind(("127.0.0.1", 0))
-        server_sock.listen(1)
-        port = server_sock.getsockname()[1]
-
-        def handle_dap(sock):
-            conn, _ = sock.accept()
-            try:
-                reader = conn.makefile("rb")
-                while True:
-                    length = None
-                    while True:
-                        line = reader.readline()
-                        if not line:
-                            return
-                        if line in (b"\r\n", b"\n"):
-                            break
-                        key, _, val = line.decode("ascii").partition(":")
-                        if key.lower() == "content-length":
-                            length = int(val.strip())
-                    if length is None:
-                        return
-                    body = reader.read(length)
-                    import json
-                    req = json.loads(body)
-                    cmd = req["command"]
-                    seq = req["seq"]
-
-                    resp = {
-                        "seq": seq + 100,
-                        "type": "response",
-                        "request_seq": seq,
-                        "command": cmd,
-                        "success": True,
-                    }
-                    if cmd == "initialize":
-                        resp["body"] = {}
-                        payload = json.dumps(resp).encode("utf-8")
-                        conn.sendall(f"Content-Length: {len(payload)}\r\n\r\n".encode("ascii") + payload)
-                        evt = {
-                            "seq": seq + 101,
-                            "type": "event",
-                            "event": "initialized",
-                        }
-                        evt_payload = json.dumps(evt).encode("utf-8")
-                        conn.sendall(f"Content-Length: {len(evt_payload)}\r\n\r\n".encode("ascii") + evt_payload)
-                    elif cmd == "disconnect":
-                        payload = json.dumps(resp).encode("utf-8")
-                        conn.sendall(f"Content-Length: {len(payload)}\r\n\r\n".encode("ascii") + payload)
-                        return
-                    else:
-                        payload = json.dumps(resp).encode("utf-8")
-                        conn.sendall(f"Content-Length: {len(payload)}\r\n\r\n".encode("ascii") + payload)
-            except Exception:
-                pass
-            finally:
-                conn.close()
-
-        server_thread = threading.Thread(target=handle_dap, args=(server_sock,), daemon=True)
-        server_thread.start()
-
-        env_patch = {
-            "HANDY-CODER_DAP_HOST": "127.0.0.1",
-            "HANDY-CODER_DAP_PORT": str(port),
-            "HANDY-CODER_DAP_START_REQUEST": '{"command": "launch", "arguments": {}}',
-        }
-
-        fake_mcp = MockFastMCP([])
-        debugger.register(fake_mcp)
-        debug_tool = fake_mcp._tools["debug_session_step"].fn
-
-        with patch.dict(os.environ, env_patch):
-            # Call 1: start
-            res1 = debug_tool(action="start")
-            self.assertTrue(res1.get("supported"))
-            self.assertEqual(res1.get("action"), "start")
-
-            # Call 2: stop (verifying state was preserved across calls)
-            res2 = debug_tool(action="stop")
-            self.assertTrue(res2.get("supported"))
-            self.assertEqual(res2.get("action"), "stop")
-
-        server_sock.close()
 
 
 if __name__ == "__main__":

@@ -66,7 +66,6 @@ def get_capabilities() -> dict:
         "terminal_exec":        {"available": True, "note": "always enabled"},
         "search_text":          {"available": True, "note": "uses Python re, supports regex or literal text"},
         "find_files":           {"available": True, "note": "always enabled"},
-        "defer_commit":         {"available": True, "note": "temporarily reopen tools before the commit gate returns"},
         "skills_manage":        {"available": True, "note": "list, get, or save skills; directory override via HANDY_CODER_SKILLS_DIR"},
         "orchestrator_bootstrap": {"available": True, "note": "creates .handy-coder implementation-plan.md and tasks.md"},
         "orchestrator_update_task_status": {"available": True, "note": "atomically updates [status: ...] on one tasks.md line"},
@@ -116,7 +115,6 @@ def get_capabilities() -> dict:
             "SUBAGENT_BACKEND": bool(os.environ.get("SUBAGENT_BACKEND", "").strip()),
             "SUBAGENT_LOCAL": bool(os.environ.get("SUBAGENT_LOCAL", "").strip()),
             "SUBAGENT_CONTINUE": bool(os.environ.get("SUBAGENT_CONTINUE", "").strip()),
-            "SUBAGENT_LOOP_WRITE": os.environ.get("SUBAGENT_LOOP_WRITE") == "1",
         },
         "subagents": {"backend": subagent_backend, **({"continue": continue_info} if continue_info else {})},
     }

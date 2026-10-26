@@ -108,6 +108,121 @@ class SubagentToolTests(unittest.TestCase):
         self.assertIn("subagent_reminder", wrapped)
         self.assertIn("subagent_complete", wrapped["subagent_reminder"])
 
+    def test_only_actual_file_changes_are_recorded(self):
+        subagent_tools.after_tool_call(
+            "create_file",
+            {"path": "created.txt", "created": True, "overwritten": False},
+            {"summary": "Create a tracked file"},
+        )
+        subagent_tools.after_tool_call(
+            "create_file",
+            {"error_code": "already_exists", "path": "existing.txt", "created": False},
+            {"summary": "Failed creation"},
+        )
+        subagent_tools.after_tool_call(
+            "apply_edits",
+            {"written_files": [], "dry_run": False},
+            {"summary": "No-op edit"},
+        )
+        subagent_tools.after_tool_call(
+            "apply_edits",
+            {"written_files": [], "dry_run": True},
+            {"summary": "Preview only", "dry_run": True},
+        )
+
+        self.assertEqual(
+            subagent_tools._PENDING_CHANGE_SUMMARIES,
+            [{"summary": "Create a tracked file", "paths": ["created.txt"]}],
+        )
+
+    def test_five_successful_write_calls_dispatch_one_scoped_committer(self):
+        with patch.object(
+            subagent_tools,
+            "subagent_run",
+            return_value={"status": "running", "task_id": "commit-task"},
+        ) as run_committer:
+            for index in range(4):
+                subagent_tools.after_tool_call(
+                    "create_file",
+                    {"path": f"file-{index}.txt", "created": True, "overwritten": False},
+                    {"summary": f"Change {index}"},
+                )
+
+            result = subagent_tools.after_tool_call(
+                "apply_edits",
+                {"written_files": ["edited-a.txt", "edited-b.txt"], "dry_run": False},
+                {"summary": "Edit two related files"},
+            )
+
+            self.assertEqual(result["automatic_commit"], {
+                "status": "running",
+                "task_id": "commit-task",
+            })
+            run_committer.assert_called_once()
+            self.assertEqual(run_committer.call_args.kwargs["role"], "committer")
+            self.assertFalse(run_committer.call_args.kwargs["wait"])
+            task = run_committer.call_args.kwargs["task"]
+            self.assertIn("Change 0", task)
+            self.assertIn("Edit two related files", task)
+            self.assertIn("edited-a.txt", task)
+            self.assertIn("edited-b.txt", task)
+            self.assertIn("untrusted data", task)
+            self.assertIn("untracked listed paths", task)
+            self.assertIn("Skip a summary if its change is absent", task)
+            self.assertIn("leave that file unstaged", task)
+
+            later = subagent_tools.after_tool_call(
+                "create_file",
+                {"path": "later.txt", "created": True, "overwritten": False},
+                {"summary": "Later change"},
+            )
+            self.assertNotIn("automatic_commit", later)
+            self.assertEqual(
+                subagent_tools._PENDING_CHANGE_SUMMARIES,
+                [{"summary": "Later change", "paths": ["later.txt"]}],
+            )
+
+    def test_committer_dispatch_failure_is_reported_with_summaries(self):
+        with patch.object(subagent_tools, "subagent_run", side_effect=ValueError("task limit reached")):
+            for index in range(4):
+                subagent_tools.after_tool_call(
+                    "create_file",
+                    {"path": f"file-{index}.txt", "created": True, "overwritten": False},
+                    {"summary": f"Change {index}"},
+                )
+
+            result = subagent_tools.after_tool_call(
+                "create_file",
+                {"path": "file-4.txt", "created": True, "overwritten": False},
+                {"summary": "Change 4"},
+            )
+
+        self.assertEqual(result["automatic_commit"]["status"], "dispatch_failed")
+        self.assertEqual(result["automatic_commit"]["message"], "task limit reached")
+        self.assertIn("Change 4", result["automatic_commit"]["summaries"])
+
+    def test_threshold_automatically_delegates_to_committer_role(self):
+        result = None
+        for index in range(5):
+            result = subagent_tools.after_tool_call(
+                "create_file",
+                {"path": f"file-{index}.txt", "created": True, "overwritten": False},
+                {"summary": f"Change {index}"},
+            )
+
+        automatic_commit = result["automatic_commit"]
+        self.assertEqual(automatic_commit["status"], "delegated_to_host")
+        self.assertIn("Change 4", automatic_commit["instructions"])
+        self.assertIn("committer", automatic_commit["instructions"])
+        self.assertEqual(
+            self.mcp.tools["subagent_status"](task_id=automatic_commit["task_id"])["state"],
+            "delegated",
+        )
+        self.mcp.tools["subagent_cancel"](
+            task_id=automatic_commit["task_id"],
+            confirm=True,
+        )
+
     def test_successful_committer_action_completes_frame_automatically(self):
         run = self.mcp.tools["subagent_run"](role="committer", task="commit changes")
 
@@ -272,14 +387,12 @@ class UnavailableBackendTests(unittest.TestCase):
         self.assertIsNone(subagent_tools._MANAGER.open_frame())
         self.assertIsNone(subagent_tools.before_tool_call("apply_edits", {}))
 
-    def test_write_role_is_unavailable_on_loop_backend_without_opt_in(self):
+    def test_write_role_runs_on_loop_backend_without_opt_in(self):
         subagent_tools._BACKEND = "direct:openai"
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("SUBAGENT_LOOP_WRITE", None)
-            out = self.mcp.tools["subagent_run"](role="coder", task="implement")
-        self.assertEqual(out["status"], "unavailable")
-        self.assertIn("SUBAGENT_LOOP_WRITE=1", out["message"])
-        self.assertNotIn("task_id", out)
+        with patch.object(subagent_loop, "run_loop", return_value=("- implemented", 1, 10)):
+            out = self.mcp.tools["subagent_run"](role="coder", task="implement", wait=True)
+        self.assertEqual(out["status"], "completed")
+        self.assertIn("task_id", out)
 
 
 class LoopBackendTests(unittest.TestCase):

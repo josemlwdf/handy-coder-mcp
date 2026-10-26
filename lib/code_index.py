@@ -81,10 +81,6 @@ def _node_text(node, source: bytes) -> str:
     return source[node.start_byte:node.end_byte].decode("utf-8", "replace")
 
 
-def _children(node):
-    return list(node.children)
-
-
 def _extract(source: bytes):
     parser = _parser()
     tree = parser.parse(source)

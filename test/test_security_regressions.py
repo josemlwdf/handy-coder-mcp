@@ -253,10 +253,25 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
             capture_output=True, text=True,
         ).stdout
         self.assertIn("A  new.txt", status)
-        for bad in ([], ["--force", "new.txt"], ["../outside.txt"]):
+        for bad in ([], ["--force", "new.txt"]):
             with self.subTest(args=bad):
                 with self.assertRaises(ValueError):
                     git_manage.git_manage("add", args=bad)
+
+    def test_add_path_escape_returns_structured_error_and_stages_nothing(self):
+        # self.parent is the managed temp dir, so tearDown removes this file.
+        outside = self.parent / "outside.txt"
+        outside.write_text("x\n", encoding="utf-8")
+        for target in ("../outside.txt", "a/../../outside.txt", str(outside)):
+            with self.subTest(target=target):
+                result = git_manage.git_manage("add", args=[target])
+                self.assertEqual(result["error_code"], "path_escape")
+                self.assertNotEqual(result["exit_code"], 0)
+        status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=self.root, check=True,
+            capture_output=True, text=True,
+        ).stdout
+        self.assertNotIn("outside.txt", status)
 
     def test_repo_path_description_allows_init_subdirectory(self):
         from typing import get_type_hints

@@ -9,7 +9,7 @@ from mcp.server.fastmcp import FastMCP
 
 from lib import error_handler, support, tool_details, worker_supervisor
 from lib.core import (
-    commit_nudge, find_files, git_manage, orchestrator_tasks, read_files,
+    find_files, git_manage, orchestrator_tasks, read_files,
     terminal_exec, web_search_tool,
 )
 
@@ -23,7 +23,7 @@ class StructuredErrorTests(unittest.TestCase):
         tool_details.install(cls.mcp)
         for module in (
             read_files, terminal_exec, find_files, git_manage,
-            commit_nudge, web_search_tool, orchestrator_tasks,
+            web_search_tool, orchestrator_tasks,
         ):
             module.register(cls.mcp)
         worker_supervisor.supervise_fastmcp_tools(cls.mcp)
@@ -55,11 +55,11 @@ class StructuredErrorTests(unittest.TestCase):
         self.assertFalse(error_handler.install(SimpleNamespace()))
         self.assertFalse(error_handler.install(SimpleNamespace(_tool_manager=SimpleNamespace(_tools={}))))
 
-    def test_defer_commit_validation_error(self):
-        result = self.call("defer_commit", {"action": "defer", "calls": -3})
+    def test_terminal_exec_validation_error(self):
+        result = self.call("terminal_exec", {"command": "echo hi", "timeout_ms": -3})
         self.assert_structured(result)
         self.assertEqual(result["error_code"], "invalid_argument")
-        self.assertEqual(result.get("field"), "calls")
+        self.assertEqual(result.get("field"), "timeout_ms")
 
     def test_web_search_wrong_type(self):
         self.assert_structured(self.call("web_search", {"query": 123}))
@@ -105,7 +105,7 @@ class StructuredErrorTests(unittest.TestCase):
         self.assertNotIn("error_code", result)
 
     def test_convert_result_path_returns_content_without_pydantic_text(self):
-        converted = self.call("defer_commit", {"action": "defer", "calls": -3}, convert_result=True)
+        converted = self.call("terminal_exec", {"command": "echo hi", "timeout_ms": -3}, convert_result=True)
         self.assertNotIn("pydantic.dev", str(converted))
         self.assertIn("invalid_argument", str(converted))
 

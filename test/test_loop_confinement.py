@@ -40,7 +40,7 @@ class LoopConfinementTests(unittest.TestCase):
             return json.dumps({'final': '- done'})
 
         loop.run_loop('sampling', role, 'task', None, None,
-                      sampling_fn=sampling_fn, allow_write=True)
+                      sampling_fn=sampling_fn)
         return seen[-1]
 
     def test_create_file_cannot_escape_workspace(self):
@@ -71,16 +71,6 @@ class LoopConfinementTests(unittest.TestCase):
             'args': {'paths': ['../outside.txt']},
         })
         self.assertNotIn('TOP-SECRET-CONTENT', feedback)
-
-    def test_write_role_refused_without_gate(self):
-        role = get_role('coder')
-        with patch.dict('os.environ', {}, clear=False):
-            import os
-            os.environ.pop('SUBAGENT_LOOP_WRITE', None)
-            with self.assertRaises(RuntimeError) as ctx:
-                loop.run_loop('sampling', role, 't', None, None,
-                              sampling_fn=lambda *a: '{"final":"x"}')
-        self.assertIn('SUBAGENT_LOOP_WRITE', str(ctx.exception))
 
 
 class ToolDeadlineTests(unittest.TestCase):

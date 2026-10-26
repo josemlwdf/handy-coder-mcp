@@ -34,19 +34,6 @@ def _has_python_test_setup(root) -> bool:
         for directory in (root / "test", root / "tests")
     )
 
-def _path_looks_like_test(path: Path) -> bool:
-    """Return True if the path itself is/contains test files."""
-    if path.is_file():
-        name = path.name
-        return name.startswith("test_") or name.endswith("_test.py")
-    if path.is_dir():
-        return (
-            any(path.glob("test_*.py")) or
-            any(path.glob("*_test.py")) or
-            path.name in ("test", "tests")
-        )
-    return False
-
 def _pytest_preflight_notes(root: Path, target: Path | None) -> list[str]:
     notes: list[str] = []
     if target is not None:
