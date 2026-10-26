@@ -95,7 +95,7 @@ class ToolSchemaTests(unittest.TestCase):
 
     def test_every_tool_and_argument_has_a_description(self) -> None:
         """Test every tool and argument has a description function."""
-        self.assertEqual(len(self.mcp.tools), 23)
+        self.assertEqual(len(self.mcp.tools), 24)
         for name, function in self.mcp.tools.items():
             with self.subTest(tool=name):
                 self.assertTrue(self.mcp.descriptions[name].strip())

@@ -1,4 +1,5 @@
 """Worker subprocess supervisor for bounded and isolated tool-handler execution."""
+
 from __future__ import annotations
 
 import functools
@@ -14,13 +15,14 @@ from typing import Any, Callable
 from .subagents import tools as subagent_tools
 
 _MP_CTX = multiprocessing.get_context("spawn")
-_CONCURRENT_WORKER_LIMIT = 8
+_CONCURRENT_WORKER_LIMIT: int = 8
 _SEMAPHORE = threading.Semaphore(_CONCURRENT_WORKER_LIMIT)
-DEFAULT_WORKER_DEADLINE = 30.0  # seconds
-_NO_WORKER_TOOLS = {
+DEFAULT_WORKER_DEADLINE: float = 30.0  # seconds
+_NO_WORKER_TOOLS: set = {
     # This handler closes over the live FastMCP registry and is intentionally
     # executed in-process; spawning it would re-import a non-module-level function.
     "get_tool_details",
+    "subagent_manage",
     "subagent_run",
     "subagent_status",
     "subagent_result",
@@ -29,7 +31,15 @@ _NO_WORKER_TOOLS = {
 }
 
 
-def _worker_entrypoint(mod_name: str, func_name: str, args: tuple, kwargs: dict, conn, root_str: str | None, shell_str: str | None) -> None:
+def _worker_entrypoint(
+    mod_name: str,
+    func_name: str,
+    args: tuple,
+    kwargs: dict,
+    conn,
+    root_str: str | None,
+    shell_str: str | None,
+) -> None:
     """Entry point in worker process; creates separate process group and executes tool."""
     if os.name != "nt":
         try:
@@ -41,6 +51,7 @@ def _worker_entrypoint(mod_name: str, func_name: str, args: tuple, kwargs: dict,
                 pass
 
     from . import support
+
     if root_str:
         try:
             support.configure(root_str, shell_str)
@@ -52,9 +63,10 @@ def _worker_entrypoint(mod_name: str, func_name: str, args: tuple, kwargs: dict,
         fn = getattr(mod, func_name)
         result = fn(*args, **kwargs)
 
-        metadata = {}
+        metadata: dict = {}
         try:
             from .core import git_manage
+
             if git_manage._REPOSITORIES is not None:
                 metadata["git_description"] = git_manage._tool_description()
         except Exception:
@@ -80,6 +92,7 @@ def run_tool_in_worker(
     parent_conn, child_conn = _MP_CTX.Pipe(duplex=False)
 
     from . import support
+
     root_str = str(support.ROOT) if support.ROOT else None
     shell_str = support.SHELL
 
@@ -95,17 +108,17 @@ def run_tool_in_worker(
         proc.start()
         child_conn.close()
 
-        timed_out = False
+        timed_out: bool = False
         try:
             if parent_conn.poll(deadline):
                 status, payload, *extra = parent_conn.recv()
             else:
-                timed_out = True
+                timed_out: bool = True
                 status, payload = "timeout", None
-                extra = []
+                extra: list = []
         except (EOFError, BrokenPipeError):
             status, payload = "crash", None
-            extra = []
+            extra: list = []
         finally:
             parent_conn.close()
 
@@ -136,10 +149,18 @@ def run_tool_in_worker(
         proc.join(timeout=3)
 
         if status == "ok":
-            if extra and isinstance(extra[0], dict) and "git_description" in extra[0] and mcp is not None:
+            if (
+                extra
+                and isinstance(extra[0], dict)
+                and "git_description" in extra[0]
+                and mcp is not None
+            ):
                 try:
                     from .core import git_manage
-                    git_manage._update_tool_description(mcp, extra[0]["git_description"])
+
+                    git_manage._update_tool_description(
+                        mcp, extra[0]["git_description"]
+                    )
                 except Exception:
                     pass
             return payload
@@ -165,7 +186,14 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
         original_signature = inspect.signature(original_fn)
 
         @functools.wraps(original_fn)
-        def supervised_wrapper(*args, _target_fn=original_fn, _tool_name=name, _sig=original_signature, **kwargs):
+        def supervised_wrapper(
+            *args,
+            _target_fn=original_fn,
+            _tool_name=name,
+            _sig=original_signature,
+            **kwargs,
+        ):
+            """Supervised wrapper function."""
             try:
                 bound = _sig.bind_partial(*args, **kwargs)
                 bound_args = dict(bound.arguments)
@@ -188,7 +216,9 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
                             deadline = max(30.0, (ms / 1000.0) + 5.0)
                         except (ValueError, TypeError):
                             pass
-                result = run_tool_in_worker(_target_fn, args, kwargs, deadline=deadline, mcp=mcp)
+                result = run_tool_in_worker(
+                    _target_fn, args, kwargs, deadline=deadline, mcp=mcp
+                )
             return subagent_tools.after_tool_call(_tool_name, result, bound_args)
 
         supervised_wrapper.__signature__ = inspect.signature(original_fn)

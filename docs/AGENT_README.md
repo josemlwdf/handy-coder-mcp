@@ -75,7 +75,7 @@ Alternatively, use the installed entry point:
 }
 ```
 
-The server registers `read_files`, `create_file`, `html_syntax_check`, `apply_edits`, `terminal_exec`, `search_text`, `find_files`, `code_get_diagnostics`, `run_tests`, `build_project`, `git_manage`, `get_capabilities`, `get_tool_details`, `skills_manage`, `orchestrator_bootstrap`, `orchestrator_update_task_status`, `web_fetch_docs`, `subagent_run`, `subagent_status`, `subagent_result`, `subagent_complete`, and `subagent_cancel`. Call `get_tool_details` with a tool name for its full documentation. See the [registered tool inventory](docs/TOOL_INVENTORY.md) for grouping.
+The server registers `read_files`, `create_file`, `html_syntax_check`, `apply_edits`, `terminal_exec`, `search_text`, `find_files`, `code_get_diagnostics`, `run_tests`, `build_project`, `git_manage`, `get_capabilities`, `get_tool_details`, `skills_manage`, `orchestrator_bootstrap`, `orchestrator_update_task_status`, `web_fetch_docs`, `subagent_manage`, `subagent_run`, `subagent_status`, `subagent_result`, `subagent_complete`, and `subagent_cancel`. Call `get_tool_details` with a tool name for its full documentation. See the [registered tool inventory](docs/TOOL_INVENTORY.md) for grouping.
 
 Tool modules are organized by tier: Tier 1 tools live in `lib/core`, and optional Tier 2 tools live in `lib/extras`.
 
@@ -165,9 +165,10 @@ Names must be 1-64 characters of lowercase letters, digits and hyphens, which al
 
 ### Subagents
 
-Subagent tools provide a stable five-tool contract for delegated work without requiring any new credentials. `get_capabilities` reports each role's allowed tools, tool-call budget, and result format. `subagent_result` pages results using `offset`, `total_length`, and `next_offset`; `subagent_cancel` requires `confirm: true`. Cooperative frames expire after five minutes. The host completes cooperative tasks with `subagent_complete`; a successful `git_manage` commit by a committer closes its frame automatically, while skipped or unsuccessful commits and other roles still require `subagent_complete`. Streaming and checkpoint/resume are unsupported.
+Subagent tools provide a unified lifecycle endpoint plus legacy action-specific compatibility tools for delegated work without requiring any new credentials. `get_capabilities` reports each role's allowed tools, tool-call budget, and result format. `subagent_result` pages results using `offset`, `total_length`, and `next_offset`; `subagent_cancel` requires `confirm: true`. Cooperative frames expire after five minutes. The host completes cooperative tasks with `subagent_complete`; a successful `git_manage` commit by a committer closes its frame automatically, while skipped or unsuccessful commits and other roles still require `subagent_complete`. Streaming and checkpoint/resume are unsupported.
 
-- `subagent_run`: starts a task with a role (`generalist`, `coder`, `committer`, `explorer`, `reviewer`, or `planner`) and returns `completed`, `running`, `delegated_to_host` (only with an explicit `SUBAGENT_BACKEND=cooperative`) or `unavailable`. `unavailable` means no subagent backend exists: nothing is started, no task id is created and no frame is opened, so the parent should do the work itself and not retry.
+- `subagent_manage`: unified lifecycle tool. Use `action` = `run|status|result|complete|cancel` plus the corresponding fields for that action.
+- `subagent_run`: legacy start action that starts a task with a role (`generalist`, `coder`, `committer`, `explorer`, `reviewer`, or `planner`) and returns `completed`, `running`, `delegated_to_host` (only with an explicit `SUBAGENT_BACKEND=cooperative`) or `unavailable`. `unavailable` means no subagent backend exists: nothing is started, no task id is created and no frame is opened, so the parent should do the work itself and not retry.
 - `subagent_status`: checks the current task state and usage.
 - `subagent_result`: fetches the full or paged result text.
 - `subagent_complete`: closes a cooperative delegated frame.

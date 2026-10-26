@@ -116,11 +116,12 @@ class SubagentToolTests(unittest.TestCase):
         self.assertIn("file paths", coder_format)
         self.assertIn("verified", coder_format)
 
-    def test_registers_five_subagent_tools(self) -> None:
-        """Test registers five subagent tools function."""
+    def test_registers_subagent_lifecycle_tools(self) -> None:
+        """Test registers subagent lifecycle tools function."""
         self.assertEqual(
             set(self.mcp.tools),
             {
+                "subagent_manage",
                 "subagent_run",
                 "subagent_status",
                 "subagent_result",
@@ -146,6 +147,38 @@ class SubagentToolTests(unittest.TestCase):
         self.assertEqual(result["state"], "done")
         page = self.mcp.tools["subagent_result"](task_id=task_id)
         self.assertIn("README", page["result"])
+
+    def test_subagent_manage_dispatches_full_lifecycle(self) -> None:
+        """Test subagent manage dispatches full lifecycle function."""
+        run = self.mcp.tools["subagent_manage"](
+            action="run", role="explorer", task="inspect README"
+        )
+        self.assertEqual(run["status"], "delegated_to_host")
+        task_id = run["task_id"]
+
+        status = self.mcp.tools["subagent_manage"](action="status", task_id=task_id)
+        self.assertEqual(status["state"], "delegated")
+
+        complete = self.mcp.tools["subagent_manage"](
+            action="complete", task_id=task_id, result="- finding: docs checked"
+        )
+        self.assertEqual(complete["state"], "done")
+
+        page = self.mcp.tools["subagent_manage"](action="result", task_id=task_id)
+        self.assertIn("docs checked", page["result"])
+
+    def test_subagent_manage_requires_action_specific_arguments(self) -> None:
+        """Test subagent manage requires action specific arguments function."""
+        self.assertEqual(
+            self.mcp.tools["subagent_manage"](action="run", role="explorer")[
+                "error_code"
+            ],
+            "missing_argument",
+        )
+        self.assertEqual(
+            self.mcp.tools["subagent_manage"](action="status")["error_code"],
+            "missing_argument",
+        )
 
     def test_scope_guard_blocks_out_of_role_tool(self) -> None:
         """Test scope guard blocks out of role tool function."""

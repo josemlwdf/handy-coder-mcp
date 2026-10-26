@@ -31,6 +31,7 @@ Descriptions in the MCP tool list are brief. Call `get_tool_details` with a regi
 
 ## Subagent tools
 
+- `subagent_manage` (unified lifecycle endpoint with `action=run|status|result|complete|cancel`)
 - `subagent_run`
 - `subagent_status`
 - `subagent_result`

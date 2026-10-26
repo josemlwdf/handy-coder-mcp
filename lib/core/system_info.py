@@ -108,6 +108,11 @@ def get_capabilities() -> dict:
         },
         # Extras
         "web_fetch_docs": {"available": True, "note": "fetches public HTTP(S) text"},
+        "subagent_manage": {
+            "available": True,
+            "backend": subagent_backend,
+            "note": "unified lifecycle endpoint with action=run|status|result|complete|cancel",
+        },
         "subagent_run": {
             "available": True,
             "backend": subagent_backend,

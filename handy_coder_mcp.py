@@ -158,6 +158,7 @@ _DESTRUCTIVE_TOOL_HINTS = frozenset(
         "orchestrator_update_task_status",
         "skills_manage",
         "subagent_cancel",
+        "subagent_manage",
     }
 )
 
@@ -185,6 +186,7 @@ _OPEN_WORLD_TOOL_HINTS = frozenset(
         "run_tests",
         "subagent_cancel",
         "subagent_complete",
+        "subagent_manage",
         "subagent_run",
         "terminal_exec",
         "web_fetch_docs",

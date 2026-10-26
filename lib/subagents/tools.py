@@ -7,7 +7,7 @@ import json
 import os
 import threading
 import time
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
@@ -206,7 +206,7 @@ def enforce_clean_worktree_on_startup(timeout_seconds: float = 120.0) -> dict[st
     # committer with each configured model so one unavailable deployment does
     # not prevent MCP startup when another model is usable.
     models = resolve_continue_models() if _backend().startswith("continue:") else []
-    model_names = [item.model.name for item in models]
+    model_names: list = [item.model.name for item in models]
     attempts: list[dict[str, Any]] = []
     dispatch: dict[str, Any] | None = None
     candidates: list[str | None] = [None]
@@ -695,11 +695,158 @@ def subagent_cancel(
     }
 
 
-def before_tool_call(tool_name: str, _: dict[str, Any]) -> dict | None:
+def _action_to_tool_name(action: str | None) -> str | None:
+    """Map a subagent_manage action to its underlying lifecycle tool name."""
+    mapping: dict = {
+        "run": "subagent_run",
+        "status": "subagent_status",
+        "result": "subagent_result",
+        "complete": "subagent_complete",
+        "cancel": "subagent_cancel",
+    }
+    return mapping.get((action or "").strip().lower())
+
+
+def subagent_manage(
+    action: Annotated[
+        Literal["run", "status", "result", "complete", "cancel"],
+        Field(
+            description="Lifecycle action to perform: run, status, result, complete, or cancel."
+        ),
+    ],
+    role: Annotated[
+        str | None,
+        Field(
+            description="For action='run': registered subagent role name, e.g. generalist, coder, explorer, reviewer, planner."
+        ),
+    ] = None,
+    task: Annotated[
+        str | None,
+        Field(
+            description="For action='run': task for the subagent to perform in isolation from the parent flow."
+        ),
+    ] = None,
+    context: Annotated[
+        str | None,
+        Field(
+            description="For action='run': optional context such as branch, files, or constraints."
+        ),
+    ] = None,
+    deliverable: Annotated[
+        str | None,
+        Field(
+            description="For action='run': optional explicit deliverable format for the subagent result."
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        Field(
+            description="For action='run': optional Continue model name or model identifier from get_capabilities subagents.continue.models."
+        ),
+    ] = None,
+    wait: Annotated[
+        bool,
+        Field(
+            description="For action='run': when true (default), wait for completion when the backend can finish quickly."
+        ),
+    ] = True,
+    task_id: Annotated[
+        str | None,
+        Field(
+            description="For actions status|result|complete|cancel: task identifier returned by subagent_run or subagent_manage(action='run')."
+        ),
+    ] = None,
+    offset: Annotated[
+        int | None,
+        Field(
+            ge=0,
+            description="For action='result': optional 0-based character offset for paging long results.",
+        ),
+    ] = None,
+    result: Annotated[
+        str | None,
+        Field(
+            max_length=100000,
+            description="For action='complete': final subagent result text, at most 100,000 characters.",
+        ),
+    ] = None,
+    reason: Annotated[
+        str | None,
+        Field(
+            max_length=2000,
+            description="For action='cancel': optional cancellation reason recorded with the task.",
+        ),
+    ] = None,
+    confirm: Annotated[
+        bool,
+        Field(
+            description="For action='cancel': must be true to confirm cancellation.",
+        ),
+    ] = False,
+) -> dict:
+    """Unified subagent lifecycle tool that dispatches to action-specific handlers."""
+    normalized = action.strip().lower()
+    if normalized == "run":
+        if not role or not task:
+            return {
+                "error_code": "missing_argument",
+                "action": "run",
+                "message": "action='run' requires both role and task.",
+            }
+        return subagent_run(
+            role=role,
+            task=task,
+            context=context,
+            deliverable=deliverable,
+            model=model,
+            wait=wait,
+        )
+    if normalized == "status":
+        if not task_id:
+            return {
+                "error_code": "missing_argument",
+                "action": "status",
+                "message": "action='status' requires task_id.",
+            }
+        return subagent_status(task_id=task_id)
+    if normalized == "result":
+        if not task_id:
+            return {
+                "error_code": "missing_argument",
+                "action": "result",
+                "message": "action='result' requires task_id.",
+            }
+        return subagent_result(task_id=task_id, offset=offset)
+    if normalized == "complete":
+        if not task_id or result is None:
+            return {
+                "error_code": "missing_argument",
+                "action": "complete",
+                "message": "action='complete' requires task_id and result.",
+            }
+        return subagent_complete(task_id=task_id, result=result)
+    if normalized == "cancel":
+        if not task_id:
+            return {
+                "error_code": "missing_argument",
+                "action": "cancel",
+                "message": "action='cancel' requires task_id.",
+            }
+        return subagent_cancel(task_id=task_id, reason=reason, confirm=confirm)
+    return {
+        "error_code": "invalid_action",
+        "message": "action must be one of: run, status, result, complete, cancel.",
+    }
+
+
+def before_tool_call(tool_name: str, args: dict[str, Any]) -> dict | None:
     """Before tool call function."""
-    if tool_name == "subagent_complete":
+    effective_tool = tool_name
+    if tool_name == "subagent_manage":
+        effective_tool = _action_to_tool_name(args.get("action")) or tool_name
+    if effective_tool == "subagent_complete":
         return None
-    ok, reason = _MANAGER.consume_frame_tool_call(tool_name)
+    ok, reason = _MANAGER.consume_frame_tool_call(effective_tool)
     if ok:
         return None
     return {
@@ -713,7 +860,7 @@ def after_tool_call(
     tool_name: str, result: Any, args: dict[str, Any] | None = None
 ) -> Any:
     """After tool call function."""
-    if tool_name.startswith("subagent_"):
+    if tool_name.startswith("subagent_") or tool_name == "subagent_manage":
         return result
     automatic_commit: None = None
     if tool_name in {"create_file", "apply_edits"}:
@@ -759,13 +906,19 @@ def register(mcp):
     """Register function."""
     configure_runtime(client_capabilities=None)
     base: str = (
-        "Delegate multi-step work to an internal subagent contract with stable status shapes. "
+        "Delegate multi-step work to an internal subagent contract with stable status shapes. Prefer subagent_manage(action=run|status|result|complete|cancel) as the unified lifecycle endpoint; legacy action-specific tools remain available for compatibility. "
         "A subagent runs only when a backend is available: client sampling, a provider key in the environment, or a model from the user's Continue config when SUBAGENT_CONTINUE=1. Without one, subagent_run returns status unavailable and creates no task. "
         "subagent_run accepts an optional Continue model name or model identifier; explicit selection uses that model's direct API provider regardless of automatic backend precedence. get_capabilities lists safe model choices, and subagent responses/status include the chosen model summary when known. Report selected models when summarizing delegated work to the user. "
         "Loop backends let write-capable roles (planner, coder, committer) create and edit files within the workspace. Use subagents for broad searches, independent reviews and summaries of large inputs when available. "
         "When status is completed, consume result; when running, poll subagent_status; "
         "when unavailable, do the work yourself in this conversation and do not retry; when delegated_to_host (explicit SUBAGENT_BACKEND=cooperative only, scoped role mode), follow instructions then call subagent_complete. Cooperative tasks expire after five minutes; successful git_manage commits by a committer close that frame automatically, while skipped or unsuccessful commits and other roles require subagent_complete. Streaming and checkpoint/resume are unsupported. Roles: generalist/explorer are read-only, reviewer adds diagnostics/tests, planner can also create/edit, coder can create/edit plus diagnostics/tests. Result pages include offset, total_length, and next_offset metadata. An open frame blocks tools outside its role allowlist; recover with subagent_complete or subagent_cancel(confirm=true)."
     )
+    mcp.tool(
+        description=describe(
+            base
+            + " Unified lifecycle endpoint. Select action run|status|result|complete|cancel and provide the corresponding fields."
+        )
+    )(subagent_manage)
     mcp.tool(description=describe(base + " Start a task."))(subagent_run)
     mcp.tool(description=describe(base + " Check task state and usage."))(
         subagent_status
