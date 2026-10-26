@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import time
 import tomllib
 from pathlib import Path
 from typing import Annotated, Callable
@@ -11,6 +12,7 @@ from pydantic import Field
 
 from .. import support
 from ..support import describe, inside, run_process, setup_required
+from .html_syntax_check import check_html
 
 try:
     import yaml
@@ -152,6 +154,30 @@ def _discover_shell_files(files: list[Path]) -> list[Path]:
     return shell_files
 
 
+def _resolve_shellcheck_binary(base: Path) -> str | None:
+    """Resolve shellcheck from PATH or a workspace external_bin directory."""
+    located = shutil.which("shellcheck")
+    if located:
+        return located
+    candidates: list = [
+        base / "external_bin" / "shellcheck",
+        Path(support.ROOT) / "external_bin" / "shellcheck",
+    ]
+    if os.name == "nt":
+        candidates.extend(
+            [
+                base / "external_bin" / "shellcheck.exe",
+                base / "external_bin" / "shellcheck.cmd",
+                Path(support.ROOT) / "external_bin" / "shellcheck.exe",
+                Path(support.ROOT) / "external_bin" / "shellcheck.cmd",
+            ]
+        )
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
 def code_get_diagnostics(
     path: Annotated[
         str | None,
@@ -162,7 +188,11 @@ def code_get_diagnostics(
     check: Annotated[
         str | None,
         Field(
-            description="Optional configured check to run, such as ruff, mypy, lint, typecheck, check, or validate."
+            description=(
+                "Optional configured check to run, such as ruff, mypy, lint, typecheck, "
+                "check, validate, tsc_no_emit, html_syntax_sweep, json_parse, yaml_parse, "
+                "toml_parse, or shell_syntax."
+            )
         ),
     ] = None,
     timeout_ms: Annotated[
@@ -174,7 +204,7 @@ def code_get_diagnostics(
         ),
     ] = 30000,
 ) -> dict:
-    """Code get diagnostics function."""
+    """Detect and run the first available diagnostics check for the selected workspace path."""
     try:
         base = inside(path or ".", must_exist=True)
     except FileNotFoundError:
@@ -193,7 +223,9 @@ def code_get_diagnostics(
             "message": support.path_escape_message(path),
             "path": path,
         }
-    candidates: list = []
+
+    configured_candidates: list[dict[str, object]] = []
+    extra_candidates: list[dict[str, object]] = []
     detection_trace: list[dict[str, str]] = []
     skipped: list[dict] = []
     config_errors: list[dict] = []
@@ -220,7 +252,6 @@ def code_get_diagnostics(
             if not isinstance(scripts, dict):
                 raise ValueError("'scripts' must be an object")
         except (ValueError, UnicodeDecodeError) as exc:
-            # json.JSONDecodeError is a ValueError subclass.
             config_errors.append(
                 {
                     "file": "package.json",
@@ -230,17 +261,20 @@ def code_get_diagnostics(
         else:
             for key in ("typecheck", "check", "lint"):
                 if key in scripts:
-                    candidates.append((key, ["npm", "run", key]))
+                    configured_candidates.append(
+                        {"name": key, "command": ["npm", "run", key]}
+                    )
                     detection_trace.append(
                         {"source": "package.json", "check": key, "status": "configured"}
                     )
-    py = base / "pyproject.toml"
-    if py.is_file():
+
+    pyproject_file = base / "pyproject.toml"
+    if pyproject_file.is_file():
         detection_trace.append(
             {"source": "pyproject.toml", "check": "tools", "status": "inspected"}
         )
         try:
-            data = tomllib.loads(py.read_text(encoding="utf-8"))
+            pyproject_data = tomllib.loads(pyproject_file.read_text(encoding="utf-8"))
         except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
             config_errors.append(
                 {
@@ -256,9 +290,11 @@ def code_get_diagnostics(
                     "status": "inspected",
                 }
             )
-            cfg = data.get("tool", {})
+            cfg = pyproject_data.get("tool", {})
             if "ruff" in cfg:
-                candidates.append(("ruff", ["ruff", "check", "."]))
+                configured_candidates.append(
+                    {"name": "ruff", "command": ["ruff", "check", "."]}
+                )
                 detection_trace.append(
                     {
                         "source": "pyproject.toml",
@@ -267,7 +303,7 @@ def code_get_diagnostics(
                     }
                 )
             if "mypy" in cfg:
-                candidates.append(("mypy", ["mypy", "."]))
+                configured_candidates.append({"name": "mypy", "command": ["mypy", "."]})
                 detection_trace.append(
                     {
                         "source": "pyproject.toml",
@@ -275,13 +311,14 @@ def code_get_diagnostics(
                         "status": "configured",
                     }
                 )
-    mk = base / "Makefile"
-    if mk.is_file():
+
+    makefile_path = base / "Makefile"
+    if makefile_path.is_file():
         detection_trace.append(
             {"source": "Makefile", "check": "targets", "status": "inspected"}
         )
-        targets = set()
-        for line in mk.read_text(encoding="utf-8").splitlines():
+        targets: set[str] = set()
+        for line in makefile_path.read_text(encoding="utf-8").splitlines():
             if (
                 line
                 and not line[0].isspace()
@@ -289,16 +326,146 @@ def code_get_diagnostics(
                 and not line.startswith("#")
             ):
                 targets.add(line.split(":", 1)[0])
-        for t in ("check", "lint", "typecheck", "validate"):
-            if t in targets:
-                candidates.append((t, ["make", t]))
-                detection_trace.append(
-                    {"source": "Makefile", "check": t, "status": "configured"}
+        for target in ("check", "lint", "typecheck", "validate"):
+            if target in targets:
+                configured_candidates.append(
+                    {"name": target, "command": ["make", target]}
                 )
+                detection_trace.append(
+                    {"source": "Makefile", "check": target, "status": "configured"}
+                )
+
+    project_files = _walk_project_files(base)
+    relative_files: list = [_to_relpath(file_path, base) for file_path in project_files]
+
+    has_typescript = (base / "tsconfig.json").is_file() or any(
+        rel.endswith((".ts", ".tsx", ".mts", ".cts")) for rel in relative_files
+    )
+    if has_typescript:
+        extra_candidates.append(
+            {
+                "name": "tsc_no_emit",
+                "command": ["tsc", "--noEmit", "--pretty", "false"],
+            }
+        )
+        detection_trace.append(
+            {"source": "typescript", "check": "tsc_no_emit", "status": "configured"}
+        )
+
+    html_files: list = [
+        file_path
+        for file_path in project_files
+        if file_path.suffix.lower() in {".html", ".htm"}
+    ]
+    if html_files:
+        extra_candidates.append(
+            {
+                "name": "html_syntax_sweep",
+                "runner": lambda: _run_html_syntax_sweep(base, html_files),
+            }
+        )
+        detection_trace.append(
+            {"source": "html", "check": "html_syntax_sweep", "status": "configured"}
+        )
+
+    json_files: list = [
+        file_path
+        for file_path in project_files
+        if file_path.suffix.lower() == ".json" and file_path.name != "package.json"
+    ]
+    if json_files:
+        extra_candidates.append(
+            {
+                "name": "json_parse",
+                "runner": lambda: _run_parse_check(
+                    base, json_files, json.loads, "JSON"
+                ),
+            }
+        )
+        detection_trace.append(
+            {"source": "config", "check": "json_parse", "status": "configured"}
+        )
+
+    toml_files: list = [
+        file_path
+        for file_path in project_files
+        if file_path.suffix.lower() == ".toml" and file_path.name != "pyproject.toml"
+    ]
+    if toml_files:
+        extra_candidates.append(
+            {
+                "name": "toml_parse",
+                "runner": lambda: _run_parse_check(
+                    base, toml_files, tomllib.loads, "TOML"
+                ),
+            }
+        )
+        detection_trace.append(
+            {"source": "config", "check": "toml_parse", "status": "configured"}
+        )
+
+    yaml_files: list = [
+        file_path
+        for file_path in project_files
+        if file_path.suffix.lower() in {".yaml", ".yml"}
+    ]
+    if yaml_files:
+        if yaml is None:
+            detection_trace.append(
+                {"source": "config", "check": "yaml_parse", "status": "unavailable"}
+            )
+        else:
+            extra_candidates.append(
+                {
+                    "name": "yaml_parse",
+                    "runner": lambda: _run_parse_check(
+                        base, yaml_files, yaml.safe_load, "YAML"
+                    ),
+                }
+            )
+            detection_trace.append(
+                {"source": "config", "check": "yaml_parse", "status": "configured"}
+            )
+
+    shell_files = _discover_shell_files(project_files)
+    if shell_files:
+        relative_shell_files: list = [
+            _to_relpath(file_path, base) for file_path in shell_files
+        ]
+        shellcheck_binary = _resolve_shellcheck_binary(base)
+        if shellcheck_binary:
+            extra_candidates.append(
+                {
+                    "name": "shell_syntax",
+                    "command": [shellcheck_binary, *relative_shell_files],
+                }
+            )
+            detection_trace.append(
+                {"source": "shell", "check": "shell_syntax", "status": "configured"}
+            )
+        elif shutil.which("bash"):
+            extra_candidates.append(
+                {
+                    "name": "shell_syntax",
+                    "command": ["bash", "-n", *relative_shell_files],
+                }
+            )
+            detection_trace.append(
+                {"source": "shell", "check": "shell_syntax", "status": "configured"}
+            )
+        else:
+            detection_trace.append(
+                {"source": "shell", "check": "shell_syntax", "status": "unavailable"}
+            )
+
+    all_candidates: list = [*configured_candidates, *extra_candidates]
+
     if check:
-        available = list(dict.fromkeys(item[0] for item in candidates))
+        available = list(
+            dict.fromkeys(str(candidate["name"]) for candidate in all_candidates)
+        )
         selected: list = [
-            candidate for candidate in candidates if candidate[0] == check
+            candidate for candidate in all_candidates if candidate["name"] == check
         ]
         if not selected:
             return {
@@ -310,8 +477,11 @@ def code_get_diagnostics(
                 "detection_trace": detection_trace,
             }
         candidates = selected
-    if not candidates and config_errors:
-        files = ", ".join(e["file"] for e in config_errors)
+    else:
+        candidates = all_candidates
+
+    if not check and not configured_candidates and config_errors:
+        files = ", ".join(entry["file"] for entry in config_errors)
         return {
             "supported": True,
             "error_code": "invalid_config",
@@ -320,43 +490,67 @@ def code_get_diagnostics(
             "config_errors": config_errors,
             "detection_trace": detection_trace,
         }
+
+    if not candidates and config_errors:
+        files = ", ".join(entry["file"] for entry in config_errors)
+        return {
+            "supported": True,
+            "error_code": "invalid_config",
+            "ok": False,
+            "message": f"Could not read diagnostics configuration; fix these files and retry: {files}.",
+            "config_errors": config_errors,
+            "detection_trace": detection_trace,
+        }
+
     if not candidates:
         return {
             "supported": False,
             "message": (
                 f"No supported diagnostics check found in {base} "
-                "(looked for package scripts, Ruff/mypy configuration, and Makefile check/lint/typecheck/validate targets)."
+                "(looked for package scripts, Ruff/mypy configuration, Makefile check/lint/"
+                "typecheck/validate targets, TypeScript tsc --noEmit, HTML sweep, config "
+                "parse checks, and shell syntax checks)."
             ),
             "detection_trace": detection_trace,
         }
-    # Try each candidate in order, skipping tools that are not installed.
-    for index, (name, cmd) in enumerate(candidates):
-        resolved_cmd = _configured_check_command(name, cmd)
-        res = run_process(resolved_cmd, cwd=base, timeout_ms=timeout_ms)
-        # Distinguish "tool not installed" from "tool ran and reported findings".
-        if res["exit_code"] != 0 and res.get("stderr", "").startswith(
-            "Failed to start process:"
-        ):
-            # Try the next candidate; if this is the last one, return the error.
-            if index == len(candidates) - 1:
-                return {
-                    **setup_required(
-                        missing_requirements=[f"binary:{name}"],
-                        remediation_commands=[
-                            f"Install the configured {name} diagnostic tool."
-                        ],
-                        documentation_url="docs/SETUP.md#diagnostics",
-                        message=f"The '{name}' tool is configured but could not be started.",
-                        error_code="tool_not_installed",
-                    ),
-                    "supported": True,
-                    "check": name,
-                    "ok": False,
-                    **_history(),
-                    **res,
-                }
-            skipped.append({"check": name, "error_code": "tool_not_installed"})
+
+    for index, candidate in enumerate(candidates):
+        name = str(candidate["name"])
+        command = candidate.get("command")
+        runner = candidate.get("runner")
+
+        if isinstance(command, list):
+            resolved_cmd = _configured_check_command(name, command, base)
+            res = run_process(resolved_cmd, cwd=base, timeout_ms=timeout_ms)
+            if res["exit_code"] != 0 and res.get("stderr", "").startswith(
+                "Failed to start process:"
+            ):
+                if index == len(candidates) - 1:
+                    return {
+                        **setup_required(
+                            missing_requirements=[f"binary:{name}"],
+                            remediation_commands=[
+                                f"Install the configured {name} diagnostic tool."
+                            ],
+                            documentation_url="docs/SETUP.md#diagnostics",
+                            message=f"The '{name}' tool is configured but could not be started.",
+                            error_code="tool_not_installed",
+                        ),
+                        "supported": True,
+                        "check": name,
+                        "ok": False,
+                        **_history(),
+                        **res,
+                    }
+                skipped.append({"check": name, "error_code": "tool_not_installed"})
+                continue
+        elif callable(runner):
+            typed_runner: CandidateRunner = runner
+            res = typed_runner()
+        else:
+            skipped.append({"check": name, "error_code": "invalid_candidate"})
             continue
+
         ok = res["exit_code"] == 0
         return {
             "supported": True,
@@ -366,7 +560,7 @@ def code_get_diagnostics(
             **_history(),
             **res,
         }
-    # Unreachable but satisfies type checkers.
+
     return {"supported": False, "message": "No diagnostic tool could be run."}
 
 
@@ -376,7 +570,8 @@ def register(mcp):
         description=describe(
             "Detect and run the first available diagnostic tool in the selected workspace directory; path selects directory, check selects a named configured check, timeout_ms bounds execution. "
             "Detection order: package.json scripts (typecheck > check > lint), "
-            "pyproject.toml tools (ruff > mypy), then Makefile targets (check > lint > typecheck > validate). "
+            "pyproject.toml tools (ruff > mypy), Makefile targets (check > lint > typecheck > validate), "
+            "then additional syntax/parse checks (tsc_no_emit, html_syntax_sweep, json_parse, yaml_parse, toml_parse, shell_syntax) when project files indicate they are relevant. "
             "Returns the check name, ok (true when exit_code is 0), exit code, stdout, stderr, and duration. "
             "Returns error_code='tool_not_installed' when the configured tool binary cannot be started; "
             "falls back to the next available candidate automatically and lists skipped candidates in skipped. "
