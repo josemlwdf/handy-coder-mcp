@@ -111,11 +111,6 @@ def get_capabilities() -> dict:
         "subagent_manage": {
             "available": True,
             "backend": subagent_backend,
-            "note": "unified lifecycle endpoint with action=run|status|result|complete|cancel",
-        },
-        "subagent_run": {
-            "available": True,
-            "backend": subagent_backend,
             "roles": {
                 name: {
                     "allowed_tools": sorted(role.allowed_tools),
@@ -124,27 +119,7 @@ def get_capabilities() -> dict:
                 }
                 for name, role in ROLES.items()
             },
-            "note": "start subagent task; optionally select a Continue model by name or model identifier",
-        },
-        "subagent_status": {
-            "available": True,
-            "backend": subagent_backend,
-            "note": "poll task state",
-        },
-        "subagent_result": {
-            "available": True,
-            "backend": subagent_backend,
-            "note": "fetch paged result",
-        },
-        "subagent_complete": {
-            "available": True,
-            "backend": subagent_backend,
-            "note": "close delegated cooperative frame",
-        },
-        "subagent_cancel": {
-            "available": True,
-            "backend": subagent_backend,
-            "note": "cancel task",
+            "note": "unified lifecycle endpoint with action=run|status|result|complete|cancel",
         },
     }
 

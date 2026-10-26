@@ -142,8 +142,6 @@ _READ_ONLY_TOOL_HINTS = frozenset(
         "html_syntax_check",
         "read_files",
         "search_text",
-        "subagent_result",
-        "subagent_status",
         "web_fetch_docs",
         "web_search",
     }
@@ -157,7 +155,6 @@ _DESTRUCTIVE_TOOL_HINTS = frozenset(
         "orchestrator_bootstrap",
         "orchestrator_update_task_status",
         "skills_manage",
-        "subagent_cancel",
         "subagent_manage",
     }
 )
@@ -171,8 +168,6 @@ _IDEMPOTENT_TOOL_HINTS = frozenset(
         "html_syntax_check",
         "read_files",
         "search_text",
-        "subagent_result",
-        "subagent_status",
         "web_fetch_docs",
         "web_search",
     }
@@ -184,10 +179,7 @@ _OPEN_WORLD_TOOL_HINTS = frozenset(
         "code_get_diagnostics",
         "git_manage",
         "run_tests",
-        "subagent_cancel",
-        "subagent_complete",
         "subagent_manage",
-        "subagent_run",
         "terminal_exec",
         "web_fetch_docs",
         "web_search",

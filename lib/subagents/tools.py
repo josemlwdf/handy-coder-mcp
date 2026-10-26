@@ -322,8 +322,12 @@ def _instructions(
         parts.append(f"Context: {context}")
     if deliverable:
         parts.append(f"Deliverable: {deliverable}")
-    parts.append("Finish by calling subagent_complete with your final result.")
-    parts.append("Do not resume the parent task before subagent_complete succeeds.")
+    parts.append(
+        "Finish by calling subagent_manage with action='complete', task_id, and your final result."
+    )
+    parts.append(
+        "Do not resume the parent task before subagent_manage(action='complete', ...) succeeds."
+    )
     return "\n".join(parts)
 
 
@@ -417,7 +421,7 @@ def _terminal_payload(task_id: str) -> dict:
         "task_id": task_obj.task_id,
         "backend": task_obj.backend,
         **({"model": dict(task_obj.model)} if task_obj.model else {}),
-        "poll": "subagent_status",
+        "poll": "subagent_manage(action='status')",
     }
 
 
@@ -455,7 +459,7 @@ def subagent_run(
     wait: Annotated[
         bool,
         Field(
-            description="When true (default), wait for completion when the backend can finish quickly. Without a usable backend the result is status unavailable; explicit cooperative mode delegates to the host."
+            description="When true (default), wait for completion when the backend can finish quickly. Without a usable backend the result is status unavailable; explicit cooperative mode delegates to the host for completion via subagent_manage(action='complete')."
         ),
     ] = True,
 ) -> dict:
@@ -906,31 +910,16 @@ def register(mcp):
     """Register function."""
     configure_runtime(client_capabilities=None)
     base: str = (
-        "Delegate multi-step work to an internal subagent contract with stable status shapes. Prefer subagent_manage(action=run|status|result|complete|cancel) as the unified lifecycle endpoint; legacy action-specific tools remain available for compatibility. "
-        "A subagent runs only when a backend is available: client sampling, a provider key in the environment, or a model from the user's Continue config when SUBAGENT_CONTINUE=1. Without one, subagent_run returns status unavailable and creates no task. "
-        "subagent_run accepts an optional Continue model name or model identifier; explicit selection uses that model's direct API provider regardless of automatic backend precedence. get_capabilities lists safe model choices, and subagent responses/status include the chosen model summary when known. Report selected models when summarizing delegated work to the user. "
+        "Delegate multi-step work to an internal subagent contract with stable status shapes through subagent_manage(action=run|status|result|complete|cancel). "
+        "A subagent runs only when a backend is available: client sampling, a provider key in the environment, or a model from the user's Continue config when SUBAGENT_CONTINUE=1. Without one, subagent_manage(action='run') returns status unavailable and creates no task. "
+        "subagent_manage(action='run') accepts an optional Continue model name or model identifier; explicit selection uses that model's direct API provider regardless of automatic backend precedence. get_capabilities lists safe model choices, and subagent responses/status include the chosen model summary when known. Report selected models when summarizing delegated work to the user. "
         "Loop backends let write-capable roles (planner, coder, committer) create and edit files within the workspace. Use subagents for broad searches, independent reviews and summaries of large inputs when available. "
-        "When status is completed, consume result; when running, poll subagent_status; "
-        "when unavailable, do the work yourself in this conversation and do not retry; when delegated_to_host (explicit SUBAGENT_BACKEND=cooperative only, scoped role mode), follow instructions then call subagent_complete. Cooperative tasks expire after five minutes; successful git_manage commits by a committer close that frame automatically, while skipped or unsuccessful commits and other roles require subagent_complete. Streaming and checkpoint/resume are unsupported. Roles: generalist/explorer are read-only, reviewer adds diagnostics/tests, planner can also create/edit, coder can create/edit plus diagnostics/tests. Result pages include offset, total_length, and next_offset metadata. An open frame blocks tools outside its role allowlist; recover with subagent_complete or subagent_cancel(confirm=true)."
+        "When status is completed, consume result; when running, poll subagent_manage(action='status'); "
+        "when unavailable, do the work yourself in this conversation and do not retry; when delegated_to_host (explicit SUBAGENT_BACKEND=cooperative only, scoped role mode), follow instructions then call subagent_manage(action='complete'). Cooperative tasks expire after five minutes; successful git_manage commits by a committer close that frame automatically, while skipped or unsuccessful commits and other roles require explicit completion via subagent_manage(action='complete'). Streaming and checkpoint/resume are unsupported. Roles: generalist/explorer are read-only, reviewer adds diagnostics/tests, planner can also create/edit, coder can create/edit plus diagnostics/tests. Result pages include offset, total_length, and next_offset metadata. An open frame blocks tools outside its role allowlist; recover with subagent_manage(action='complete') or subagent_manage(action='cancel', confirm=true)."
     )
-    mcp.tool(
+    return mcp.tool(
         description=describe(
             base
             + " Unified lifecycle endpoint. Select action run|status|result|complete|cancel and provide the corresponding fields."
         )
     )(subagent_manage)
-    mcp.tool(description=describe(base + " Start a task."))(subagent_run)
-    mcp.tool(description=describe(base + " Check task state and usage."))(
-        subagent_status
-    )
-    mcp.tool(description=describe(base + " Fetch full or paged task result."))(
-        subagent_result
-    )
-    mcp.tool(
-        description=describe(
-            base + " Complete a cooperative delegated frame with final result text."
-        )
-    )(subagent_complete)
-    return mcp.tool(
-        description=describe(base + " Cancel a task and close any open frame.")
-    )(subagent_cancel)

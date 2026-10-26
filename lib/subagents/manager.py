@@ -1,3 +1,5 @@
+"""Module documentation."""
+
 from __future__ import annotations
 
 import threading
@@ -13,6 +15,8 @@ TaskState = Literal["queued", "running", "delegated", "done", "failed", "cancell
 
 @dataclass
 class Task:
+    """Task class."""
+
     task_id: str
     role: str
     backend: str
@@ -32,6 +36,8 @@ class Task:
 
 @dataclass
 class Frame:
+    """Frame class."""
+
     task_id: str
     role: Role
     parent_goal: str
@@ -42,6 +48,8 @@ class Frame:
 
 @dataclass
 class SubagentLimits:
+    """SubagentLimits class."""
+
     concurrent_tasks: int = 3
     tasks_per_session: int = 20
     task_ttl_seconds: int = 1200
@@ -50,7 +58,10 @@ class SubagentLimits:
 
 
 class SubagentManager:
+    """SubagentManager class."""
+
     def __init__(self, limits: SubagentLimits | None = None) -> None:
+        """Init function."""
         self.limits = limits or SubagentLimits()
         self._lock = threading.RLock()
         self._tasks: dict[str, Task] = {}
@@ -58,12 +69,20 @@ class SubagentManager:
         self._seq = 0
 
     def _next_id(self) -> str:
+        """Next id function."""
         self._seq += 1
         return f"t_{self._seq}"
 
     def _sweep_locked(self) -> None:
+        """Sweep locked function."""
         now = time.time()
-        stale_ids = [task_id for task_id, task in self._tasks.items() if task.expires_at and now > task.expires_at and task.state in {"queued", "running", "delegated"}]
+        stale_ids: list = [
+            task_id
+            for task_id, task in self._tasks.items()
+            if task.expires_at
+            and now > task.expires_at
+            and task.state in {"queued", "running", "delegated"}
+        ]
         for task_id in stale_ids:
             task = self._tasks[task_id]
             task.state = "failed"
@@ -75,15 +94,28 @@ class SubagentManager:
             task = self._tasks.get(frame.task_id)
             if task and task.state == "delegated":
                 task.state = "failed"
-                task.error = "cooperative frame expired before subagent_complete"
+                task.error = "cooperative frame expired before subagent_manage(action='complete')"
                 task.updated_at = now
 
-    def create_task(self, role: str, task_text: str, backend: str, context: str | None, deliverable: str | None, model: dict[str, str] | None = None) -> Task:
+    def create_task(
+        self,
+        role: str,
+        task_text: str,
+        backend: str,
+        context: str | None,
+        deliverable: str | None,
+        model: dict[str, str] | None = None,
+    ) -> Task:
+        """Create task function."""
         with self._lock:
             self._sweep_locked()
             if len(self._tasks) >= self.limits.tasks_per_session:
                 raise ValueError("subagent task limit reached for this session")
-            running_count = sum(1 for t in self._tasks.values() if t.state in {"queued", "running", "delegated"})
+            running_count = sum(
+                1
+                for t in self._tasks.values()
+                if t.state in {"queued", "running", "delegated"}
+            )
             if running_count >= self.limits.concurrent_tasks:
                 raise ValueError("subagent concurrency cap reached")
             now = time.time()
@@ -104,6 +136,7 @@ class SubagentManager:
             return task_obj
 
     def start_task(self, task_id: str) -> Task:
+        """Start task function."""
         with self._lock:
             self._sweep_locked()
             task = self._tasks[task_id]
@@ -113,6 +146,7 @@ class SubagentManager:
             return task
 
     def update_progress(self, task_id: str, turns: int, tokens: int) -> None:
+        """Update progress function."""
         with self._lock:
             task = self._tasks.get(task_id)
             if task is None or task.state not in {"queued", "running"}:
@@ -122,6 +156,7 @@ class SubagentManager:
             task.updated_at = time.time()
 
     def mark_delegated(self, task_id: str, frame: Frame) -> None:
+        """Mark delegated function."""
         with self._lock:
             self._sweep_locked()
             task = self._tasks[task_id]
@@ -129,7 +164,10 @@ class SubagentManager:
             task.updated_at = time.time()
             self._stack.append(frame)
 
-    def complete_task(self, task_id: str, result: str, *, turns: int = 0, tokens: int = 0) -> Task:
+    def complete_task(
+        self, task_id: str, result: str, *, turns: int = 0, tokens: int = 0
+    ) -> Task:
+        """Complete task function."""
         with self._lock:
             self._sweep_locked()
             task = self._tasks[task_id]
@@ -145,6 +183,7 @@ class SubagentManager:
             return task
 
     def fail_task(self, task_id: str, message: str) -> Task:
+        """Fail task function."""
         with self._lock:
             self._sweep_locked()
             task = self._tasks[task_id]
@@ -155,6 +194,7 @@ class SubagentManager:
             return task
 
     def cancel_task(self, task_id: str, reason: str | None = None) -> Task:
+        """Cancel task function."""
         with self._lock:
             self._sweep_locked()
             task = self._tasks[task_id]
@@ -168,6 +208,7 @@ class SubagentManager:
             return task
 
     def get_task(self, task_id: str) -> Task:
+        """Get task function."""
         with self._lock:
             self._sweep_locked()
             if task_id not in self._tasks:
@@ -175,6 +216,7 @@ class SubagentManager:
             return self._tasks[task_id]
 
     def get_result_page(self, task_id: str, offset: int = 0) -> dict[str, Any]:
+        """Get result page function."""
         with self._lock:
             self._sweep_locked()
             task = self.get_task(task_id)
@@ -183,10 +225,10 @@ class SubagentManager:
                 raise ValueError("offset must be >= 0")
             if offset > len(text):
                 raise ValueError(f"offset {offset} exceeds result length {len(text)}")
-            page = text[offset:offset + self.limits.result_page_chars]
+            page = text[offset : offset + self.limits.result_page_chars]
             next_offset = offset + self.limits.result_page_chars
             if next_offset >= len(text):
-                next_offset = None
+                next_offset: None = None
             return {
                 "task_id": task_id,
                 "backend": task.backend,
@@ -199,11 +241,13 @@ class SubagentManager:
             }
 
     def open_frame(self) -> Frame | None:
+        """Open frame function."""
         with self._lock:
             self._sweep_locked()
             return self._stack[-1] if self._stack else None
 
     def make_frame(self, task_id: str, role: Role, parent_goal: str) -> Frame:
+        """Make frame function."""
         now = time.time()
         return Frame(
             task_id=task_id,
@@ -215,6 +259,7 @@ class SubagentManager:
         )
 
     def consume_frame_tool_call(self, tool_name: str) -> tuple[bool, str | None]:
+        """Consume frame tool call function."""
         with self._lock:
             self._sweep_locked()
             frame = self._stack[-1] if self._stack else None
@@ -222,24 +267,31 @@ class SubagentManager:
                 return True, None
             if tool_name in {"subagent_status", "subagent_result"}:
                 return True, None
-            if tool_name not in frame.role.allowed_tools and tool_name not in {"subagent_complete", "subagent_cancel"}:
+            if tool_name not in frame.role.allowed_tools and tool_name not in {
+                "subagent_complete",
+                "subagent_cancel",
+            }:
                 return False, (
                     f"Tool '{tool_name}' is outside role allowlist for open subagent frame {frame.task_id}. "
-                    "Call subagent_complete when done, or call subagent_cancel with confirm=true to discard the frame."
+                    "Call subagent_manage(action='complete', ...) when done, or call subagent_manage(action='cancel', confirm=true) to discard the frame."
                 )
             if tool_name == "subagent_run":
-                return False, "subagent nesting depth is limited to 1; finish current frame first"
+                return (
+                    False,
+                    "subagent nesting depth is limited to 1; finish current frame first",
+                )
             if tool_name not in {"subagent_complete", "subagent_cancel"}:
                 if frame.tool_calls_left <= 0:
                     return False, (
                         f"Subagent frame {frame.task_id} exceeded its tool-call budget. "
-                        "Call subagent_complete with current findings."
+                        "Call subagent_manage(action='complete', ...) with current findings."
                     )
                 frame.tool_calls_left -= 1
             return True, None
 
     def reminder(self) -> str | None:
+        """Reminder function."""
         frame = self.open_frame()
         if not frame:
             return None
-        return f"[subagent {frame.task_id} open: call subagent_complete when done]"
+        return f"[subagent {frame.task_id} open: call subagent_manage(action='complete', ...) when done]"

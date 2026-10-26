@@ -23,11 +23,6 @@ _NO_WORKER_TOOLS: set = {
     # executed in-process; spawning it would re-import a non-module-level function.
     "get_tool_details",
     "subagent_manage",
-    "subagent_run",
-    "subagent_status",
-    "subagent_result",
-    "subagent_complete",
-    "subagent_cancel",
 }
 
 

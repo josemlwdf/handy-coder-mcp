@@ -29,18 +29,18 @@ def _plan_content(user_task: str, context: str | None) -> str:
         "## Context\n\n"
         f"{context_text}\n\n"
         "## Orchestrator Workflow\n\n"
-        "- [ ] Spawn `subagent_run(role=\"generalist\", ...)` to assess scope, assumptions, and risks.\n"
+        "- [ ] Spawn `subagent_manage(action=\"run\", role=\"generalist\", ...)` to assess scope, assumptions, and risks.\n"
         "- [ ] Save the generalist output into this implementation plan under **Generalist Assessment**.\n"
-        "- [ ] Spawn `subagent_run(role=\"planner\", ...)` using this plan as context to produce non-interfering tasks.\n"
+        "- [ ] Spawn `subagent_manage(action=\"run\", role=\"planner\", ...)` using this plan as context to produce non-interfering tasks.\n"
         "- [ ] Write planner output into `.handy-coder/tasks.md` with `[ ]` before each task item.\n"
         "- [ ] Execute tasks one-by-one by spawning `coder` subagents for implementation details.\n"
-        "- [ ] Record the model returned by each `subagent_run` and include it when summarizing delegated work to the user.\n"
+        '- [ ] Record the model returned by each `subagent_manage(action="run", ...)` and include it when summarizing delegated work to the user.\n'
         "- [ ] Track task outcomes (`non_started`, `interrupted`, `complete`, `failed`) in `tasks.md`.\n\n"
         "## Orchestrator Memory Policy\n\n"
         "- Keep only minimal coordination context in the parent thread (current task, status, blockers).\n"
         "- Choose a suitable Continue model for each delegated task from `get_capabilities` (`subagents.continue.models`) when multiple choices are available; report the selected model to the user.\n"
         "- Delegate substantial analysis or implementation to subagents instead of solving inline.\n"
-        "- Prefer another subagent run whenever work spans multiple files or requires more than one reasoning step, but only while subagent_run is available. If subagent_run returns status 'unavailable' (no subagent LLM configured), do not retry: do the step yourself in this conversation and record the outcome in tasks.md.\n\n"
+        "- Prefer another subagent run whenever work spans multiple files or requires more than one reasoning step, but only while subagent_manage(action='run') is available. If subagent_manage(action='run') returns status 'unavailable' (no subagent LLM configured), do not retry: do the step yourself in this conversation and record the outcome in tasks.md.\n\n"
         "## Generalist Assessment\n\n"
         "_Pending: fill with subagent output._\n\n"
         "## Validation Strategy\n\n"
@@ -97,14 +97,14 @@ def orchestrator_bootstrap(
         "implementation_plan": _relative(plan_path),
         "tasks_file": _relative(tasks_path),
         "next_steps": [
-            "Run subagent_run with role='generalist' to assess scope and risks.",
+            "Run subagent_manage with action='run' and role='generalist' to assess scope and risks.",
             "Update implementation-plan.md with the generalist result.",
-            "Run subagent_run with role='planner' to produce independent actionable tasks.",
+            "Run subagent_manage with action='run' and role='planner' to produce independent actionable tasks.",
             "Replace bootstrap tasks in tasks.md with planner output while keeping [ ] placeholders.",
             "Execute each task via coder subagents and update status labels.",
             "Choose from available Continue models when useful and report each selected model in the user-facing summary.",
             "Keep the parent thread lightweight: orchestrate, summarize, and spawn more subagents when work expands.",
-            "If subagent_run returns status 'unavailable' (no subagent LLM configured), do not retry: do each step yourself in this conversation and still update tasks.md.",
+            "If subagent_manage(action='run') returns status 'unavailable' (no subagent LLM configured), do not retry: do each step yourself in this conversation and still update tasks.md.",
         ],
     }
 
@@ -114,5 +114,5 @@ def register(mcp):
         "Create `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md` from a single high-level request, first deleting any existing copies of those files. "
         "This bootstraps an orchestrator-first workflow where generalist/planner/coder subagents are the default execution path and the parent agent keeps minimal retained context. "
         "tasks.md lines start with [ ] and include status labels for non_started, interrupted, complete, or failed. "
-        "When to use: Start orchestrated multi-step work with persistent plan artifacts and frequent subagent delegation when a subagent backend is available. If subagent_run returns unavailable, the parent does the work itself."
+        "When to use: Start orchestrated multi-step work with persistent plan artifacts and frequent subagent delegation when a subagent backend is available. If subagent_manage(action='run') returns unavailable, the parent does the work itself."
     ))(orchestrator_bootstrap)
