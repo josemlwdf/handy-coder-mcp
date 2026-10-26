@@ -239,6 +239,34 @@ class AuditRegressionTests(unittest.TestCase):
             escaped = git_manage.git_manage("diff", repo_path=".", file_paths=["../escape.txt"])
         self.assertEqual(escaped["error_code"], "path_escape")
 
+    def test_git_commit_success_hints_to_verify_commit(self):
+        (self.root / ".git").mkdir()
+        git_manage._REPOSITORIES = None
+        calls = [
+            {"exit_code": 0, "stdout": "true", "stderr": ""},
+            {"exit_code": 0, "stdout": "[main abc1234] msg", "stderr": ""},
+        ]
+        with patch("lib.core.git_manage.shutil.which", return_value="git"), \
+             patch("lib.core.git_manage.run_process", side_effect=calls):
+            result = git_manage.git_manage("commit", args=["-m", "msg"], repo_path=".")
+        self.assertEqual(result["exit_code"], 0)
+        self.assertIn("verify it was applied", result["hint"])
+        self.assertIn("action='log'", result["hint"])
+        self.assertIn("action='status'", result["hint"])
+
+    def test_git_commit_failure_hints_commit_not_applied(self):
+        (self.root / ".git").mkdir()
+        git_manage._REPOSITORIES = None
+        calls = [
+            {"exit_code": 0, "stdout": "true", "stderr": ""},
+            {"exit_code": 1, "stdout": "nothing to commit", "stderr": ""},
+        ]
+        with patch("lib.core.git_manage.shutil.which", return_value="git"), \
+             patch("lib.core.git_manage.run_process", side_effect=calls):
+            result = git_manage.git_manage("commit", args=["-m", "msg"], repo_path=".")
+        self.assertNotEqual(result["exit_code"], 0)
+        self.assertIn("NOT applied", result["hint"])
+
     def test_subagent_complete_requires_active_cooperative_task(self):
         manager = subagent_tools.SubagentManager()
         with patch.object(subagent_tools, "_MANAGER", manager):
