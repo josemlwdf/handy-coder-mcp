@@ -256,22 +256,41 @@ def git_manage(
             "and, for init, optionally names the subdirectory to initialize (defaults to the workspace root)."
         )),
     ] = None,
-    mode: Annotated[Literal["unstaged", "staged", "both"], Field(description="Diff selection: unstaged, staged, or both. Applies to diff; ignored by other review actions.")] = "unstaged",
-    file_paths: Annotated[list[str] | None, Field(description="Optional repository-relative files to limit diff review; every path must remain within the selected repository.")] = None,
+    mode: Annotated[
+        Literal["unstaged", "staged", "both"] | None,
+        Field(
+            description=(
+                "Optional diff selection: unstaged, staged, or both. Enforced only when "
+                "action is 'diff'; omitted or null defaults to 'unstaged'."
+            )
+        ),
+    ] = None,
+    file_paths: Annotated[
+        list[str] | None,
+        Field(
+            description=(
+                "Optional repository-relative files to limit diff review; every path must "
+                "remain within the selected repository. Applied only when action is 'diff'."
+            )
+        ),
+    ] = None,
 ) -> dict:
     target_mcp = _MCP
     args = args or []
-    file_paths = file_paths or []
     if action not in ("status", "diff", "log", "add", "commit", "push", "pull", "merge", "rebase", "checkout", "branch", "stash", "blame", "init"):
         raise ValueError("Unsupported Git action")
     if action == "status" and args:
         raise ValueError("status accepts no args")
     if action == "init" and args:
         raise ValueError("init accepts no args")
-    if action != "diff" and (mode != "unstaged" or file_paths):
-        raise ValueError("mode and file_paths are only valid for diff")
-    if action == "diff" and mode not in {"unstaged", "staged", "both"}:
-        raise ValueError("mode must be unstaged, staged, or both")
+    if action == "diff":
+        mode = mode or "unstaged"
+        file_paths = file_paths or []
+        if mode not in {"unstaged", "staged", "both"}:
+            raise ValueError("mode must be unstaged, staged, or both")
+    else:
+        mode = "unstaged"
+        file_paths = []
     if action == "diff" and any(
         arg.startswith("-") and arg not in ("--cached", "--stat", "--name-only", "--")
         for arg in args

@@ -120,6 +120,7 @@ def iter_workspace_files(
     exclude_dirs: frozenset[str] = frozenset(),
     deadline: float | None = None,
     max_file_size_bytes: int | None = None,
+    report_outside_workspace_errors: bool = True,
 ) -> Iterator[tuple[Path, str]]:
     """Yield workspace files and report paths that could not be scanned."""
     root = inside(".")
@@ -171,10 +172,11 @@ def iter_workspace_files(
                 try:
                     resolved = inside(entry.path, must_exist=True)
                 except ValueError:
-                    scan_errors.append({
-                        "path": relative_path,
-                        "message": "Skipped a file that resolves outside the authorized workspace",
-                    })
+                    if report_outside_workspace_errors:
+                        scan_errors.append({
+                            "path": relative_path,
+                            "message": "Skipped a file that resolves outside the authorized workspace",
+                        })
                     continue
                 except OSError as exc:
                     scan_errors.append({

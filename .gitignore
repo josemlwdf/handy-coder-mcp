@@ -9,3 +9,4 @@ tmp
 tmp/
 .pytest_cache/
 .ruff_cache/
+.audit

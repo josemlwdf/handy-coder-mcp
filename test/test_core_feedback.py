@@ -433,6 +433,33 @@ class CoreFeedbackTests(unittest.TestCase):
 
         self.assertIn("__pycache__/cached.py", result["files"])
 
+    def test_find_files_suppresses_outside_workspace_symlink_diagnostics_by_default(self):
+        (self.root / ".venv" / "bin").mkdir(parents=True)
+        with tempfile.TemporaryDirectory() as outside_dir:
+            outside_file = Path(outside_dir) / "python3"
+            outside_file.write_text("", encoding="utf-8")
+            try:
+                (self.root / ".venv" / "bin" / "python3").symlink_to(outside_file)
+            except OSError as exc:
+                self.skipTest(f"symlinks not supported: {exc}")
+
+            result = self.mcp.tools["find_files"](
+                "**/python*", include_generated=True
+            )
+            detailed_result = self.mcp.tools["find_files"](
+                "**/python*", include_generated=True, include_diagnostics=True
+            )
+
+        self.assertEqual(result["files"], [])
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(
+            detailed_result["errors"],
+            [{
+                "path": ".venv/bin/python3",
+                "message": "Skipped a file that resolves outside the authorized workspace",
+            }],
+        )
+
     def test_run_tests_parses_pytest_output(self):
         (self.root / "pyproject.toml").write_text(
             "[tool.pytest.ini_options]\naddopts = '-q'\n", encoding="utf-8"

@@ -125,13 +125,13 @@ def code_get_diagnostics(
             "detection_trace": detection_trace,
         }
     # Try each candidate in order, skipping tools that are not installed.
-    for name, cmd in candidates:
-        cmd = _configured_check_command(name, cmd)
-        res = run_process(cmd, cwd=base, timeout_ms=timeout_ms)
+    for index, (name, cmd) in enumerate(candidates):
+        resolved_cmd = _configured_check_command(name, cmd)
+        res = run_process(resolved_cmd, cwd=base, timeout_ms=timeout_ms)
         # Distinguish "tool not installed" from "tool ran and reported findings".
         if res["exit_code"] != 0 and res.get("stderr", "").startswith("Failed to start process:"):
             # Try the next candidate; if this is the last one, return the error.
-            if (name, cmd) == candidates[-1]:
+            if index == len(candidates) - 1:
                 return {
                     **setup_required(
                         missing_requirements=[f"binary:{name}"],

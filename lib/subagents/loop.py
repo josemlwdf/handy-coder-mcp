@@ -53,7 +53,7 @@ def _call_subagent_tool(name: str, args: dict[str, Any]) -> dict:
 _TOOL_ARGUMENTS: dict = {
     "read_files": '{"paths": ["workspace-relative path"], "line_ranges"?: [{"path": "...", "start_line": 1, "end_line": 20}], "start_line"?: 1, "end_line"?: 20, "encoding"?: "utf-8", "include_metadata"?: false}',
     "search_text": '{"query": "text or regex", "is_regex"?: true, "path_glob"?: "...", "max_results"?: 100, "context_lines"?: 0, "include_generated"?: false, "case_insensitive"?: false, "extensions"?: [".py"]}',
-    "find_files": '{"glob_pattern": "**/*.py", "exclude_pattern"?: "...", "include_generated"?: false, "file_type"?: ".py", "min_size"?: 0, "max_size"?: 10000, "sort_by"?: "path|size|modified", "include_metadata"?: false}',
+    "find_files": '{"glob_pattern": "**/*.py", "exclude_pattern"?: "...", "include_generated"?: false, "file_type"?: ".py", "min_size"?: 0, "max_size"?: 10000, "sort_by"?: "path|size|modified", "include_metadata"?: false, "include_diagnostics"?: false}',
     "create_file": '{"path": "workspace-relative path", "summary": "one-line summary of the change", "content"?: "full file content", "overwrite"?: false, "create_parents"?: true, "permissions"?: 420, "backup"?: false, "format_content"?: false, "post_process_python"?: false}',
     "apply_edits": '{"edits": [{"path": "...", "pattern": "Python regex", "replacement": "text", "position"?: {"line": 1, "col": 1}}], "summary": "one-line summary of the change", "replace_all"?: false, "max_replacements"?: 1, "case_insensitive"?: false, "dry_run"?: false, "expand_groups"?: false}',
     "code_get_diagnostics": '{"path"?: "...", "check"?: "ruff", "timeout_ms"?: 30000}',

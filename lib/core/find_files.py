@@ -41,6 +41,7 @@ def find_files(
     max_size: Annotated[int | None, Field(ge=0, description="Optional maximum file size in bytes; files only.")] = None,
     sort_by: Annotated[Literal["path", "size", "modified"], Field(description="Sort results by path (default), size, or modified (last-modified time).")] = "path",
     include_metadata: Annotated[bool, Field(description="Include size_bytes and modified_time per result.")] = False,
+    include_diagnostics: Annotated[bool, Field(description="Include diagnostics for files skipped because they resolve outside the authorized workspace.")] = False,
 ) -> dict:
     if not glob_pattern:
         raise ValueError("glob_pattern cannot be empty")
@@ -58,7 +59,11 @@ def find_files(
     incomplete = False
     start_time = time.monotonic()
     metadata: dict[str, dict] = {}
-    for path, relative_path in iter_workspace_files(path_glob=scoped_glob, errors=errors):
+    for path, relative_path in iter_workspace_files(
+        path_glob=scoped_glob,
+        errors=errors,
+        report_outside_workspace_errors=include_diagnostics,
+    ):
         if time.monotonic() - start_time > 15.0:
             incomplete = True
             errors.append({
@@ -107,5 +112,6 @@ def register(mcp):
         f"Generated and build directories ({', '.join(sorted(_DEFAULT_EXCLUDE_DIRS))}) are excluded by default unless include_generated is true. "
         f"Returns at most {MAX_RESULTS} results; incomplete is true when the limit was reached. "
         "Scan failures are returned in errors with any partial matches. "
+        "Diagnostics for files resolving outside the authorized workspace are suppressed by default; set include_diagnostics=true to include them. "
         "When to use: Discover file paths."
     ))(find_files)
