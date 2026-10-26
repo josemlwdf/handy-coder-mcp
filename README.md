@@ -70,6 +70,27 @@ mcpServers:
     env: {}
 ```
 
+### Letting subagents write files
+
+By default, subagents started on a loop backend (client sampling, a provider key, or a Continue model) are read-only. `planner`, `coder` and `committer` are refused with `status: unavailable` and the message `loop backends are read-only unless SUBAGENT_LOOP_WRITE=1`, so the calling agent has to do those steps itself. Only the read-only roles (`generalist`, `explorer`, `reviewer`) run.
+
+To let write-capable roles run, set `SUBAGENT_LOOP_WRITE=1` in the environment of the server process. Loop tool calls run in a server thread, not in the isolated worker process, so only enable this for workspaces you trust.
+
+When the server is launched through `wsl` from Windows, an `env:` entry in the Continue config is not forwarded into WSL (unless `WSLENV` lists it). Set the variable inside the WSL command instead:
+
+```yaml
+    command: wsl
+    args:
+      - -d
+      - ubuntu
+      - env
+      - SUBAGENT_LOOP_WRITE=1
+      - /path/to/handy-coder-mcp/.venv/bin/python
+      - /path/to/handy-coder-mcp/handy_coder_mcp.py
+```
+
+Restart the MCP server afterwards. `get_capabilities` and the next `subagent_run` call for a `coder` role show whether it took effect.
+
 ## What it provides
 
 The server includes tools for workspace file operations, code search, terminal commands, diagnostics, test execution, Git actions, skills, orchestration, and subagents. Optional tools can format or lint code when supported binaries are installed, and fetch text from public web pages.

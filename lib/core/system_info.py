@@ -116,6 +116,7 @@ def get_capabilities() -> dict:
             "SUBAGENT_BACKEND": bool(os.environ.get("SUBAGENT_BACKEND", "").strip()),
             "SUBAGENT_LOCAL": bool(os.environ.get("SUBAGENT_LOCAL", "").strip()),
             "SUBAGENT_CONTINUE": bool(os.environ.get("SUBAGENT_CONTINUE", "").strip()),
+            "SUBAGENT_LOOP_WRITE": os.environ.get("SUBAGENT_LOOP_WRITE") == "1",
         },
         "subagents": {"backend": subagent_backend, **({"continue": continue_info} if continue_info else {})},
     }

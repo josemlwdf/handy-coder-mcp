@@ -642,6 +642,19 @@ while True:
         self.assertIn("jsbeautifier", caps["tools"]["code_format_lint"]["tools"])
         self.assertNotIn("prettier", caps["tools"]["code_format_lint"]["tools"])
 
+    def test_capabilities_reports_subagent_loop_write_flag(self):
+        """env must show whether SUBAGENT_LOOP_WRITE=1 is set; other values are off."""
+        import os as _os
+        from unittest.mock import patch as _patch
+        from lib.core import system_info
+        with _patch.dict(_os.environ, {"SUBAGENT_LOOP_WRITE": "1"}):
+            self.assertIs(system_info.get_capabilities()["env"]["SUBAGENT_LOOP_WRITE"], True)
+        with _patch.dict(_os.environ, {"SUBAGENT_LOOP_WRITE": "0"}):
+            self.assertIs(system_info.get_capabilities()["env"]["SUBAGENT_LOOP_WRITE"], False)
+        with _patch.dict(_os.environ, {}):
+            _os.environ.pop("SUBAGENT_LOOP_WRITE", None)
+            self.assertIs(system_info.get_capabilities()["env"]["SUBAGENT_LOOP_WRITE"], False)
+
 
 if __name__ == "__main__":
     unittest.main()
