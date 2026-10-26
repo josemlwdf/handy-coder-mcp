@@ -26,3 +26,58 @@ Use this skill when the user asks for an implementation plan or when the request
 - Keep the task tracker current as work progresses. Preserve explicit status labels and do not mark failed or unfinished work complete.
 - If a subagent cannot finish, use its findings to revise the task or assign a focused follow-up; do not silently drop the work.
 - Respect the user's scope and existing workspace instructions. A plan or subagent assignment does not authorize unrelated changes or external side effects.
+
+
+## MCP Recommendation and Automatic Change Policy
+
+### Default behavior
+- Treat relevant MCP recommendations and automatic fixes as the
+  default course of action.
+- Apply recommendations that are consistent with the requested
+  task, verified source code, project conventions, and existing tests.
+- Do not reject a recommendation solely because a different
+  approach is preferred.
+
+### Before rejecting a recommendation
+- Verify the recommendation against the actual source code,
+  documented requirements, or reproducible test results.
+- Identify the specific conflict or failure that justifies rejection.
+- If the recommendation is partly correct, preserve the valid parts
+  and modify only the parts that are demonstrably incorrect.
+- Record the reason for rejecting a recommendation and the evidence
+  supporting the alternative.
+
+### Automatic code changes
+- Inspect the resulting diff after every significant edit.
+- Keep automatic changes that implement the intended task and
+  preserve the project's expected behavior and formatting.
+- Revert unrelated formatting changes, line-ending normalization,
+  and other unintended modifications.
+- When an editing tool repeatedly creates unrelated changes,
+  use a narrower edit or a formatting-preserving alternative.
+- Do not undo a valid functional change merely to avoid a small,
+  justified formatting change.
+
+### Subagents and MCP tool failures
+- Verify subagent recommendations when they conflict with the
+  source code or established requirements.
+- Do not repeatedly poll a stalled subagent without evidence
+  that further polling is productive.
+- When a tool fails or reports inconsistent availability, check
+  the available capabilities and use a reliable alternative.
+
+### Testing and checkpoints
+- Validate accepted changes with relevant tests and syntax checks.
+- Distinguish new regressions from failures reproducible on the
+  unchanged baseline.
+- Do not claim full validation when browser, integration, or
+  real-data checks remain incomplete.
+- Never commit incomplete work solely to unblock an MCP checkpoint.
+  Defer the checkpoint when permitted unless committing was
+  explicitly authorized.
+
+### Final reporting
+- List the recommendations accepted, modified, or rejected.
+- Give evidence for consequential rejections.
+- Report automatic changes that were reverted and explain why.
+- Disclose remaining validation gaps before declaring the task done.
