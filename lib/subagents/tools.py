@@ -115,6 +115,137 @@ def _commit_task(batch: list[dict[str, Any]]) -> dict[str, Any]:
         }
 
 
+def _startup_task(dirty_repositories: list[str]) -> str:
+    """Build startup committer instructions for dirty repositories."""
+    listed = "\n".join(f"- {path}" for path in dirty_repositories)
+    return (
+        "Startup clean-worktree policy is active. Clean every listed repository so the "
+        "MCP session starts with no staged, unstaged, or untracked changes. "
+        "Inspect status and diffs first, commit only repository-present changes, and use "
+        "specific commit messages that match each staged diff. "
+        "Use git_manage with repo_path set to each listed workspace-relative repository path. "
+        "Never push. Report commit hash/message per repository, or explain why no commit "
+        "was possible.\n\n"
+        f"Repositories to clean:\n{listed}"
+    )
+
+
+def _repository_is_dirty(status_result: dict[str, Any]) -> bool:
+    """Return whether a git_manage status result indicates a dirty worktree."""
+    return bool(
+        status_result.get("staged")
+        or status_result.get("working_tree")
+        or status_result.get("untracked_files")
+    )
+
+
+def _dirty_repositories(repositories: list[str]) -> list[str]:
+    """Return repositories whose git status reports staged, unstaged, or untracked changes."""
+    from ..core import git_manage
+
+    dirty: list[str] = []
+    for repo_path in repositories:
+        status_result = git_manage.git_manage(
+            action="status",
+            args=None,
+            repo_path=repo_path,
+            mode="unstaged",
+            file_paths=None,
+        )
+        if not isinstance(status_result, dict):
+            raise RuntimeError(
+                f"git status returned an unexpected result for repository '{repo_path}'"
+            )
+        if status_result.get("error_code") or status_result.get("exit_code") != 0:
+            message = status_result.get("message") or status_result.get("stderr") or ""
+            raise RuntimeError(
+                "Cannot verify clean worktree state for "
+                f"'{repo_path}': {message or status_result}"
+            )
+        if _repository_is_dirty(status_result):
+            dirty.append(repo_path)
+    return dirty
+
+
+def _wait_for_task_terminal_state(
+    task_id: str, timeout_seconds: float
+) -> dict[str, Any]:
+    """Poll subagent task state until it reaches a terminal state or times out."""
+    deadline = time.monotonic() + max(1.0, timeout_seconds)
+    while True:
+        status = subagent_status(task_id=task_id)
+        state = status.get("state")
+        if state in {"done", "failed", "cancelled"}:
+            return status
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                "Startup committer task did not finish before timeout "
+                f"({timeout_seconds:.0f}s): {task_id}"
+            )
+        time.sleep(0.25)
+
+
+def enforce_clean_worktree_on_startup(timeout_seconds: float = 120.0) -> dict[str, Any]:
+    """Enforce startup clean-worktree policy by dispatching the committer role when needed."""
+    from ..core import git_manage
+
+    repositories, _errors = git_manage.discover_repositories()
+    if not repositories:
+        return {"enforced": False, "reason": "no_repository"}
+
+    dirty = _dirty_repositories(list(repositories))
+    if not dirty:
+        return {
+            "enforced": False,
+            "reason": "already_clean",
+            "repositories": list(repositories),
+        }
+
+    try:
+        dispatch = subagent_run(
+            role="committer",
+            task=_startup_task(dirty),
+            context="Automatically dispatched during MCP startup to enforce a clean worktree policy.",
+            deliverable="One short status per repository: commit hash/message or why no commit was made.",
+            wait=True,
+        )
+    except ValueError as exc:
+        raise RuntimeError(f"Startup committer dispatch failed: {exc}") from exc
+
+    if not isinstance(dispatch, dict):
+        raise RuntimeError("Startup committer dispatch returned an unexpected response")
+
+    status = dispatch.get("status")
+    if status == "running":
+        task_id = dispatch.get("task_id")
+        if not isinstance(task_id, str) or not task_id:
+            raise RuntimeError(
+                "Startup committer returned running status without a valid task id"
+            )
+        terminal = _wait_for_task_terminal_state(task_id, timeout_seconds)
+        state = terminal.get("state")
+        if state != "done":
+            raise RuntimeError(
+                "Startup committer did not complete successfully "
+                f"(state={state}): {terminal}"
+            )
+    elif status != "completed":
+        raise RuntimeError(
+            "Startup committer could not run to completion: "
+            f"{dispatch.get('message') or dispatch}"
+        )
+
+    remaining_dirty = _dirty_repositories(dirty)
+    if remaining_dirty:
+        listed = ", ".join(remaining_dirty)
+        raise RuntimeError(
+            "Startup clean-worktree enforcement failed; repositories are still dirty: "
+            f"{listed}"
+        )
+
+    return {"enforced": True, "repositories": dirty, "dispatch": dispatch}
+
+
 def _record_file_change(
     tool_name: str, result: Any, args: dict[str, Any] | None
 ) -> dict[str, Any] | None:

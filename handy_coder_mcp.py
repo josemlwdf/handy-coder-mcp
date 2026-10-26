@@ -184,6 +184,22 @@ def main() -> None:
     _sort_registered_tools(mcp)
     _assert_tool_argument_types_known(mcp)
 
+    try:
+        enforcement = subagent_tools.enforce_clean_worktree_on_startup()
+    except RuntimeError as exc:
+        print(
+            f"[handy-coder-mcp] Startup blocked by clean-worktree enforcement: {exc}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    if enforcement.get("enforced"):
+        repositories = ", ".join(enforcement.get("repositories", [])) or "."
+        print(
+            "[handy-coder-mcp] Startup committer cleaned repositories before serving: "
+            f"{repositories}",
+            file=sys.stderr,
+        )
+
     worker_supervisor.supervise_fastmcp_tools(mcp)
     error_handler.install(mcp)
     mcp.run(transport="stdio")
