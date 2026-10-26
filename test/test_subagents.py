@@ -206,6 +206,9 @@ class SubagentToolTests(unittest.TestCase):
             self.assertIn("untracked listed paths", task)
             self.assertIn("Skip a summary if its change is absent", task)
             self.assertIn("leave that file unstaged", task)
+            self.assertIn("specific commit message from the staged diff", task)
+            self.assertIn("name the coherent change group(s)", task)
+            self.assertIn("Do not use a generic message", task)
 
             later = subagent_tools.after_tool_call(
                 "create_file",

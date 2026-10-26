@@ -246,6 +246,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
 
     def test_add_action_stages_files_and_validates_args(self):
         (self.root / "new.txt").write_text("n\n", encoding="utf-8")
+        (self.root / "untouched.txt").write_text("leave unstaged\n", encoding="utf-8")
         result = git_manage.git_manage("add", args=["new.txt"])
         self.assertEqual(result["exit_code"], 0)
         status = subprocess.run(
@@ -253,10 +254,29 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
             capture_output=True, text=True,
         ).stdout
         self.assertIn("A  new.txt", status)
-        for bad in ([], ["--force", "new.txt"]):
+        self.assertIn("?? untouched.txt", status)
+        for bad in ([], ["--force", "new.txt"], ["all", "new.txt"]):
             with self.subTest(args=bad):
                 with self.assertRaises(ValueError):
                     git_manage.git_manage("add", args=bad)
+
+    def test_add_all_stages_tracked_untracked_and_deleted_changes(self):
+        deleted = self.root / "deleted.txt"
+        deleted.write_text("to delete\n", encoding="utf-8")
+        self._git("add", "deleted.txt")
+        self._git("commit", "--quiet", "-m", "add deletable file")
+        deleted.unlink()
+        self.tracked.write_text("updated\n", encoding="utf-8")
+        (self.root / "new.txt").write_text("new\n", encoding="utf-8")
+        result = git_manage.git_manage("add", args=["all"])
+        self.assertEqual(result["exit_code"], 0, result)
+        status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=self.root, check=True,
+            capture_output=True, text=True,
+        ).stdout
+        self.assertIn("M  tracked.txt", status)
+        self.assertIn("A  new.txt", status)
+        self.assertIn("D  deleted.txt", status)
 
     def test_add_path_escape_returns_structured_error_and_stages_nothing(self):
         # self.parent is the managed temp dir, so tearDown removes this file.

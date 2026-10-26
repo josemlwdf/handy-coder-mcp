@@ -154,7 +154,7 @@ def _tool_description() -> str:
             "they want a new repository initialized before calling git_manage with action='init'."
         )
     return describe(
-        "Run a validated workspace Git action: status, diff, log, add, commit, push, pull, merge, rebase, checkout, branch, stash, blame, or init. Successful init creates test/ and tmp/ and maintains the repository .gitignore; add updates .gitignore before staging. These updates preserve existing content, add .handy-coder/ and tmp/, and ignore generated directories from the common exclusion list when present. status returns structured staged/working-tree and untracked summaries; diff preserves raw text and accepts mode unstaged/staged/both plus repository-relative file_paths; log includes recent commit history. pull accepts an optional remote and branch; merge/rebase require one or more refs. These three actions require a clean worktree (including untracked files). "
+        "Run a validated workspace Git action: status, diff, log, add, commit, push, pull, merge, rebase, checkout, branch, stash, blame, or init. For add, pass one or more repository-relative paths to stage those paths, or args=['all'] to stage every change. Successful init creates test/ and tmp/ and maintains the repository .gitignore; add updates .gitignore before staging. These updates preserve existing content, add .handy-coder/ and tmp/, and ignore generated directories from the common exclusion list when present. status returns structured staged/working-tree and untracked summaries; diff preserves raw text and accepts mode unstaged/staged/both plus repository-relative file_paths; log includes recent commit history. pull accepts an optional remote and branch; merge/rebase require one or more refs. These three actions require a clean worktree (including untracked files). "
         "Pass action-specific Git options as separate strings in args. "
         f"{state} Use workspace-relative repo_path when selecting a repository. "
         "When repo_path is given and has a .git marker, workspace scan is bypassed for faster execution. "
@@ -234,7 +234,7 @@ def git_manage(
         Literal["status", "diff", "log", "add", "commit", "push", "pull", "merge", "rebase", "checkout", "branch", "stash", "blame", "init"],
         Field(description=(
             "Git operation to run. status and init take no args; diff accepts mode unstaged/staged/both and optional file_paths; diff and log accept "
-            "validated options; add requires one or more workspace-relative paths (options are rejected); commit requires -m and a message; push accepts optional remote/refspec arguments with limited flags; branch lists/creates, stash accepts list/push/pop/apply/drop, blame requires one relative file; checkout requires "
+            "validated options; add accepts one or more workspace-relative paths or the single argument 'all' to stage every change (options are rejected); commit requires -m and a message; push accepts optional remote/refspec arguments with limited flags; branch lists/creates, stash accepts list/push/pop/apply/drop, blame requires one relative file; checkout requires "
             "exactly one branch, tag, or commit (file paths are rejected with error_code not_a_ref); pull accepts up to remote and branch; merge/rebase require refs. pull, merge, and rebase require a clean worktree. init initializes the workspace root or a repo_path subdirectory, then creates test/ and tmp/ and maintains .gitignore. add maintains .gitignore before staging."
         )),
     ],
@@ -245,7 +245,7 @@ def git_manage(
             "Use no arguments for status or init. diff supports --cached, --stat, "
             "--name-only, and workspace-relative paths after --; log supports -n, --oneline, "
             "--decorate, --all, --, and a count. commit requires ['-m', 'message'] "
-            "and optionally accepts -a; add takes one or more workspace-relative paths; push supports -u/--set-upstream, --force-with-lease, --tags, --dry-run plus optional <remote> <refspec>; checkout takes exactly one branch or ref. branch takes --list or one branch name; stash takes list/push/pop/apply/drop; blame takes one workspace-relative file path."
+            "and optionally accepts -a; add takes one or more workspace-relative paths or exactly ['all'] to stage every change; push supports -u/--set-upstream, --force-with-lease, --tags, --dry-run plus optional <remote> <refspec>; checkout takes exactly one branch or ref. branch takes --list or one branch name; stash takes list/push/pop/apply/drop; blame takes one workspace-relative file path."
         )),
     ] = None,
     repo_path: Annotated[
@@ -306,8 +306,15 @@ def git_manage(
             arg.startswith("-") for arg in args[message_index + 2:]
         ):
             raise ValueError("Only -a and -m commit options are accepted")
-    if action == "add" and (not args or any(arg.startswith("-") and arg != "--" for arg in args)):
-        raise ValueError("add requires one or more workspace-relative paths and accepts no options")
+    add_all = action == "add" and args == ["all"]
+    if action == "add" and (
+        not args
+        or any(arg.startswith("-") for arg in args)
+        or ("all" in args and not add_all)
+    ):
+        raise ValueError(
+            "add requires one or more workspace-relative paths or exactly ['all'] to stage every change; options are not accepted"
+        )
     if action == "push":
         allowed_push_flags = {"-u", "--set-upstream", "--force-with-lease", "--tags", "--dry-run"}
         positional = [arg for arg in args if not arg.startswith("-")]
@@ -495,6 +502,8 @@ def git_manage(
     # Resolve file operands explicitly from the selected repository. This avoids
     # Git's cwd-dependent interpretation changing when repo_path is supplied.
     git_args = list(args)
+    if add_all:
+        git_args = ["--all"]
     if action == "log":
         # Rewrite the -<N> shorthand (e.g. -3) to ['-n', '3']; anything after '--' is a path.
         sep = git_args.index("--") if "--" in git_args else len(git_args)
@@ -513,7 +522,7 @@ def git_manage(
             separator = git_args.index("--") if "--" in git_args else len(git_args)
             git_args = git_args[:separator] + ["--", *(git_args[separator + 1:] if separator < len(git_args) else []), *file_paths]
     path_indexes = []
-    if action == "add":
+    if action == "add" and not add_all:
         path_indexes = list(range(len(git_args)))
     elif action == "diff" and "--" in git_args:
         separator = git_args.index("--")
@@ -571,4 +580,3 @@ def register(mcp):
         _DISCOVERY_ERRORS = ()
         _DISCOVERY_ROOT = None
     return mcp.tool(description=_tool_description())(git_manage)
-

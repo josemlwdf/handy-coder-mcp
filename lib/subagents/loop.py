@@ -1,3 +1,5 @@
+"""Module documentation."""
+
 from __future__ import annotations
 
 import json
@@ -8,7 +10,15 @@ from typing import TYPE_CHECKING, Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from ..core import apply_edits, code_search, create_file, diagnostics, find_files, read_files, run_tests
+from ..core import (
+    apply_edits,
+    code_search,
+    create_file,
+    diagnostics,
+    find_files,
+    read_files,
+    run_tests,
+)
 from ..core import git_manage
 from .roles import Role
 
@@ -34,12 +44,13 @@ _ALLOWED_TOOLS: dict[str, ToolFn] = {
 
 
 def _call_subagent_tool(name: str, args: dict[str, Any]) -> dict:
+    """Call subagent tool function."""
     from . import tools
 
     return getattr(tools, name)(**args)
 
 
-_TOOL_ARGUMENTS = {
+_TOOL_ARGUMENTS: dict = {
     "read_files": '{"paths": ["workspace-relative path"], "line_ranges"?: [{"path": "...", "start_line": 1, "end_line": 20}], "start_line"?: 1, "end_line"?: 20, "encoding"?: "utf-8", "include_metadata"?: false}',
     "search_text": '{"query": "text or regex", "is_regex"?: true, "path_glob"?: "...", "max_results"?: 100, "context_lines"?: 0, "include_generated"?: false, "case_insensitive"?: false, "extensions"?: [".py"]}',
     "find_files": '{"glob_pattern": "**/*.py", "exclude_pattern"?: "...", "include_generated"?: false, "file_type"?: ".py", "min_size"?: 0, "max_size"?: 10000, "sort_by"?: "path|size|modified", "include_metadata"?: false}',
@@ -47,20 +58,23 @@ _TOOL_ARGUMENTS = {
     "apply_edits": '{"edits": [{"path": "...", "pattern": "Python regex", "replacement": "text", "position"?: {"line": 1, "col": 1}}], "summary": "one-line summary of the change", "replace_all"?: false, "max_replacements"?: 1, "case_insensitive"?: false, "dry_run"?: false, "expand_groups"?: false}',
     "code_get_diagnostics": '{"path"?: "...", "check"?: "ruff", "timeout_ms"?: 30000}',
     "run_tests": '{"test_framework"?: "jest|pytest|vitest", "filter_path"?: "test/test_file.py", "fail_fast"?: false, "parallel"?: 1, "coverage"?: false, "verbose"?: false}',
-    "git_manage": 'Use workspace-relative repo_path. Examples: {"action":"add","args":["task-owned.txt"],"repo_path":"."}; {"action":"commit","args":["-m","message"],"repo_path":"."}. For status use {"action":"status","repo_path":"."}.',
+    "git_manage": 'Use workspace-relative repo_path. Examples: {"action":"add","args":["task-owned.txt"],"repo_path":"."} stages that path; {"action":"add","args":["all"],"repo_path":"."} stages every change. For commits, use a specific message accurately describing every matched change group in the staged diff. Example: {"action":"commit","args":["-m","message"],"repo_path":"."}. For status use {"action":"status","repo_path":"."}.',
     "subagent_status": '{"task_id": "t_1"}',
     "subagent_result": '{"task_id": "t_1", "offset"?: 0}',
 }
 
 _JSON_BLOCK = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
-_FUNCTION_CALL_BLOCK = re.compile(r"<function_calls>\s*(.*?)\s*</function_calls>", re.DOTALL | re.IGNORECASE)
+_FUNCTION_CALL_BLOCK = re.compile(
+    r"<function_calls>\s*(.*?)\s*</function_calls>", re.DOTALL | re.IGNORECASE
+)
 
 
 def _strip_text(value: Any) -> str:
+    """Strip text function."""
     if isinstance(value, str):
         return value
     if isinstance(value, list):
-        out = []
+        out: list = []
         for item in value:
             if isinstance(item, dict):
                 if isinstance(item.get("text"), str):
@@ -76,6 +90,7 @@ def _strip_text(value: Any) -> str:
 
 
 def _parse_json_action(text: str) -> dict[str, Any]:
+    """Parse json action function."""
     raw = (text or "").strip()
     if not raw:
         raise ValueError("model returned an empty response")
@@ -121,10 +136,13 @@ def _parse_json_action(text: str) -> dict[str, Any]:
     if isinstance(tool, str) and isinstance(args, dict):
         return {"kind": "tools", "calls": [{"tool": tool.strip(), "args": args}]}
 
-    raise ValueError("model JSON must include either string key 'final' or 'tool' + object 'args'")
+    raise ValueError(
+        "model JSON must include either string key 'final' or 'tool' + object 'args'"
+    )
 
 
 def _json_preview(payload: Any, limit: int = 5000) -> str:
+    """Json preview function."""
     try:
         text = json.dumps(payload, ensure_ascii=False)
     except ValueError:
@@ -135,6 +153,7 @@ def _json_preview(payload: Any, limit: int = 5000) -> str:
 
 
 def _redact(text: Any, secrets: Any = ()) -> str:
+    """Redact function."""
     out = str(text)
     for secret in secrets:
         if isinstance(secret, str) and len(secret) >= 4:
@@ -142,9 +161,16 @@ def _redact(text: Any, secrets: Any = ()) -> str:
     return out
 
 
-def _post_json(url: str, payload: dict[str, Any], headers: dict[str, str], timeout: float = 35.0, secrets: Any = ()) -> dict[str, Any]:
+def _post_json(
+    url: str,
+    payload: dict[str, Any],
+    headers: dict[str, str],
+    timeout: float = 35.0,
+    secrets: Any = (),
+) -> dict[str, Any]:
+    """Post json function."""
     body = json.dumps(payload).encode("utf-8")
-    hidden = [*secrets, *headers.values()]
+    hidden: list = [*secrets, *headers.values()]
     req = Request(url, data=body, method="POST")
     for key, value in headers.items():
         req.add_header(key, value)
@@ -154,9 +180,13 @@ def _post_json(url: str, payload: dict[str, Any], headers: dict[str, str], timeo
             text = resp.read().decode("utf-8", "replace")
     except HTTPError as exc:
         details = exc.read().decode("utf-8", "replace") if hasattr(exc, "read") else ""
-        raise RuntimeError(_redact(f"HTTP {exc.code} from backend: {details[:300]}", hidden)) from None
+        raise RuntimeError(
+            _redact(f"HTTP {exc.code} from backend: {details[:300]}", hidden)
+        ) from None
     except URLError as exc:
-        raise RuntimeError(_redact(f"Backend connection failed: {exc}", hidden)) from None
+        raise RuntimeError(
+            _redact(f"Backend connection failed: {exc}", hidden)
+        ) from None
 
     try:
         return json.loads(text)
@@ -177,16 +207,29 @@ CONTINUE_OPENAI_COMPATIBLE_BASES: dict[str, str] = {
 
 
 def continue_provider_supported(provider: str) -> bool:
+    """Continue provider supported function."""
     return provider in CONTINUE_OPENAI_COMPATIBLE_BASES or provider == "anthropic"
 
 
 def _has_header(headers: dict[str, str], name: str) -> bool:
+    """Has header function."""
     return any(key.lower() == name for key in headers)
 
 
-def _complete_openai_compatible(base_url: str, model: str, api_key: str | None, system_prompt: str, messages: list[dict[str, str]], max_tokens: int, *, headers: dict[str, str] | None = None, timeout: float | None = None) -> str:
+def _complete_openai_compatible(
+    base_url: str,
+    model: str,
+    api_key: str | None,
+    system_prompt: str,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout: float | None = None,
+) -> str:
+    """Complete openai compatible function."""
     prompt_messages = [{"role": "system", "content": system_prompt}] + messages
-    payload = {
+    payload: dict = {
         "model": model,
         "messages": prompt_messages,
         "temperature": 0,
@@ -211,20 +254,37 @@ def _complete_openai_compatible(base_url: str, model: str, api_key: str | None, 
 
 
 def _anthropic_url(base_url: str | None) -> str:
+    """Anthropic url function."""
     if not base_url:
         return "https://api.anthropic.com/v1/messages"
     base = base_url.rstrip("/")
     return base + ("/messages" if base.endswith("/v1") else "/v1/messages")
 
 
-def _complete_anthropic(api_key: str, system_prompt: str, messages: list[dict[str, str]], max_tokens: int, *, model: str | None = None, base_url: str | None = None, headers: dict[str, str] | None = None, timeout: float | None = None) -> str:
-    payload = {
-        "model": model or os.environ.get("SUBAGENT_MODEL_ANTHROPIC", "claude-3-5-haiku-latest"),
+def _complete_anthropic(
+    api_key: str,
+    system_prompt: str,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+    *,
+    model: str | None = None,
+    base_url: str | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float | None = None,
+) -> str:
+    """Complete anthropic function."""
+    payload: dict = {
+        "model": model
+        or os.environ.get("SUBAGENT_MODEL_ANTHROPIC", "claude-3-5-haiku-latest"),
         "max_tokens": max_tokens,
         "system": system_prompt,
         "messages": messages,
     }
-    merged = {k: v for k, v in (headers or {}).items() if k.lower() not in {"authorization", "x-api-key"}}
+    merged: dict = {
+        k: v
+        for k, v in (headers or {}).items()
+        if k.lower() not in {"authorization", "x-api-key"}
+    }
     merged["x-api-key"] = api_key
     merged["anthropic-version"] = "2023-06-01"
     data = _post_json(
@@ -238,6 +298,7 @@ def _complete_anthropic(api_key: str, system_prompt: str, messages: list[dict[st
 
 
 def _continue_base_url(provider: str, api_base: str | None) -> str:
+    """Continue base url function."""
     if not api_base:
         return CONTINUE_OPENAI_COMPATIBLE_BASES[provider]
     base = api_base.rstrip("/")
@@ -246,13 +307,18 @@ def _continue_base_url(provider: str, api_base: str | None) -> str:
     return base
 
 
-def _default_sampling(system_prompt: str, messages: list[dict[str, str]], max_tokens: int) -> str:
+def _default_sampling(
+    system_prompt: str, messages: list[dict[str, str]], max_tokens: int
+) -> str:
+    """Default sampling function."""
     url = os.environ.get("SUBAGENT_SAMPLING_URL", "").strip()
     if not url:
         raise RuntimeError("sampling backend is unavailable in this runtime")
     model = os.environ.get("SUBAGENT_SAMPLING_MODEL", "sampling-default")
     key = os.environ.get("SUBAGENT_SAMPLING_API_KEY", "").strip() or None
-    return _complete_openai_compatible(url, model, key, system_prompt, messages, max_tokens)
+    return _complete_openai_compatible(
+        url, model, key, system_prompt, messages, max_tokens
+    )
 
 
 def complete_once(
@@ -266,13 +332,19 @@ def complete_once(
     sampling_fn: SamplingFn | None = None,
     continue_model: "ContinueModel | None" = None,
 ) -> str:
+    """Complete once function."""
+    ordered_tools = sorted(role.allowed_tools)
     system_prompt = "\n".join(
         [
             f"You are the '{role.name}' subagent.",
             role.system_prompt,
-            f"Allowed tools: {', '.join(role.allowed_tools)}",
+            f"Allowed tools: {', '.join(ordered_tools)}",
             "Tool argument shapes (optional fields may be omitted):\n"
-            + "\n".join(f"{name}: {_TOOL_ARGUMENTS[name]}" for name in role.allowed_tools if name in _TOOL_ARGUMENTS),
+            + "\n".join(
+                f"{name}: {_TOOL_ARGUMENTS[name]}"
+                for name in ordered_tools
+                if name in _TOOL_ARGUMENTS
+            ),
             "Return only JSON with one of these shapes:",
             '{"tool": "<tool_name>", "args": { ... }}',
             '{"final": "<final result text>"}',
@@ -282,7 +354,7 @@ def complete_once(
         ]
     )
     if not history:
-        goal = [f"Task: {task}"]
+        goal: list = [f"Task: {task}"]
         if context:
             goal.append(f"Context: {context}")
         if deliverable:
@@ -297,7 +369,9 @@ def complete_once(
 
     if backend == "local:ollama":
         model = os.environ.get("SUBAGENT_MODEL_LOCAL", "llama3.1")
-        return _complete_openai_compatible("http://127.0.0.1:11434/v1", model, None, system_prompt, history, max_tokens)
+        return _complete_openai_compatible(
+            "http://127.0.0.1:11434/v1", model, None, system_prompt, history, max_tokens
+        )
 
     if backend.startswith("direct:"):
         provider = backend.split(":", 1)[1]
@@ -306,7 +380,14 @@ def complete_once(
             if not key:
                 raise RuntimeError("OPENAI_API_KEY is not set")
             model = os.environ.get("SUBAGENT_MODEL_OPENAI", "gpt-4o-mini")
-            return _complete_openai_compatible("https://api.openai.com/v1", model, key, system_prompt, history, max_tokens)
+            return _complete_openai_compatible(
+                "https://api.openai.com/v1",
+                model,
+                key,
+                system_prompt,
+                history,
+                max_tokens,
+            )
         if provider == "anthropic":
             key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
             if not key:
@@ -347,6 +428,8 @@ def complete_once(
 
 
 class SubagentCancelled(RuntimeError):
+    """SubagentCancelled class."""
+
     pass
 
 
@@ -362,9 +445,11 @@ def _call_tool(
     *,
     tool_name: str | None = None,
 ) -> dict:
+    """Call tool function."""
     box: dict[str, Any] = {}
 
     def target() -> None:
+        """Target function."""
         try:
             result = fn(**args)
         except Exception as exc:  # noqa: BLE001
@@ -381,6 +466,7 @@ def _call_tool(
 
 
 def _check_cancel(cancel_event: Any) -> None:
+    """Check cancel function."""
     if cancel_event is not None and cancel_event.is_set():
         raise SubagentCancelled("cancelled")
 
@@ -397,9 +483,10 @@ def run_loop(
     cancel_event: Any = None,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> tuple[str, int, int]:
+    """Run loop function."""
     history: list[dict[str, str]] = []
-    tool_calls = 0
-    token_estimate = 0
+    tool_calls: int = 0
+    token_estimate: int = 0
 
     for turn in range(1, role.max_turns + 1):
         _check_cancel(cancel_event)

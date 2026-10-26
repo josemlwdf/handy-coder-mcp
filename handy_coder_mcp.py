@@ -62,10 +62,20 @@ from lib.core import code_navigator  # noqa: E402
 from lib.core import web_search_tool  # noqa: E402
 from lib.core import html_syntax_check  # noqa: E402
 from lib.extras import (  # noqa: E402
-    code_format_lint,
     web_fetch,
 )
 from lib.subagents import tools as subagent_tools  # noqa: E402
+
+
+def _sort_registered_tools(mcp) -> None:
+    """Reorder registered runtime tools alphabetically by tool name."""
+    manager = getattr(mcp, "_tool_manager", None)
+    tools = getattr(manager, "_tools", None)
+    if not isinstance(tools, dict) or len(tools) < 2:
+        return
+    ordered = sorted(tools.items(), key=lambda item: item[0])
+    tools.clear()
+    tools.update(ordered)
 
 
 def _assert_tool_argument_types_known(mcp) -> None:
@@ -161,7 +171,6 @@ def main() -> None:
         git_manage,
         build_project,
         html_syntax_check,
-        code_format_lint,
         web_fetch,
         web_search_tool,
         system_info,
@@ -172,6 +181,7 @@ def main() -> None:
         code_navigator,
     ):
         module.register(mcp)
+    _sort_registered_tools(mcp)
     _assert_tool_argument_types_known(mcp)
 
     worker_supervisor.supervise_fastmcp_tools(mcp)

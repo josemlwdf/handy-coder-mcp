@@ -15,7 +15,7 @@ Descriptions in the MCP tool list are brief. Call `get_tool_details` with a regi
 - `code_get_diagnostics`
 - `run_tests`
 - `build_project` — detects and builds Python, Node, or .NET projects with structured diagnostics.
-- `git_manage` — successful `init` creates `test/` and `tmp/` and maintains `.gitignore`; `add` updates `.gitignore` before staging.
+- `git_manage` — successful `init` creates `test/` and `tmp/` and maintains `.gitignore`; `add` updates `.gitignore` before staging and accepts specific paths or `args: ["all"]` to stage every change.
 - `web_search` — searches the public web with DuckDuckGo Lite.
 - `index_codebase` — incrementally indexes workspace C# files in `.handy-coder/code_index.sqlite3`.
 - `code_navigator` — searches indexed symbols, returns current symbol source, or finds likely syntactic usages.
@@ -27,7 +27,6 @@ Descriptions in the MCP tool list are brief. Call `get_tool_details` with a regi
 
 ## Registered tools with optional runtime requirements
 
-- `code_format_lint` — uses available local formatter and linter tools; capabilities vary with installed binaries.
 - `web_fetch_docs` — fetches text from public HTTP(S) documentation pages.
 
 ## Subagent tools

@@ -89,12 +89,6 @@ The Python modules for these Tier 1 tools are in `lib/core`; optional Tier 2 too
 
 The Python server registers local/configurable tools without requiring external services at startup. `mcp_gateway_integration` is intentionally excluded. See the README for configuration and security boundaries.
 
-### 11. `lint_and_format`
-
-* **MCP Tool Name:** `code_format_lint`
-* **Input Schema:** `{ paths: string[], fix?: boolean }`
-* **Implementation:** Runs ESLint, Ruff, or Black via shell call and uses the optional Python jsbeautifier package for JavaScript formatting; returns lint errors or formatted diffs.
-
 ### 10. `web_fetch_docs`
 
 * **MCP Tool Name:** `web_fetch_docs`

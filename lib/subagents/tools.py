@@ -1,3 +1,5 @@
+"""Module documentation."""
+
 from __future__ import annotations
 
 import hashlib
@@ -16,35 +18,42 @@ from .resolve import resolve_backend, resolve_continue, resolve_continue_models
 from .roles import Role, get_role, role_names
 
 
-_AUTO_COMMIT_THRESHOLD = 5
+_AUTO_COMMIT_THRESHOLD: int = 5
 _CHANGE_SUMMARIES_LOCK = threading.Lock()
 _PENDING_CHANGE_SUMMARIES: list[dict[str, Any]] = []
 
 _MANAGER = SubagentManager()
-_BACKEND = "cooperative"
+_BACKEND: str = "cooperative"
 _CLIENT_CAPABILITIES: dict[str, Any] | None = None
-_SAMPLING_CALLBACK = None
+_SAMPLING_CALLBACK: None = None
 _THREADS: dict[str, threading.Thread] = {}
 _CANCEL_EVENTS: dict[str, threading.Event] = {}
 # Cooperative frames (delegated_to_host) open only for an explicit
 # SUBAGENT_BACKEND=cooperative. When no backend resolves, subagent_run returns
 # status "unavailable" and opens no frame and creates no task.
-_COOP_EXPLICIT = False
+_COOP_EXPLICIT: bool = False
 
 
-def configure_runtime(*, client_capabilities: dict[str, Any] | None = None, sampling_callback=None) -> None:
+def configure_runtime(
+    *, client_capabilities: dict[str, Any] | None = None, sampling_callback=None
+) -> None:
+    """Configure runtime function."""
     global _BACKEND, _CLIENT_CAPABILITIES, _SAMPLING_CALLBACK, _COOP_EXPLICIT
     _CLIENT_CAPABILITIES = client_capabilities
     _SAMPLING_CALLBACK = sampling_callback
     _BACKEND = resolve_backend(client_capabilities)
-    _COOP_EXPLICIT = os.environ.get("SUBAGENT_BACKEND", "").strip().lower() == "cooperative"
+    _COOP_EXPLICIT = (
+        os.environ.get("SUBAGENT_BACKEND", "").strip().lower() == "cooperative"
+    )
 
 
 def _backend() -> str:
+    """Backend function."""
     return _BACKEND or "cooperative"
 
 
 def _changed_files(tool_name: str, result: Any, args: dict[str, Any]) -> list[str]:
+    """Changed files function."""
     if not isinstance(result, dict) or result.get("error_code"):
         return []
     if tool_name == "create_file":
@@ -56,15 +65,16 @@ def _changed_files(tool_name: str, result: Any, args: dict[str, Any]) -> list[st
         if args.get("dry_run") or not isinstance(result.get("written_files"), list):
             return []
         return [
-            path for path in result["written_files"]
-            if isinstance(path, str) and path
+            path for path in result["written_files"] if isinstance(path, str) and path
         ]
     return []
 
 
 def _commit_task(batch: list[dict[str, Any]]) -> dict[str, Any]:
+    """Commit task function."""
     entries = "\n".join(
-        "- " + json.dumps(
+        "- "
+        + json.dumps(
             {"summary": entry["summary"], "paths": entry["paths"]},
             ensure_ascii=True,
         )
@@ -82,8 +92,11 @@ def _commit_task(batch: list[dict[str, Any]]) -> dict[str, Any]:
         "excluded. "
         "Stage only the matched listed paths. Do not make new file edits or add .gitignore rules; "
         "stage .gitignore only if an explicitly listed summary matches its existing diff. Do not "
-        "include unrelated changes, push, or commit if nothing matches. Report skipped summaries and the commit "
-        "hash/message, or explicitly report that no commit was made.\n\n"
+        "include unrelated changes, push, or commit if nothing matches. Write a specific commit "
+        "message from the staged diff and matching summaries: name the coherent change group(s) "
+        "actually included, and use a concise body to distinguish multiple groups when needed. "
+        "Do not use a generic message or describe changes that are not staged. Report skipped "
+        "summaries and the commit hash/message, or explicitly report that no commit was made.\n\n"
         f"Recorded changes:\n{entries}"
     )
     try:
@@ -102,7 +115,10 @@ def _commit_task(batch: list[dict[str, Any]]) -> dict[str, Any]:
         }
 
 
-def _record_file_change(tool_name: str, result: Any, args: dict[str, Any] | None) -> dict[str, Any] | None:
+def _record_file_change(
+    tool_name: str, result: Any, args: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Record file change function."""
     if not isinstance(args, dict):
         return None
     summary = args.get("summary")
@@ -112,8 +128,8 @@ def _record_file_change(tool_name: str, result: Any, args: dict[str, Any] | None
     if not paths:
         return None
 
-    entry = {"summary": summary.strip(), "paths": list(dict.fromkeys(paths))}
-    batch = None
+    entry: dict = {"summary": summary.strip(), "paths": list(dict.fromkeys(paths))}
+    batch: None = None
     with _CHANGE_SUMMARIES_LOCK:
         _PENDING_CHANGE_SUMMARIES.append(entry)
         if len(_PENDING_CHANGE_SUMMARIES) >= _AUTO_COMMIT_THRESHOLD:
@@ -126,18 +142,23 @@ def _record_file_change(tool_name: str, result: Any, args: dict[str, Any] | None
 
 
 def _available_roles_text() -> str:
+    """Available roles text function."""
     return ", ".join(role_names())
 
 
-def _instructions(role_name: str, task: str, context: str | None, deliverable: str | None) -> str:
+def _instructions(
+    role_name: str, task: str, context: str | None, deliverable: str | None
+) -> str:
+    """Instructions function."""
     role = get_role(role_name)
     if role is None:
         raise ValueError(f"Unknown role: {role_name}")
-    parts = [
+    ordered_tools = sorted(role.allowed_tools)
+    parts: list = [
         f"You are now acting as subagent role '{role.name}'.",
         role.system_prompt,
         f"Goal: {task}",
-        f"Allowed tools: {', '.join(role.allowed_tools)}",
+        f"Allowed tools: {', '.join(ordered_tools)}",
         f"Tool-call budget: {role.max_tool_calls}",
         f"Expected result format: {role.result_format}",
     ]
@@ -151,6 +172,7 @@ def _instructions(role_name: str, task: str, context: str | None, deliverable: s
 
 
 def _wait_seconds() -> float:
+    """Wait seconds function."""
     raw = (os.environ.get("SUBAGENT_WAIT_SECONDS") or "15").strip()
     try:
         return max(0.5, min(float(raw), 240.0))
@@ -158,17 +180,23 @@ def _wait_seconds() -> float:
         return 15.0
 
 
-def _loop_runner(task_id: str, role_obj: Role, selected_continue_model=None) -> None:
+def _loop_runner(
+    task_id: str, role_obj: Role, selected_continue_model: None = None
+) -> None:
+    """Loop runner function."""
     secrets: list[str] = []
     try:
         task_obj = _MANAGER.start_task(task_id)
-        continue_model = None
+        continue_model: None = None
         if task_obj.backend.startswith("continue:"):
             resolved = selected_continue_model or resolve_continue()
             if resolved is None:
                 raise RuntimeError("continue backend is no longer available")
             continue_model = resolved.model
-            secrets = [continue_model.api_key or "", *continue_model.headers.values()]
+            secrets: list = [
+                continue_model.api_key or "",
+                *continue_model.headers.values(),
+            ]
         result, turns, tokens = loop.run_loop(
             task_obj.backend,
             role_obj,
@@ -178,7 +206,9 @@ def _loop_runner(task_id: str, role_obj: Role, selected_continue_model=None) -> 
             sampling_fn=_SAMPLING_CALLBACK,
             continue_model=continue_model,
             cancel_event=_CANCEL_EVENTS.get(task_id),
-            on_progress=lambda turns, tokens: _MANAGER.update_progress(task_id, turns, tokens),
+            on_progress=lambda turns, tokens: _MANAGER.update_progress(
+                task_id, turns, tokens
+            ),
         )
         invalid = role_obj.validator(result)
         if invalid:
@@ -193,14 +223,21 @@ def _loop_runner(task_id: str, role_obj: Role, selected_continue_model=None) -> 
         _CANCEL_EVENTS.pop(task_id, None)
 
 
-def _launch_loop(task_id: str, role_obj: Role, continue_model=None) -> None:
+def _launch_loop(task_id: str, role_obj: Role, continue_model: None = None) -> None:
+    """Launch loop function."""
     _CANCEL_EVENTS[task_id] = threading.Event()
-    thread = threading.Thread(target=_loop_runner, args=(task_id, role_obj, continue_model), daemon=True, name=f"subagent-{task_id}")
+    thread = threading.Thread(
+        target=_loop_runner,
+        args=(task_id, role_obj, continue_model),
+        daemon=True,
+        name=f"subagent-{task_id}",
+    )
     _THREADS[task_id] = thread
     thread.start()
 
 
 def _terminal_payload(task_id: str) -> dict:
+    """Terminal payload function."""
     task_obj = _MANAGER.get_task(task_id)
     if task_obj.state == "done":
         return {
@@ -229,24 +266,61 @@ def _terminal_payload(task_id: str) -> dict:
 
 
 def subagent_run(
-    role: Annotated[str, Field(description="Registered subagent role name, e.g. generalist, coder, explorer, reviewer, planner.")],
-    task: Annotated[str, Field(description="Task for the subagent to perform in isolation from the parent flow.")],
-    context: Annotated[str | None, Field(description="Optional context to pass to the subagent, such as branch, files, or constraints.")] = None,
-    deliverable: Annotated[str | None, Field(description="Optional explicit deliverable format for the subagent result.")] = None,
-    model: Annotated[str | None, Field(description="Optional Continue model name or model identifier. Available choices are listed by get_capabilities under subagents.continue.models. An explicit choice routes this task through that model's direct API provider.")] = None,
-    wait: Annotated[bool, Field(description="When true (default), wait for completion when the backend can finish quickly. Without a usable backend the result is status unavailable; explicit cooperative mode delegates to the host.")] = True,
+    role: Annotated[
+        str,
+        Field(
+            description="Registered subagent role name, e.g. generalist, coder, explorer, reviewer, planner."
+        ),
+    ],
+    task: Annotated[
+        str,
+        Field(
+            description="Task for the subagent to perform in isolation from the parent flow."
+        ),
+    ],
+    context: Annotated[
+        str | None,
+        Field(
+            description="Optional context to pass to the subagent, such as branch, files, or constraints."
+        ),
+    ] = None,
+    deliverable: Annotated[
+        str | None,
+        Field(
+            description="Optional explicit deliverable format for the subagent result."
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        Field(
+            description="Optional Continue model name or model identifier. Available choices are listed by get_capabilities under subagents.continue.models. An explicit choice routes this task through that model's direct API provider."
+        ),
+    ] = None,
+    wait: Annotated[
+        bool,
+        Field(
+            description="When true (default), wait for completion when the backend can finish quickly. Without a usable backend the result is status unavailable; explicit cooperative mode delegates to the host."
+        ),
+    ] = True,
 ) -> dict:
-    selected_continue_model = None
+    """Subagent run function."""
+    selected_continue_model: None = None
     if model is not None:
         choices = resolve_continue_models()
         wanted = model.strip().lower()
-        named = [item for item in choices if item.model.name.lower() == wanted]
-        matches = named or [item for item in choices if item.model.model.lower() == wanted]
+        named: list = [item for item in choices if item.model.name.lower() == wanted]
+        matches = named or [
+            item for item in choices if item.model.model.lower() == wanted
+        ]
         if not wanted or not matches:
             available = ", ".join(item.model.name for item in choices) or "none"
-            raise ValueError(f"Unknown or unavailable Continue model '{model}'. Available model names: {available}.")
+            raise ValueError(
+                f"Unknown or unavailable Continue model '{model}'. Available model names: {available}."
+            )
         if len(matches) > 1:
-            raise ValueError(f"Continue model '{model}' is ambiguous; select its unique configured name.")
+            raise ValueError(
+                f"Continue model '{model}' is ambiguous; select its unique configured name."
+            )
         selected_continue_model = matches[0]
 
     selected_backend = (
@@ -260,7 +334,9 @@ def subagent_run(
             selected_backend = f"continue:{selected_continue_model.model.provider}"
     role_obj = get_role(role)
     if role_obj is None:
-        raise ValueError(f"Unknown role '{role}'. Available roles: {_available_roles_text()}")
+        raise ValueError(
+            f"Unknown role '{role}'. Available roles: {_available_roles_text()}"
+        )
 
     if selected_backend == "cooperative" and not _COOP_EXPLICIT:
         return {
@@ -268,8 +344,14 @@ def subagent_run(
             "backend": "cooperative",
             "message": "No subagent LLM available; continue the task yourself in this conversation.",
         }
-    model_summary = selected_continue_model.model.safe_summary() if selected_continue_model else None
-    task_obj = _MANAGER.create_task(role, task, selected_backend, context, deliverable, model_summary)
+    model_summary = (
+        selected_continue_model.model.safe_summary()
+        if selected_continue_model
+        else None
+    )
+    task_obj = _MANAGER.create_task(
+        role, task, selected_backend, context, deliverable, model_summary
+    )
 
     if selected_backend == "cooperative":
         frame = _MANAGER.make_frame(task_obj.task_id, role_obj, task)
@@ -292,13 +374,20 @@ def subagent_run(
 
 
 def subagent_status(
-    task_id: Annotated[str, Field(description="Task identifier returned by subagent_run.")],
+    task_id: Annotated[
+        str, Field(description="Task identifier returned by subagent_run.")
+    ],
 ) -> dict:
+    """Subagent status function."""
     try:
         task_obj = _MANAGER.get_task(task_id)
     except ValueError:
-        return {"error_code": "unknown_task_id", "task_id": task_id, "message": "No task exists with this task_id."}
-    payload = {
+        return {
+            "error_code": "unknown_task_id",
+            "task_id": task_id,
+            "message": "No task exists with this task_id.",
+        }
+    payload: dict = {
         "task_id": task_obj.task_id,
         "state": task_obj.state,
         "backend": task_obj.backend,
@@ -311,29 +400,65 @@ def subagent_status(
 
 
 def subagent_result(
-    task_id: Annotated[str, Field(description="Task identifier returned by subagent_run.")],
-    offset: Annotated[int | None, Field(ge=0, description="Optional 0-based character offset for paging long results.")] = None,
+    task_id: Annotated[
+        str, Field(description="Task identifier returned by subagent_run.")
+    ],
+    offset: Annotated[
+        int | None,
+        Field(
+            ge=0,
+            description="Optional 0-based character offset for paging long results.",
+        ),
+    ] = None,
 ) -> dict:
+    """Subagent result function."""
     try:
         return _MANAGER.get_result_page(task_id, int(offset or 0))
     except ValueError as exc:
         if "Unknown task_id" in str(exc):
-            return {"error_code": "unknown_task_id", "task_id": task_id, "message": "No task exists with this task_id."}
+            return {
+                "error_code": "unknown_task_id",
+                "task_id": task_id,
+                "message": "No task exists with this task_id.",
+            }
         return {"error_code": "invalid_range", "task_id": task_id, "message": str(exc)}
 
 
 def subagent_complete(
-    task_id: Annotated[str, Field(description="Open delegated task id to complete in cooperative mode.")],
-    result: Annotated[str, Field(max_length=100000, description="Final subagent result text, at most 100,000 characters. Keep it concise or page supporting detail with subagent_result. Must match the role's expected output format.")],
+    task_id: Annotated[
+        str,
+        Field(description="Open delegated task id to complete in cooperative mode."),
+    ],
+    result: Annotated[
+        str,
+        Field(
+            max_length=100000,
+            description="Final subagent result text, at most 100,000 characters. Keep it concise or page supporting detail with subagent_result. Must match the role's expected output format.",
+        ),
+    ],
 ) -> dict:
+    """Subagent complete function."""
     try:
         task_obj = _MANAGER.get_task(task_id)
     except ValueError:
-        return {"error_code": "unknown_task_id", "task_id": task_id, "message": "No task exists with this task_id."}
+        return {
+            "error_code": "unknown_task_id",
+            "task_id": task_id,
+            "message": "No task exists with this task_id.",
+        }
     if task_obj.backend != "cooperative":
-        return {"error_code": "task_not_active", "task_id": task_id, "message": "subagent_complete is only valid for an active cooperative task."}
+        return {
+            "error_code": "task_not_active",
+            "task_id": task_id,
+            "message": "subagent_complete is only valid for an active cooperative task.",
+        }
     if task_obj.state != "delegated":
-        return {"error_code": "task_not_active", "task_id": task_id, "state": task_obj.state, "message": "The cooperative task is not active."}
+        return {
+            "error_code": "task_not_active",
+            "task_id": task_id,
+            "state": task_obj.state,
+            "message": "The cooperative task is not active.",
+        }
     role = get_role(task_obj.role)
     if role is None:
         raise ValueError(f"Unknown role on task: {task_obj.role}")
@@ -355,15 +480,36 @@ def subagent_complete(
 
 def subagent_cancel(
     task_id: Annotated[str, Field(description="Task identifier to cancel.")],
-    reason: Annotated[str | None, Field(max_length=2000, description="Optional cancellation reason recorded with the task.")] = None,
-    confirm: Annotated[bool, Field(description="Must be true to confirm cancellation; false returns a confirmation-required response.")] = False,
+    reason: Annotated[
+        str | None,
+        Field(
+            max_length=2000,
+            description="Optional cancellation reason recorded with the task.",
+        ),
+    ] = None,
+    confirm: Annotated[
+        bool,
+        Field(
+            description="Must be true to confirm cancellation; false returns a confirmation-required response."
+        ),
+    ] = False,
 ) -> dict:
+    """Subagent cancel function."""
     try:
         _MANAGER.get_task(task_id)
     except ValueError:
-        return {"error_code": "unknown_task_id", "task_id": task_id, "message": "No task exists with this task_id."}
+        return {
+            "error_code": "unknown_task_id",
+            "task_id": task_id,
+            "message": "No task exists with this task_id.",
+        }
     if not confirm:
-        return {"task_id": task_id, "cancelled": False, "confirmation_required": True, "message": "Call again with confirm=true to cancel this task."}
+        return {
+            "task_id": task_id,
+            "cancelled": False,
+            "confirmation_required": True,
+            "message": "Call again with confirm=true to cancel this task.",
+        }
     event = _CANCEL_EVENTS.get(task_id)
     if event is not None:
         # Checked by run_loop each turn and before each tool call; an in-flight HTTP call still finishes.
@@ -371,7 +517,11 @@ def subagent_cancel(
     try:
         task_obj = _MANAGER.cancel_task(task_id, reason=reason)
     except KeyError:
-        return {"error_code": "unknown_task_id", "task_id": task_id, "message": "No task exists with this task_id."}
+        return {
+            "error_code": "unknown_task_id",
+            "task_id": task_id,
+            "message": "No task exists with this task_id.",
+        }
     return {
         "task_id": task_obj.task_id,
         "state": task_obj.state,
@@ -381,6 +531,7 @@ def subagent_cancel(
 
 
 def before_tool_call(tool_name: str, _: dict[str, Any]) -> dict | None:
+    """Before tool call function."""
     if tool_name == "subagent_complete":
         return None
     ok, reason = _MANAGER.consume_frame_tool_call(tool_name)
@@ -393,10 +544,13 @@ def before_tool_call(tool_name: str, _: dict[str, Any]) -> dict | None:
     }
 
 
-def after_tool_call(tool_name: str, result: Any, args: dict[str, Any] | None = None) -> Any:
+def after_tool_call(
+    tool_name: str, result: Any, args: dict[str, Any] | None = None
+) -> Any:
+    """After tool call function."""
     if tool_name.startswith("subagent_"):
         return result
-    automatic_commit = None
+    automatic_commit: None = None
     if tool_name in {"create_file", "apply_edits"}:
         automatic_commit = _record_file_change(tool_name, result, args)
     frame = _MANAGER.open_frame()
@@ -409,7 +563,7 @@ def after_tool_call(tool_name: str, result: Any, args: dict[str, Any] | None = N
         and frame is not None
         and frame.role.name == "committer"
     ):
-        summary = "Commit completed successfully."
+        summary: str = "Commit completed successfully."
         output = result.get("stdout")
         if isinstance(output, str) and output.strip():
             summary += " " + output.strip()
@@ -437,8 +591,9 @@ def after_tool_call(tool_name: str, result: Any, args: dict[str, Any] | None = N
 
 
 def register(mcp):
+    """Register function."""
     configure_runtime(client_capabilities=None)
-    base = (
+    base: str = (
         "Delegate multi-step work to an internal subagent contract with stable status shapes. "
         "A subagent runs only when a backend is available: client sampling, a provider key in the environment, or a model from the user's Continue config when SUBAGENT_CONTINUE=1. Without one, subagent_run returns status unavailable and creates no task. "
         "subagent_run accepts an optional Continue model name or model identifier; explicit selection uses that model's direct API provider regardless of automatic backend precedence. get_capabilities lists safe model choices, and subagent responses/status include the chosen model summary when known. Report selected models when summarizing delegated work to the user. "
@@ -447,7 +602,17 @@ def register(mcp):
         "when unavailable, do the work yourself in this conversation and do not retry; when delegated_to_host (explicit SUBAGENT_BACKEND=cooperative only, scoped role mode), follow instructions then call subagent_complete. Cooperative tasks expire after five minutes; successful git_manage commits by a committer close that frame automatically, while skipped or unsuccessful commits and other roles require subagent_complete. Streaming and checkpoint/resume are unsupported. Roles: generalist/explorer are read-only, reviewer adds diagnostics/tests, planner can also create/edit, coder can create/edit plus diagnostics/tests. Result pages include offset, total_length, and next_offset metadata. An open frame blocks tools outside its role allowlist; recover with subagent_complete or subagent_cancel(confirm=true)."
     )
     mcp.tool(description=describe(base + " Start a task."))(subagent_run)
-    mcp.tool(description=describe(base + " Check task state and usage."))(subagent_status)
-    mcp.tool(description=describe(base + " Fetch full or paged task result."))(subagent_result)
-    mcp.tool(description=describe(base + " Complete a cooperative delegated frame with final result text."))(subagent_complete)
-    return mcp.tool(description=describe(base + " Cancel a task and close any open frame."))(subagent_cancel)
+    mcp.tool(description=describe(base + " Check task state and usage."))(
+        subagent_status
+    )
+    mcp.tool(description=describe(base + " Fetch full or paged task result."))(
+        subagent_result
+    )
+    mcp.tool(
+        description=describe(
+            base + " Complete a cooperative delegated frame with final result text."
+        )
+    )(subagent_complete)
+    return mcp.tool(
+        description=describe(base + " Cancel a task and close any open frame.")
+    )(subagent_cancel)

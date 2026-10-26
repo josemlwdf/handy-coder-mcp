@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+
 from lib import code_index, support, tool_details, worker_supervisor
 from lib.core import (
     apply_edits,
@@ -119,6 +120,22 @@ class AuditRegressionTests(unittest.TestCase):
         self.assertIn(
             "HANDY_CODER_SKILLS_DIR", result["tools"]["skills_manage"]["note"]
         )
+
+    def test_capabilities_tool_names_are_alphabetized(self) -> None:
+        """Test capabilities tool names are alphabetized function."""
+        previous_mcp = system_info._MCP
+        self.addCleanup(setattr, system_info, "_MCP", previous_mcp)
+        system_info._MCP = SimpleNamespace(
+            _tool_manager=SimpleNamespace(
+                _tools={
+                    "skills_manage": object(),
+                    "apply_edits": object(),
+                    "read_files": object(),
+                }
+            )
+        )
+        result = system_info.get_capabilities()
+        self.assertEqual(list(result["tools"]), sorted(result["tools"]))
 
     def test_get_tool_details_smoke_lookup(self):
         """Test get tool details smoke lookup function."""

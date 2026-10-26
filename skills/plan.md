@@ -45,7 +45,7 @@ Valid statuses: `non_started`, `interrupted`, `complete`, `failed`. Change them 
 - **Failures.** If a subagent cannot finish, mark the task `interrupted` or `failed`, and use its findings to revise the task or assign a focused follow-up. Never drop the work silently or mark it `complete`.
 - **Scope.** Do only what the user asked. A plan or an assignment does not authorize unrelated changes or external side effects.
 - **No commit overhead.** Work freely in the working tree. Do not create commits, stage files, or verify commits unless the user explicitly asks for it.
-- **Change summaries.** Every call to a tool that creates or modifies files (`create_file`, `apply_edits`, `code_format_lint` with `fix=true`) needs a one-line, concise `summary` argument. Tell subagents to include it, and write it to describe the file change, not the process.
+- **Change summaries.** Every call to a tool that creates or modifies files (`create_file`, `apply_edits`) needs a one-line, concise `summary` argument. Tell subagents to include it, and write it to describe the file change, not the process.
 - **Tool failures.** If a tool fails or reports inconsistent availability, check `get_capabilities` and use a reliable alternative instead of retrying blindly.
 
 ## Recommendations and automatic changes
@@ -59,7 +59,7 @@ Valid statuses: `non_started`, `interrupted`, `complete`, `failed`. Change them 
 Use the plan's **Validation Strategy** and, as applicable:
 
 - `search_text` for removed or renamed symbols, so no stale references remain.
-- `code_get_diagnostics` and `code_format_lint` (check mode) for static issues.
+- `code_get_diagnostics` for static issues.
 - `run_tests` for the relevant suite; separate new regressions from failures that also occur on the unchanged baseline.
 - `html_syntax_check` for edited HTML files.
 - `build_project` when the change affects the build.
