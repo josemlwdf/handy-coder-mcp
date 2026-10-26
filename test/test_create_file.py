@@ -127,6 +127,25 @@ class CreateFileTests(unittest.TestCase):
         self.assertNotIn("syntax_check", result)
         self.assertNotIn("asset_folders", result)
 
+    def test_python_syntax_check_reports_syntax_error(self):
+        result = create_file.create_file(
+            "broken.py", "def broken(:\n    pass\n", summary="test change"
+        )
+
+        self.assertFalse(result["syntax_check"]["ok"])
+        self.assertEqual(
+            result["syntax_check"]["findings"],
+            [{"line": 1, "column": 12, "message": "invalid syntax"}],
+        )
+
+    def test_python_syntax_check_runs_after_optional_processing(self):
+        result = create_file.create_file(
+            "valid.py", "value = 1\n", post_process_python=True, summary="test change"
+        )
+
+        self.assertTrue(result["syntax_check"]["ok"])
+        self.assertEqual(result["syntax_check"]["findings"], [])
+
     def test_html_formatter_failure_keeps_raw_write_and_diff(self):
         from unittest.mock import patch
 

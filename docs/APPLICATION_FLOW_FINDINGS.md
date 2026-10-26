@@ -1,4 +1,4 @@
-﻿# Application Flow Findings
+# Application Flow Findings
 
 ## Scope
 

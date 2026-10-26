@@ -11,4 +11,3 @@ pytest
 ruff
 syntax_checker
 py_compile
-pycompile
