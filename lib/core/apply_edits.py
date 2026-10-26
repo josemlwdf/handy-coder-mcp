@@ -385,6 +385,25 @@ def apply_edits(
                     exc,
                 )
 
+    from ..utils.syntax_checker import syntax_checker
+
+    checked_files: list[tuple[str, dict]] = []
+    for entry in files:
+        file_path = entry["path"]
+        suffix = Path(file_path).suffix.lower()
+        if suffix in {".cs", ".c", ".h", ".js", ".mjs", ".cjs", ".py", ".html", ".htm"}:
+            try:
+                if dry_run:
+                    file_content = staged_contents.get(str(inside(file_path)))
+                else:
+                    file_content = inside(file_path).read_text(encoding="utf-8")
+                if file_content is not None:
+                    check = syntax_checker(file_path, file_content)
+                    entry["syntax_check"] = check
+                    checked_files.append((file_path, check))
+            except Exception as exc:
+                _LOGGER.warning("Syntax check failed for %s: %s", file_path, exc)
+
     written_files: list = [Path(key).relative_to(root).as_posix() for key in written]
     response: dict = {
         "edits": results,
@@ -392,6 +411,27 @@ def apply_edits(
         "written_files": written_files,
         "dry_run": dry_run,
     }
+    if checked_files:
+        if len(checked_files) == 1:
+            response["syntax_check"] = checked_files[0][1]
+        else:
+            response["syntax_checks"] = {path: chk for path, chk in checked_files}
+            failed = next((chk for _, chk in checked_files if not chk.get("ok")), None)
+            response["syntax_check"] = failed or checked_files[0][1]
+
+        errors_summary: list[str] = []
+        for path, chk in checked_files:
+            if not chk.get("ok"):
+                for finding in chk.get("findings", []):
+                    errors_summary.append(
+                        f"{path}:{finding.get('line', '?')}: {finding.get('message', 'syntax error')}"
+                    )
+        if errors_summary:
+            warning_msg = "Syntax error(s) detected: " + "; ".join(errors_summary)
+            if "warning" in response:
+                response["warning"] += " " + warning_msg
+            else:
+                response["warning"] = warning_msg
     if max_replacements is not None and not replace_all:
         response["warning"] = (
             "max_replacements was supplied but is ignored unless replace_all=true."
@@ -439,7 +479,7 @@ def register(mcp):
             "Error messages include the zero-based edit index ([edit N]) for easy identification. "
             "Edit failures return error_code (invalid_summary, invalid_regex, invalid_replacement, no_match, not_found, path_escape, not_a_file, binary_file, io_error, invalid_edit) "
             "with edit_index and message instead of raising; nothing is written. "
-            "Each edit result includes matches (count of replacements made) and its edit diff. Changed files are summarized in files with the exact original-to-edited diff before automatic formatting is applied to disk; formatter details are not included in the result. dry_run previews the exact edits without formatting or writing. written_files lists the workspace-relative paths of files actually written to disk (only files whose content changed; always empty on dry_run), while files contains raw per-file diffs. A dependency_hint is returned only when an edit adds a Python import. "
+            "Each edit result includes matches (count of replacements made) and its edit diff. Changed files are summarized in files with the exact original-to-edited diff before automatic formatting is applied to disk; formatter details are not included in the result. dry_run previews the exact edits without formatting or writing. written_files lists the workspace-relative paths of files actually written to disk (only files whose content changed; always empty on dry_run), while files contains raw per-file diffs. A dependency_hint is returned only when an edit adds a Python import. Modifying C#, C, JavaScript, Python, or HTML files automatically runs syntax checking to warn the agent of syntax errors in syntax_check and warning fields. "
             "Returns unified diffs. "
             "Note: There is an automated background service (MCP) that applies automatic updates when files are created or edited: standardizes line endings to Unix LF, inserts missing module/class/function docstrings, infers Python parameter, return, and variable type annotations from literals, applies code formatting and lint fixes (Ruff or Black for Python; ESLint and jsbeautifier for JS/TS/CSS/JSON/Markdown), prettifies HTML via BeautifulSoup while validating syntax, creates missing parent directories (with optional .bak backups on overwrite), attaches dependency hints when new Python imports are introduced, and automatically batches and commits verified file changes to Git via a background committer subagent every 5 changes. Do not attempt to revert these changes, undo formatting diffs, or rebase the repo due to formatting updates. Treat these automated changes as the baseline standard of the repository. "
             "When to use: Make localized changes."

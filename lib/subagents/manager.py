@@ -158,6 +158,8 @@ class SubagentManager:
         with self._lock:
             self._sweep_locked()
             task = self._tasks[task_id]
+            if task.state in {"done", "failed", "cancelled"}:
+                return task
             task.state = "cancelled"
             if reason:
                 task.error = f"Cancelled: {reason}"

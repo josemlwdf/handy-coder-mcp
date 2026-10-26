@@ -15,7 +15,7 @@ All tools below are Handy Coder MCP tools (exposed by the host with the `handy_c
 | File | Purpose |
 | --- | --- |
 | `.handy-coder/implementation-plan.md` | Plan, context, subagent findings (**Generalist Assessment**), validation strategy. |
-| `.handy-coder/tasks.md` | Task tracker. One line per task: `[ ] [status: non_started] <task>`. |
+| `.handy-coder/tasks.md` | Task tracker. One line per task: `[ ] [status: non_started] <task>` or `[ ] <task> [status: non_started]`. |
 
 Valid statuses: `non_started`, `interrupted`, `complete`, `failed`. Change them only with `orchestrator_update_task_status`, never by hand-editing the file.
 

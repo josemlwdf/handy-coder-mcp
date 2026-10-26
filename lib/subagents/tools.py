@@ -666,6 +666,15 @@ def subagent_cancel(
             "confirmation_required": True,
             "message": "Call again with confirm=true to cancel this task.",
         }
+    current = _MANAGER.get_task(task_id)
+    if current.state in {"done", "failed", "cancelled"}:
+        return {
+            "task_id": current.task_id,
+            "state": current.state,
+            "backend": current.backend,
+            "already_terminal": True,
+            "message": f"Task is already terminal ({current.state}); its state was not changed.",
+        }
     event = _CANCEL_EVENTS.get(task_id)
     if event is not None:
         # Checked by run_loop each turn and before each tool call; an in-flight HTTP call still finishes.

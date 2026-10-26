@@ -13,8 +13,11 @@ from ..support import describe, inside
 
 Status = Literal["non_started", "interrupted", "complete", "failed"]
 
-_STATUS_LINE_RE = re.compile(
-    r"^(?P<prefix>\s*-\s*\[\s*(?P<checkbox>[ xX]?)\s*\]\s*\[status:\s*)(?P<status>non_started|interrupted|complete|failed)(?P<suffix>\s*\].*)$"
+_TASK_LINE_RE = re.compile(
+    r"^(?P<prefix>\s*[-*]\s*\[(?P<checkbox>\s*|[xX])\](?P<spacing>\s*))(?P<body>.*)$"
+)
+_STATUS_TAG_RE = re.compile(
+    r"\[status:\s*(?P<status>[a-zA-Z0-9_-]+)\s*\]"
 )
 
 
@@ -72,11 +75,54 @@ def _select_line(lines: list[str], line_number: int | None, task_contains: str |
 
 
 def orchestrator_update_task_status(
-    status: Annotated[Status, Field(description="New task status. Allowed values: non_started, interrupted, complete, failed.")],
-    line_number: Annotated[int | None, Field(ge=1, description="Optional 1-based tasks.md line number to update. Provide exactly one selector: line_number or task_contains.")] = None,
-    task_contains: Annotated[str | None, Field(description="Optional text selector matched against tasks.md lines. Provide exactly one selector: task_contains or line_number.")] = None,
-    tasks_path: Annotated[str, Field(description="Workspace-relative path to the task tracker file. Defaults to .handy-coder/tasks.md.")] = ".handy-coder/tasks.md",
+    status: Annotated[
+        Status,
+        Field(
+            description=(
+                "New task status. Allowed values: non_started, interrupted, complete, failed. "
+                "Automatically sets task checkbox to [x] for 'complete' and [ ] for other statuses."
+            )
+        ),
+    ],
+    line_number: Annotated[
+        int | None,
+        Field(
+            ge=1,
+            description=(
+                "Optional 1-based tasks.md line number to update. Target line must match "
+                "'- [ ] [status: ...] <task>' or '- [ ] <task> [status: ...]'. "
+                "Provide exactly one selector: line_number or task_contains."
+            ),
+        ),
+    ] = None,
+    task_contains: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional text selector matched against tasks.md lines. Target line must match "
+                "'- [ ] [status: ...] <task>' or '- [ ] <task> [status: ...]'. "
+                "Provide exactly one selector: task_contains or line_number."
+            ),
+        ),
+    ] = None,
+    tasks_path: Annotated[
+        str,
+        Field(
+            description=(
+                "Workspace-relative path to the task tracker file. Defaults to .handy-coder/tasks.md."
+            )
+        ),
+    ] = ".handy-coder/tasks.md",
 ) -> dict:
+    """Atomically update the status marker and checkbox on a task line in tasks.md.
+
+    Accepts both common status marker placements:
+      - Prefix marker: `- [ ] [status: ...] <task>`
+      - Suffix/inline marker: `- [ ] <task> [status: ...]`
+
+    When status is 'complete', the checkbox is set to '[x]'.
+    When status is 'non_started', 'interrupted', or 'failed', the checkbox is set to '[ ]'.
+    """
     try:
         path = inside(tasks_path, must_exist=True)
     except FileNotFoundError:
@@ -100,18 +146,30 @@ def orchestrator_update_task_status(
         return selection_error
 
     target_line = lines[target_index]
-    match = _STATUS_LINE_RE.match(target_line)
-    if not match:
+    task_match = _TASK_LINE_RE.match(target_line)
+    if not task_match:
         return _error(
             "invalid_task_format",
-            "Selected line does not match expected task format '- [ ] [status: ...] <task>'.",
+            "Selected line does not match expected task format '- [ ] [status: ...] <task>' or '- [ ] <task> [status: ...]'.",
             line_number=target_index + 1,
             line=target_line,
         )
 
-    previous_status = match.group("status")
-    checkbox = "x" if status == "complete" else " "
-    if previous_status == status and match.group("checkbox").lower() == checkbox:
+    body = task_match.group("body")
+    status_matches = list(_STATUS_TAG_RE.finditer(body))
+    if len(status_matches) != 1:
+        return _error(
+            "invalid_task_format",
+            "Selected line does not match expected task format '- [ ] [status: ...] <task>' or '- [ ] <task> [status: ...]'.",
+            line_number=target_index + 1,
+            line=target_line,
+        )
+
+    status_match = status_matches[0]
+    previous_status = status_match.group("status")
+    is_checked = task_match.group("checkbox").strip().lower() == "x"
+    should_be_checked = (status == "complete")
+    if previous_status == status and is_checked == should_be_checked:
         return {
             "updated": False,
             "line_number": target_index + 1,
@@ -119,8 +177,12 @@ def orchestrator_update_task_status(
             "message": "Selected task already has the requested status.",
         }
 
-    prefix = re.sub(r"\[\s*[ xX]?\s*\]", f"[{checkbox}]", match.group("prefix"), count=1)
-    lines[target_index] = f"{prefix}{status}{match.group('suffix')}"
+    checkbox = "x" if should_be_checked else " "
+    prefix = task_match.group("prefix")
+    new_prefix = re.sub(r"\[\s*[ xX]?\s*\]", f"[{checkbox}]", prefix, count=1)
+    start, end = status_match.span()
+    new_body = f"{body[:start]}[status: {status}]{body[end:]}"
+    lines[target_index] = f"{new_prefix}{new_body}"
     new_text = "\n".join(lines)
     if text.endswith("\n"):
         new_text += "\n"
@@ -144,6 +206,7 @@ def register(mcp):
     return mcp.tool(description=describe(
         "Update one task status in `.handy-coder/tasks.md` (or another tasks file) with an atomic write. "
         "Select the target by 1-based line_number or task_contains text, set status to non_started/interrupted/complete/failed, "
-        "and keep the `[ ] [status: ...]` task format intact. "
+        "and keep task line formatting intact. Accepts both '- [ ] [status: ...] <task>' (prefix) and "
+        "'- [ ] <task> [status: ...]' (suffix) marker placements. Automatically sets checkbox to [x] when complete and [ ] otherwise. "
         "When to use: Track orchestrator task progress safely between subagent runs."
     ))(orchestrator_update_task_status)
