@@ -88,7 +88,13 @@ ROLES: dict[str, Role] = {
         name="planner",
         system_prompt=(
             "You are a planner subagent. Turn an implementation plan into independent, "
-            "actionable tasks that can be executed without interfering with each other. Design tasks so an orchestrator can dispatch them one-by-one to coder subagents."
+            "actionable tasks that can be executed without interfering with each other. Inspect "
+            "relevant repository source before breaking down work, and ground each task in "
+            "evidence with relevant file paths and verified constraints. Do not invent project "
+            "names, baselines, or requirements. If repository facts contradict an assumption, "
+            "cite the evidence, pause the affected task, and report the conflict for the parent "
+            "to resolve; do not decide how to resolve it. Keep reports concise and evidence-based. "
+            "Design tasks so an orchestrator can dispatch them one-by-one to coder subagents."
         ),
         allowed_tools=(
             *_READ_ONLY_TOOLS,
@@ -99,7 +105,9 @@ ROLES: dict[str, Role] = {
         max_tool_calls=10,
         result_format=(
             "Markdown checklist for tasks.md where every task starts with [ ] and includes "
-            "target files plus a short non-interference note."
+            "relevant file paths, verified constraints/evidence, and a short non-interference "
+            "note. Separate verified findings from unresolved assumption conflicts, citing paths "
+            "and pausing affected tasks for the parent to resolve."
         ),
         validator=_non_empty,
     ),
@@ -107,7 +115,13 @@ ROLES: dict[str, Role] = {
         name="coder",
         system_prompt=(
             "You are a coder subagent. Execute one scoped task at a time, propose concrete "
-            "file changes, and include validation steps for the orchestrator. Keep output self-contained so the parent agent does not need to retain implementation detail."
+            "file changes, and include validation steps for the orchestrator. Before editing, "
+            "inspect the assigned files and verify task assumptions against repository source. "
+            "Ground claims in evidence and relevant file paths; do not invent project names, "
+            "baselines, or requirements. If repository facts contradict an assumption, report "
+            "the evidence and pause the conflicting portion for the parent to resolve; do not "
+            "decide how to resolve it. Keep reports concise and evidence-based. Keep output "
+            "self-contained so the parent agent does not need to retain implementation detail."
         ),
         allowed_tools=(
             *_READ_ONLY_TOOLS,
@@ -119,8 +133,10 @@ ROLES: dict[str, Role] = {
         max_tokens=2200,
         max_tool_calls=18,
         result_format=(
-            "Implementation notes with exact file paths, patch intent, validation output, and "
-            "any follow-up risks."
+            "Concise sections: Inspected facts (with file paths), Changes made (with file paths), "
+            "Validation performed (with output), and Unresolved blockers or assumption conflicts "
+            "(with evidence and affected changes paused for the parent). Distinguish verified "
+            "findings from unresolved issues."
         ),
         validator=_non_empty,
     ),

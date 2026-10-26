@@ -2,9 +2,21 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from typing import get_args, get_type_hints
 from unittest import mock
 
 from lib.core import skills
+
+
+class FakeMCP:
+    def __init__(self):
+        self.descriptions = {}
+
+    def tool(self, description):
+        def register(function):
+            self.descriptions[function.__name__] = description
+            return function
+        return register
 
 
 class SkillsToolTests(unittest.TestCase):
@@ -125,6 +137,22 @@ class SkillsToolTests(unittest.TestCase):
 
 class BaselineSkillsTests(unittest.TestCase):
     """Run against the real project skills directory (read-only)."""
+
+
+    def test_register_description_mentions_baseline_defaults(self):
+        mcp = FakeMCP()
+        skills.register(mcp)
+        description = mcp.descriptions["skills_manage"]
+        self.assertIn("built-in defaults:", description)
+        self.assertIn("plan", description)
+        self.assertIn("troubleshoot", description)
+
+    def test_action_argument_mentions_baseline_defaults(self):
+        action_hint = get_type_hints(skills.skills_manage, include_extras=True)["action"]
+        action_field = get_args(action_hint)[1]
+        self.assertIn("built-in defaults:", action_field.description)
+        self.assertIn("plan", action_field.description)
+        self.assertIn("troubleshoot", action_field.description)
 
     def test_baseline_skills_are_listed(self):
         with mock.patch.dict(os.environ):

@@ -60,6 +60,42 @@ class SubagentToolTests(unittest.TestCase):
         self.assertIn("apply_edits", coder.allowed_tools)
         self.assertNotIn("apply_edits", explorer.allowed_tools)
 
+    def test_planner_and_coder_prompts_require_repository_evidence(self):
+        planner = get_role("planner")
+        coder = get_role("coder")
+        self.assertIsNotNone(planner)
+        self.assertIsNotNone(coder)
+
+        for role in (planner, coder):
+            prompt = role.system_prompt.lower()
+            self.assertIn("evidence", prompt)
+            self.assertIn("repository", prompt)
+            self.assertIn("contradict", prompt)
+            self.assertIn("pause", prompt)
+            self.assertIn("parent", prompt)
+
+        self.assertIn("inspect", planner.system_prompt.lower())
+        self.assertIn("before editing", coder.system_prompt.lower())
+        self.assertIn("verify", coder.system_prompt.lower())
+
+    def test_planner_and_coder_result_formats_request_paths_and_findings(self):
+        planner = get_role("planner")
+        coder = get_role("coder")
+        self.assertIsNotNone(planner)
+        self.assertIsNotNone(coder)
+
+        planner_format = planner.result_format.lower()
+        self.assertIn("file paths", planner_format)
+        self.assertIn("verified", planner_format)
+        self.assertIn("unresolved", planner_format)
+        self.assertIn("conflict", planner_format)
+
+        coder_format = coder.result_format.lower()
+        for section in ("inspected facts", "changes made", "validation performed", "unresolved blockers"):
+            self.assertIn(section, coder_format)
+        self.assertIn("file paths", coder_format)
+        self.assertIn("verified", coder_format)
+
     def test_registers_five_subagent_tools(self):
         self.assertEqual(
             set(self.mcp.tools),

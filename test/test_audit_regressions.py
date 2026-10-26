@@ -213,6 +213,54 @@ class AuditRegressionTests(unittest.TestCase):
         self.assertIn("array", details["arguments"]["tags"]["type"])
         self.assertEqual(details["arguments"]["tags"]["items"]["type"], "string")
 
+    def test_get_tool_details_includes_skills_baseline_defaults_after_registration(
+        self,
+    ) -> None:
+        """Test get tool details includes skills baseline defaults after registration function."""
+
+        class RuntimeTool:
+            """RuntimeTool class."""
+
+            def __init__(self, function, description) -> None:
+                """Init function."""
+                self.fn = function
+                self.description = description
+                self.parameters = {
+                    "properties": {
+                        "action": {"description": "action"},
+                    }
+                }
+
+        class FakeMCP:
+            """FakeMCP class."""
+
+            def __init__(self) -> None:
+                """Init function."""
+                self._tool_manager = SimpleNamespace(_tools={})
+
+            def tool(self, *, name=None, description=None):
+                """Tool function."""
+
+                def register(function):
+                    """Register function."""
+                    tool_name = name or function.__name__
+                    self._tool_manager._tools[tool_name] = RuntimeTool(
+                        function, description or ""
+                    )
+                    return function
+
+                return register
+
+        mcp = FakeMCP()
+        tool_details.install(mcp)
+        skills.register(mcp)
+        handler = mcp._tool_manager._tools["get_tool_details"].fn
+        details = handler(tool_name="skills_manage")
+        action_description = details["arguments"]["action"]["description"]
+        self.assertIn("built-in defaults:", action_description)
+        self.assertIn("plan", action_description)
+        self.assertIn("troubleshoot", action_description)
+
     def test_code_navigator_deduplicates_call_sites_and_hides_database_ids(
         self,
     ) -> None:

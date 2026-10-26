@@ -29,6 +29,7 @@ from ..support import describe
 SKILLS_DIR_ENV = "HANDY-CODER_SKILLS_DIR"
 DEFAULT_SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
 BASELINE_SKILLS = frozenset({"grill-me", "handoff", "mcp-audit", "mcp-tools-only", "plan", "troubleshoot"})
+BASELINE_SKILLS_INLINE = ", ".join(sorted(BASELINE_SKILLS))
 MAX_SKILL_BYTES = 256 * 1024
 MAX_DESCRIPTION_CHARS = 300
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
@@ -192,7 +193,7 @@ def _save_skill(
 def skills_manage(
     action: Annotated[
         Literal["list", "get", "save", "search", "delete", "export"],
-        Field(description="list: return skills. search: filter by query. get/export: retrieve full skill Markdown. save: create/update with optional tags and version. delete: remove a skill."),
+        Field(description=f"list: return skills (built-in defaults: {BASELINE_SKILLS_INLINE}). search: filter by query. get/export: retrieve full skill Markdown. save: create/update with optional tags and version. delete: remove a skill."),
     ],
     name: Annotated[
         str | None,
@@ -296,7 +297,7 @@ def register(mcp):
     ]
     skill_catalog = "\n".join(skill_lines) if skill_lines else "(No skills are currently installed.)"
     return mcp.tool(description=describe(
-        "Manage reusable skills stored as Markdown files in the skills directory. "
+        f"Manage reusable skills stored as Markdown files in the skills directory (built-in defaults: {BASELINE_SKILLS_INLINE}). "
         "Default baseline skills and descriptions:\n"
         f"{baseline_catalog}\n"
         "Installed skills and their descriptions at server startup:\n"
