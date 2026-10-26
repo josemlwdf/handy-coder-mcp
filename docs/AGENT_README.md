@@ -75,7 +75,7 @@ Alternatively, use the installed entry point:
 }
 ```
 
-The server registers `read_files`, `create_file`, `html_syntax_check`, `apply_edits`, `terminal_exec`, `search_text`, `find_files`, `code_get_diagnostics`, `run_tests`, `build_project`, `git_manage`, `get_capabilities`, `get_tool_details`, `skills_manage`, `orchestrator_bootstrap`, `orchestrator_update_task_status`, `web_fetch_docs`, `subagent_manage`, `subagent_run`, `subagent_status`, `subagent_result`, `subagent_complete`, and `subagent_cancel`. Call `get_tool_details` with a tool name for its full documentation. See the [registered tool inventory](docs/TOOL_INVENTORY.md) for grouping.
+The server registers `read_files`, `create_file`, `html_syntax_check`, `apply_edits`, `terminal_exec`, `search_text`, `find_files`, `code_get_diagnostics`, `run_tests`, `build_project`, `git_manage`, `get_capabilities`, `get_tool_details`, `skills_manage`, `orchestrator_bootstrap`, `orchestrator_update_task_status`, `web_fetch_docs`, and `subagent_manage`. Call `get_tool_details` with a tool name for its full documentation. See the [registered tool inventory](docs/TOOL_INVENTORY.md) for grouping.
 
 Tool modules are organized by tier: Tier 1 tools live in `lib/core`, and optional Tier 2 tools live in `lib/extras`.
 
@@ -165,22 +165,21 @@ Names must be 1-64 characters of lowercase letters, digits and hyphens, which al
 
 ### Subagents
 
-Subagent tools provide a unified lifecycle endpoint plus legacy action-specific compatibility tools for delegated work without requiring any new credentials. `get_capabilities` reports each role's allowed tools, tool-call budget, and result format. `subagent_result` pages results using `offset`, `total_length`, and `next_offset`; `subagent_cancel` requires `confirm: true`. Cooperative frames expire after five minutes. The host completes cooperative tasks with `subagent_complete`; a successful `git_manage` commit by a committer closes its frame automatically, while skipped or unsuccessful commits and other roles still require `subagent_complete`. Streaming and checkpoint/resume are unsupported.
+Subagent delegation is exposed through a single tool, `subagent_manage`, without requiring any new credentials. Use `action` = `run|status|result|complete|cancel` with the fields for that action. `get_capabilities` reports each role's allowed tools, tool-call budget, and result format. Result pages include `offset`, `total_length`, and `next_offset`; cancellation requires `confirm: true`. Cooperative frames expire after five minutes. A successful `git_manage` commit by a committer closes its frame automatically; other delegated runs require explicit completion through `subagent_manage(action='complete', ...)`. Streaming and checkpoint/resume are unsupported.
 
-- `subagent_manage`: unified lifecycle tool. Use `action` = `run|status|result|complete|cancel` plus the corresponding fields for that action.
-- `subagent_run`: legacy start action that starts a task with a role (`generalist`, `coder`, `committer`, `explorer`, `reviewer`, or `planner`) and returns `completed`, `running`, `delegated_to_host` (only with an explicit `SUBAGENT_BACKEND=cooperative`) or `unavailable`. `unavailable` means no subagent backend exists: nothing is started, no task id is created and no frame is opened, so the parent should do the work itself and not retry.
-- `subagent_status`: checks the current task state and usage.
-- `subagent_result`: fetches the full or paged result text.
-- `subagent_complete`: closes a cooperative delegated frame.
-- `subagent_cancel`: cancels a task.
+- `subagent_manage(action='run', role, task, ...)`: starts delegated work and returns `completed`, `running`, `delegated_to_host` (only with explicit `SUBAGENT_BACKEND=cooperative`), or `unavailable`.
+- `subagent_manage(action='status', task_id)`: checks current state and usage.
+- `subagent_manage(action='result', task_id, offset?)`: fetches full or paged result text.
+- `subagent_manage(action='complete', task_id, result)`: closes a cooperative delegated frame.
+- `subagent_manage(action='cancel', task_id, confirm, reason?)`: cancels a task.
 
-Role tool access is scoped: `generalist`/`explorer` stay read-only, `reviewer` adds diagnostics/test execution, `planner`/`coder` can also use `create_file` + `apply_edits` when the task requires writing files, and `committer` can use `git_manage`. Loop prompts include compact argument examples for the allowed tools. They also expose `subagent_status` and `subagent_result` so a loop can check and retrieve other task results when useful.
+Role tool access is scoped: `generalist`/`explorer` stay read-only, `reviewer` adds diagnostics/test execution, `planner`/`coder` can also use `create_file` + `apply_edits` when the task requires writing files, and `committer` can use `git_manage`. Loop prompts include compact argument examples for the allowed tools. The loop runtime can internally check and retrieve task status/results when useful.
 
-Every subagent response includes a `backend` field. Default selection is `auto`, resolved in this order: sampling capability, existing provider key in the current process environment, a model from your Continue config (on by default; `SUBAGENT_CONTINUE=0` turns it off), local Ollama when `SUBAGENT_LOCAL=1`, then no backend (`subagent_run` returns `unavailable`).
+Every subagent response includes a `backend` field. Default selection is `auto`, resolved in this order: sampling capability, existing provider key in the current process environment, a model from your Continue config (on by default; `SUBAGENT_CONTINUE=0` turns it off), local Ollama when `SUBAGENT_LOCAL=1`, then no backend (`subagent_manage(action='run')` returns `unavailable`).
 
-`get_capabilities` lists supported Continue models under `subagents.continue.models` using only safe identifiers (`name`, `provider`, `model`). Pass a model's name or model identifier to the optional `model` argument on `subagent_run` to route that task through its direct API provider, regardless of automatic backend precedence. Task responses, status, and result metadata include the selected model summary when known; orchestrators should report it when summarizing delegated work. Without an explicit choice, existing automatic resolution applies.
+`get_capabilities` lists supported Continue models under `subagents.continue.models` using only safe identifiers (`name`, `provider`, `model`). Pass a model's name or model identifier to the optional `model` argument on `subagent_manage(action='run', ...)` to route that task through its direct API provider, regardless of automatic backend precedence. Task responses, status, and result metadata include the selected model summary when known; orchestrators should report it when summarizing delegated work. Without an explicit choice, existing automatic resolution applies.
 
-Loop-capable backends (`sampling`, `direct:*`, `local:ollama`, `continue:<provider>`) run an internal JSON-action loop and can return `completed` directly from `subagent_run` when `wait: true` and the run finishes quickly; otherwise they return `running` and should be polled with `subagent_status`. The loop accepts JSON actions, text-wrapped Continue `<function_calls>` tool calls, and plain-text final answers. Wrapped tool calls are executed in order up to the role's tool-call budget; extra calls in that response are skipped and the model is asked to return its final answer.
+Loop-capable backends (`sampling`, `direct:*`, `local:ollama`, `continue:<provider>`) run an internal JSON-action loop and can return `completed` directly from `subagent_manage(action='run', ..., wait=true)` when the run finishes quickly; otherwise they return `running` and should be polled with `subagent_manage(action='status', task_id=...)`. The loop accepts JSON actions, text-wrapped Continue `<function_calls>` tool calls, and plain-text final answers. Wrapped tool calls are executed in order up to the role's tool-call budget; extra calls in that response are skipped and the model is asked to return its final answer.
 
 Optional overrides:
 
@@ -188,11 +187,11 @@ Optional overrides:
 - `SUBAGENT_CONTINUE=0` (also `false`, `no` or `off`) stops `auto` selection from reading your Continue config (see below). Unset or any other value leaves discovery on.
 - `SUBAGENT_CONTINUE_MODEL` picks a Continue model by `name` or `model` (case-insensitive). An unknown value selects nothing; it never falls back to another model.
 - `SUBAGENT_CONTINUE_CONFIG` points at a specific Continue config file and is searched first.
-- `SUBAGENT_WAIT_SECONDS` controls the synchronous wait budget for `subagent_run` (default 15).
+- `SUBAGENT_WAIT_SECONDS` controls the synchronous wait budget for `subagent_manage(action='run')` (default 15).
 - `SUBAGENT_MODEL_OPENAI`, `SUBAGENT_MODEL_ANTHROPIC`, `SUBAGENT_MODEL_LOCAL` override default model ids per backend.
 - `SUBAGENT_SAMPLING_URL` (plus optional `SUBAGENT_SAMPLING_MODEL` and `SUBAGENT_SAMPLING_API_KEY`) enables HTTP sampling in runtimes without a native sampling bridge.
 
-Use subagents for broad searches, independent reviews, and large-input summaries; avoid delegation only for single quick lookups. In practice, prefer an orchestrator-first style while `subagent_run` is available: keep parent context minimal and delegate non-trivial work to subagents. When it returns `unavailable`, do the work yourself in the conversation.
+Use subagents for broad searches, independent reviews, and large-input summaries; avoid delegation only for single quick lookups. In practice, prefer an orchestrator-first style while `subagent_manage(action='run')` is available: keep parent context minimal and delegate non-trivial work to subagents. When it returns `unavailable`, do the work yourself in the conversation.
 
 #### Continue backend
 
@@ -208,7 +207,7 @@ Only models with a chat role, a key (literal `apiKey`, an `Authorization` header
 - **Workspace configs are untrusted:** `<workspace>/.continue/config.yaml` can be shipped by a repository, so `${{ secrets.* }}` references in it are never resolved. Literal keys in it still work.
 - **Secrets stay out of output:** keys and header values are redacted from error text (backend HTTP errors and failed-task messages), and `get_capabilities` reports only the provider, model name and config path. The text of a completed task's result is the model's own output and is not scrubbed, so a key can appear there if the model obtains it some other way, for example by reading a workspace `.continue/config.yaml` that contains a literal key with `read_files`. Prefer `${{ secrets.NAME }}` references or a config outside the workspace.
 - **YAML needs PyYAML:** install it with `pip install .[continue]`. Without it YAML configs are skipped and only JSON configs work.
-- **Limits:** loop tool calls run in a server thread with a 60-second deadline and are not isolated in the worker process. `subagent_cancel` stops a task before its next turn or tool call, but an HTTP request already in flight still finishes. A model's `maxTokens` only lowers the per-request limit, never raises it.
+- **Limits:** loop tool calls run in a server thread with a 60-second deadline and are not isolated in the worker process. `subagent_manage(action='cancel', ...)` stops a task before its next turn or tool call, but an HTTP request already in flight still finishes. A model's `maxTokens` only lowers the per-request limit, never raises it.
 
 ### Orchestrator bootstrap
 

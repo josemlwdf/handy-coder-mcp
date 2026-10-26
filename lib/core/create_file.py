@@ -305,7 +305,7 @@ def create_file(
         result["syntax_check"] = syntax_checker(p, p.read_bytes().decode("utf-8"))
         if not result["syntax_check"].get("ok"):
             findings = result["syntax_check"].get("findings", [])
-            msgs = [
+            msgs: list = [
                 f"line {f.get('line', '?')}: {f.get('message', 'syntax error')}"
                 for f in findings
             ]
@@ -330,7 +330,7 @@ def register(mcp):
             "with a message instead of raising; nothing is written. "
             "Response includes the workspace-relative path, created, overwritten, bytes and lines, plus a diff of the submitted content before optional formatting or Python post-processing (unified for text files). Counts describe final on-disk content. Submitted content is preserved by default; format_content=true opts into available formatting for supported Python, JavaScript, or HTML files, and post_process_python=true opts into Python source processing. Formatting runs after the diff is captured and its output is not sent back to the agent; formatter failures are logged. Python file responses remind the agent to update requirements.txt if the file introduces third-party dependencies. "
             "HTML, C#, C, JavaScript, and Python files receive an automatic syntax check of their final saved content and HTML suggests organizing web content under static/html, static/js, and static/css; these directories are not created automatically. "
-            "An open subagent frame is released with subagent_complete or subagent_cancel(confirm=true). "
+            "An open subagent frame is released with subagent_manage(action='complete', ...) or subagent_manage(action='cancel', confirm=true). "
             "Note: There is an automated background service (MCP) that applies automatic updates when files are created or edited: standardizes line endings to Unix LF, inserts missing module/class/function docstrings, infers Python parameter, return, and variable type annotations from literals, applies code formatting and lint fixes (Ruff or Black for Python; ESLint and jsbeautifier for JS/TS/CSS/JSON/Markdown), prettifies HTML via BeautifulSoup while validating syntax, creates missing parent directories (with optional .bak backups on overwrite), attaches dependency hints when new Python imports are introduced, and automatically batches and commits verified file changes to Git via a background committer subagent every 5 changes. Do not attempt to revert these changes, undo formatting diffs, or rebase the repo due to formatting updates. Treat these automated changes as the baseline standard of the repository. "
             "When to use: Add a new file; use apply_edits to modify existing files."
         )

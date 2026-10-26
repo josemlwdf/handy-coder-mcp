@@ -122,30 +122,28 @@ class SubagentToolTests(unittest.TestCase):
             set(self.mcp.tools),
             {
                 "subagent_manage",
-                "subagent_run",
-                "subagent_status",
-                "subagent_result",
-                "subagent_complete",
-                "subagent_cancel",
             },
         )
 
     def test_cooperative_lifecycle(self) -> None:
         """Test cooperative lifecycle function."""
-        run = self.mcp.tools["subagent_run"](role="explorer", task="inspect README")
+        run = self.mcp.tools["subagent_manage"](
+            action="run", role="explorer", task="inspect README"
+        )
         self.assertEqual(run["status"], "delegated_to_host")
         task_id = run["task_id"]
 
-        status = self.mcp.tools["subagent_status"](task_id=task_id)
+        status = self.mcp.tools["subagent_manage"](action="status", task_id=task_id)
         self.assertEqual(status["state"], "delegated")
         self.assertEqual(status["backend"], "cooperative")
 
-        result = self.mcp.tools["subagent_complete"](
+        result = self.mcp.tools["subagent_manage"](
+            action="complete",
             task_id=task_id,
             result="- finding: README exists\n- conclusion: docs are present",
         )
         self.assertEqual(result["state"], "done")
-        page = self.mcp.tools["subagent_result"](task_id=task_id)
+        page = self.mcp.tools["subagent_manage"](action="result", task_id=task_id)
         self.assertIn("README", page["result"])
 
     def test_subagent_manage_dispatches_full_lifecycle(self) -> None:
@@ -182,7 +180,9 @@ class SubagentToolTests(unittest.TestCase):
 
     def test_scope_guard_blocks_out_of_role_tool(self) -> None:
         """Test scope guard blocks out of role tool function."""
-        run = self.mcp.tools["subagent_run"](role="explorer", task="inspect")
+        run = self.mcp.tools["subagent_manage"](
+            action="run", role="explorer", task="inspect"
+        )
         self.assertEqual(run["status"], "delegated_to_host")
         blocked = subagent_tools.before_tool_call("apply_edits", {})
         self.assertIsNotNone(blocked)
@@ -190,17 +190,19 @@ class SubagentToolTests(unittest.TestCase):
 
     def test_scope_guard_allows_write_tools_for_coder(self) -> None:
         """Test scope guard allows write tools for coder function."""
-        run = self.mcp.tools["subagent_run"](role="coder", task="implement")
+        run = self.mcp.tools["subagent_manage"](
+            action="run", role="coder", task="implement"
+        )
         self.assertEqual(run["status"], "delegated_to_host")
         self.assertIsNone(subagent_tools.before_tool_call("create_file", {}))
         self.assertIsNone(subagent_tools.before_tool_call("apply_edits", {}))
 
     def test_reminder_trailer_is_appended(self) -> None:
         """Test reminder trailer is appended function."""
-        self.mcp.tools["subagent_run"](role="explorer", task="inspect")
+        self.mcp.tools["subagent_manage"](action="run", role="explorer", task="inspect")
         wrapped = subagent_tools.after_tool_call("read_files", {"message": "ok"})
         self.assertIn("subagent_reminder", wrapped)
-        self.assertIn("subagent_complete", wrapped["subagent_reminder"])
+        self.assertIn("subagent_manage(action='complete'", wrapped["subagent_reminder"])
 
     def test_only_actual_file_changes_are_recorded(self) -> None:
         """Test only actual file changes are recorded function."""
@@ -329,19 +331,22 @@ class SubagentToolTests(unittest.TestCase):
         self.assertIn("Change 4", automatic_commit["instructions"])
         self.assertIn("committer", automatic_commit["instructions"])
         self.assertEqual(
-            self.mcp.tools["subagent_status"](task_id=automatic_commit["task_id"])[
-                "state"
-            ],
+            self.mcp.tools["subagent_manage"](
+                action="status", task_id=automatic_commit["task_id"]
+            )["state"],
             "delegated",
         )
-        self.mcp.tools["subagent_cancel"](
+        self.mcp.tools["subagent_manage"](
+            action="cancel",
             task_id=automatic_commit["task_id"],
             confirm=True,
         )
 
     def test_successful_committer_action_completes_frame_automatically(self) -> None:
         """Test successful committer action completes frame automatically function."""
-        run = self.mcp.tools["subagent_run"](role="committer", task="commit changes")
+        run = self.mcp.tools["subagent_manage"](
+            action="run", role="committer", task="commit changes"
+        )
 
         result = subagent_tools.after_tool_call(
             "git_manage",
@@ -352,7 +357,9 @@ class SubagentToolTests(unittest.TestCase):
         self.assertEqual(result["subagent_completion"]["status"], "completed")
         self.assertEqual(result["subagent_completion"]["task_id"], run["task_id"])
         self.assertEqual(
-            self.mcp.tools["subagent_status"](task_id=run["task_id"])["state"],
+            self.mcp.tools["subagent_manage"](action="status", task_id=run["task_id"])[
+                "state"
+            ],
             "done",
         )
         self.assertNotIn("subagent_reminder", result)
@@ -361,7 +368,9 @@ class SubagentToolTests(unittest.TestCase):
         self,
     ) -> None:
         """Test unsuccessful committer action stays open for explicit completion function."""
-        run = self.mcp.tools["subagent_run"](role="committer", task="commit changes")
+        run = self.mcp.tools["subagent_manage"](
+            action="run", role="committer", task="commit changes"
+        )
 
         result = subagent_tools.after_tool_call(
             "git_manage",
@@ -371,11 +380,15 @@ class SubagentToolTests(unittest.TestCase):
 
         self.assertIn("subagent_reminder", result)
         self.assertEqual(
-            self.mcp.tools["subagent_status"](task_id=run["task_id"])["state"],
+            self.mcp.tools["subagent_manage"](action="status", task_id=run["task_id"])[
+                "state"
+            ],
             "delegated",
         )
-        self.mcp.tools["subagent_complete"](
-            task_id=run["task_id"], result="Commit skipped: nothing staged."
+        self.mcp.tools["subagent_manage"](
+            action="complete",
+            task_id=run["task_id"],
+            result="Commit skipped: nothing staged.",
         )
 
     def test_frame_expiry_is_five_minutes_and_task_ttl_stays_separate(self) -> None:
@@ -410,8 +423,8 @@ class SubagentToolTests(unittest.TestCase):
         with patch.object(
             subagent_loop, "run_loop", return_value=("- finding: quick result", 1, 42)
         ):
-            out = self.mcp.tools["subagent_run"](
-                role="explorer", task="inspect quickly", wait=True
+            out = self.mcp.tools["subagent_manage"](
+                action="run", role="explorer", task="inspect quickly", wait=True
             )
 
         self.assertEqual(out["status"], "completed")
@@ -438,8 +451,12 @@ class SubagentToolTests(unittest.TestCase):
             subagent_tools, "resolve_continue_models", return_value=[selected]
         ):
             with patch.object(subagent_loop, "run_loop", side_effect=run_loop):
-                out = self.mcp.tools["subagent_run"](
-                    role="explorer", task="inspect quickly", model="fast", wait=True
+                out = self.mcp.tools["subagent_manage"](
+                    action="run",
+                    role="explorer",
+                    task="inspect quickly",
+                    model="fast",
+                    wait=True,
                 )
 
         expected: dict = {"name": "fast", "provider": "openai", "model": "gpt-fast"}
@@ -447,8 +464,12 @@ class SubagentToolTests(unittest.TestCase):
         self.assertIs(captured["model"], selected.model)
         self.assertEqual(out["model"], expected)
         self.assertNotIn("secret", str(out))
-        status = self.mcp.tools["subagent_status"](task_id=out["task_id"])
-        result = self.mcp.tools["subagent_result"](task_id=out["task_id"])
+        status = self.mcp.tools["subagent_manage"](
+            action="status", task_id=out["task_id"]
+        )
+        result = self.mcp.tools["subagent_manage"](
+            action="result", task_id=out["task_id"]
+        )
         self.assertEqual(status["model"], expected)
         self.assertEqual(result["model"], expected)
 
@@ -458,8 +479,8 @@ class SubagentToolTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 ValueError, "Unknown or unavailable Continue model"
             ):
-                self.mcp.tools["subagent_run"](
-                    role="explorer", task="inspect", model="missing"
+                self.mcp.tools["subagent_manage"](
+                    action="run", role="explorer", task="inspect", model="missing"
                 )
 
     def test_direct_backend_can_return_running(self) -> tuple:
@@ -476,12 +497,14 @@ class SubagentToolTests(unittest.TestCase):
 
         with patch.dict(os.environ, {"SUBAGENT_WAIT_SECONDS": "0.05"}, clear=False):
             with patch.object(subagent_loop, "run_loop", side_effect=slow_run):
-                out = self.mcp.tools["subagent_run"](
-                    role="explorer", task="inspect slowly", wait=True
+                out = self.mcp.tools["subagent_manage"](
+                    action="run", role="explorer", task="inspect slowly", wait=True
                 )
 
         self.assertEqual(out["status"], "running")
-        status = self.mcp.tools["subagent_status"](task_id=out["task_id"])
+        status = self.mcp.tools["subagent_manage"](
+            action="status", task_id=out["task_id"]
+        )
         self.assertIn(status["state"], {"running", "done"})
 
     def test_cancelled_running_task_stays_cancelled(self) -> tuple:
@@ -498,12 +521,12 @@ class SubagentToolTests(unittest.TestCase):
 
         with patch.dict(os.environ, {"SUBAGENT_WAIT_SECONDS": "0.05"}, clear=False):
             with patch.object(subagent_loop, "run_loop", side_effect=slow_run):
-                out = self.mcp.tools["subagent_run"](
-                    role="explorer", task="cancel me", wait=True
+                out = self.mcp.tools["subagent_manage"](
+                    action="run", role="explorer", task="cancel me", wait=True
                 )
                 self.assertEqual(out["status"], "running")
-                cancelled = self.mcp.tools["subagent_cancel"](
-                    task_id=out["task_id"], confirm=True
+                cancelled = self.mcp.tools["subagent_manage"](
+                    action="cancel", task_id=out["task_id"], confirm=True
                 )
 
         self.assertEqual(cancelled["state"], "cancelled")
@@ -511,7 +534,9 @@ class SubagentToolTests(unittest.TestCase):
         import time
 
         time.sleep(0.7)
-        status = self.mcp.tools["subagent_status"](task_id=out["task_id"])
+        status = self.mcp.tools["subagent_manage"](
+            action="status", task_id=out["task_id"]
+        )
         self.assertEqual(status["state"], "cancelled")
 
     def test_startup_clean_worktree_no_repository_is_noop(self) -> None:
@@ -602,7 +627,9 @@ class UnavailableBackendTests(unittest.TestCase):
         """Test fallback cooperative returns unavailable and opens no frame function."""
         subagent_tools._BACKEND = "cooperative"
         subagent_tools._COOP_EXPLICIT = False
-        out = self.mcp.tools["subagent_run"](role="explorer", task="inspect")
+        out = self.mcp.tools["subagent_manage"](
+            action="run", role="explorer", task="inspect"
+        )
         self.assertEqual(out["status"], "unavailable")
         self.assertNotIn("task_id", out)
         self.assertIsNone(subagent_tools._MANAGER.open_frame())
@@ -614,8 +641,8 @@ class UnavailableBackendTests(unittest.TestCase):
         with patch.object(
             subagent_loop, "run_loop", return_value=("- implemented", 1, 10)
         ):
-            out = self.mcp.tools["subagent_run"](
-                role="coder", task="implement", wait=True
+            out = self.mcp.tools["subagent_manage"](
+                action="run", role="coder", task="implement", wait=True
             )
         self.assertEqual(out["status"], "completed")
         self.assertIn("task_id", out)

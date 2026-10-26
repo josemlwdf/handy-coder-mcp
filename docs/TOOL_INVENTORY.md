@@ -32,11 +32,6 @@ Descriptions in the MCP tool list are brief. Call `get_tool_details` with a regi
 ## Subagent tools
 
 - `subagent_manage` (unified lifecycle endpoint with `action=run|status|result|complete|cancel`)
-- `subagent_run`
-- `subagent_status`
-- `subagent_result`
-- `subagent_complete`
-- `subagent_cancel`
 
 `index_codebase` runs on demand in an isolated worker process and can be called to build or refresh the index. The server starts without scanning the workspace. The index is local and incremental; see [Local C# code navigation](./SEMANTIC_SEARCH.md) for its behavior and limitations.
 

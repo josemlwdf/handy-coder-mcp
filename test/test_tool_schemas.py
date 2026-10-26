@@ -95,7 +95,7 @@ class ToolSchemaTests(unittest.TestCase):
 
     def test_every_tool_and_argument_has_a_description(self) -> None:
         """Test every tool and argument has a description function."""
-        self.assertEqual(len(self.mcp.tools), 24)
+        self.assertEqual(len(self.mcp.tools), 19)
         for name, function in self.mcp.tools.items():
             with self.subTest(tool=name):
                 self.assertTrue(self.mcp.descriptions[name].strip())
@@ -173,10 +173,10 @@ class ToolSchemaTests(unittest.TestCase):
 
     def test_subagent_and_orchestrator_descriptions_encourage_delegation(self) -> None:
         """Test subagent and orchestrator descriptions encourage delegation function."""
-        subagent_desc = self.mcp.descriptions["subagent_run"].lower()
+        subagent_desc = self.mcp.descriptions["subagent_manage"].lower()
         bootstrap_desc = self.mcp.descriptions["orchestrator_bootstrap"].lower()
         # The description must not promise delegation unconditionally: it has to
-        # explain that subagent_run can return status unavailable.
+        # explain that subagent_manage(action='run') can return status unavailable.
         self.assertIn("delegate", subagent_desc)
         self.assertIn("unavailable", subagent_desc)
         self.assertIn("do the work yourself", subagent_desc)
