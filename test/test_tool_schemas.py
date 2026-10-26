@@ -316,6 +316,48 @@ class ToolSchemaTests(unittest.TestCase):
         git_manage._set_inventory(("projects/api", "projects/web"), ())
         self.assertIn("repo_path='projects/api'", git_manage._tool_description())
 
+    def test_every_registered_tool_has_all_boolean_annotation_hints(self) -> None:
+        """Test every registered tool has all boolean annotation hints function."""
+        try:
+            from mcp.server.fastmcp import FastMCP
+        except ModuleNotFoundError:
+            self.skipTest("FastMCP dependency is not installed")
+
+        from handy_coder_mcp import _apply_tool_annotations
+
+        server = FastMCP("annotation-contract")
+        for module in (
+            apply_edits,
+            create_file,
+            html_syntax_check,
+            code_search,
+            diagnostics,
+            find_files,
+            git_manage,
+            build_project,
+            read_files,
+            run_tests,
+            skills,
+            system_info,
+            terminal_exec,
+            orchestrator_bootstrap,
+            orchestrator_tasks,
+            web_fetch,
+            web_search_tool,
+            subagent_tools,
+        ):
+            module.register(server)
+
+        _apply_tool_annotations(server)
+        for name, tool in server._tool_manager._tools.items():
+            with self.subTest(tool=name):
+                annotations = getattr(tool, "annotations", None)
+                self.assertIsNotNone(annotations)
+                self.assertIsInstance(annotations.readOnlyHint, bool)
+                self.assertIsInstance(annotations.destructiveHint, bool)
+                self.assertIsInstance(annotations.idempotentHint, bool)
+                self.assertIsInstance(annotations.openWorldHint, bool)
+
 
 if __name__ == "__main__":
     unittest.main()

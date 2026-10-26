@@ -2,6 +2,7 @@
 """Module documentation."""
 
 from __future__ import annotations
+
 import argparse
 import subprocess
 import sys
@@ -40,31 +41,28 @@ def _load_fastmcp():
 
 
 # Imports below intentionally follow _load_fastmcp(); E402 is suppressed per line.
-from lib import support, worker_supervisor  # noqa: E402
-from lib import tool_details  # noqa: E402
 from lib import error_handler  # noqa: E402
+from lib import support, tool_details, worker_supervisor  # noqa: E402
+from lib.core import code_navigator  # noqa: E402
+from lib.core import html_syntax_check  # noqa: E402
+from lib.core import web_search_tool  # noqa: E402
 from lib.core import (  # noqa: E402
-    read_files,
-    create_file,
     apply_edits,
-    terminal_exec,
-    code_search,
-    find_files,
-    diagnostics,
-    run_tests,
-    git_manage,
     build_project,
-    system_info,
-    skills,
+    code_search,
+    create_file,
+    diagnostics,
+    find_files,
+    git_manage,
     orchestrator_bootstrap,
     orchestrator_tasks,
+    read_files,
+    run_tests,
+    skills,
+    system_info,
+    terminal_exec,
 )
-from lib.core import code_navigator  # noqa: E402
-from lib.core import web_search_tool  # noqa: E402
-from lib.core import html_syntax_check  # noqa: E402
-from lib.extras import (  # noqa: E402
-    web_fetch,
-)
+from lib.extras import web_fetch  # noqa: E402
 from lib.subagents import tools as subagent_tools  # noqa: E402
 
 
@@ -135,6 +133,86 @@ def _assert_tool_argument_types_known(mcp) -> None:
     )
 
 
+_READ_ONLY_TOOL_HINTS = frozenset(
+    {
+        "code_navigator",
+        "find_files",
+        "get_capabilities",
+        "get_tool_details",
+        "html_syntax_check",
+        "read_files",
+        "search_text",
+        "subagent_result",
+        "subagent_status",
+        "web_fetch_docs",
+        "web_search",
+    }
+)
+
+_DESTRUCTIVE_TOOL_HINTS = frozenset(
+    {
+        "apply_edits",
+        "create_file",
+        "git_manage",
+        "orchestrator_bootstrap",
+        "orchestrator_update_task_status",
+        "skills_manage",
+        "subagent_cancel",
+    }
+)
+
+_IDEMPOTENT_TOOL_HINTS = frozenset(
+    {
+        "code_navigator",
+        "find_files",
+        "get_capabilities",
+        "get_tool_details",
+        "html_syntax_check",
+        "read_files",
+        "search_text",
+        "subagent_result",
+        "subagent_status",
+        "web_fetch_docs",
+        "web_search",
+    }
+)
+
+_OPEN_WORLD_TOOL_HINTS = frozenset(
+    {
+        "build_project",
+        "code_get_diagnostics",
+        "git_manage",
+        "run_tests",
+        "subagent_cancel",
+        "subagent_complete",
+        "subagent_run",
+        "terminal_exec",
+        "web_fetch_docs",
+        "web_search",
+    }
+)
+
+
+def _apply_tool_annotations(mcp) -> None:
+    """Attach explicit ToolAnnotations flags to every registered tool."""
+    try:
+        from mcp.types import ToolAnnotations
+    except ModuleNotFoundError:
+        return
+
+    registered = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
+    for name, tool in registered.items():
+        existing = getattr(tool, "annotations", None)
+        title = getattr(existing, "title", None)
+        tool.annotations = ToolAnnotations(
+            title=title,
+            readOnlyHint=name in _READ_ONLY_TOOL_HINTS,
+            destructiveHint=name in _DESTRUCTIVE_TOOL_HINTS,
+            idempotentHint=name in _IDEMPOTENT_TOOL_HINTS,
+            openWorldHint=name in _OPEN_WORLD_TOOL_HINTS,
+        )
+
+
 def main() -> None:
     """Main function."""
     parser = argparse.ArgumentParser(
@@ -154,7 +232,7 @@ def main() -> None:
         support.configure(resolved_root, args.shell)
     except Exception as exc:
         print(f"[handy-coder-mcp] Startup failed: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
     if args.enforce_clean_worktree_child:
         subagent_tools.configure_runtime(client_capabilities=None)
@@ -199,6 +277,7 @@ def main() -> None:
     ):
         module.register(mcp)
     _sort_registered_tools(mcp)
+    _apply_tool_annotations(mcp)
     _assert_tool_argument_types_known(mcp)
 
     try:
@@ -209,7 +288,7 @@ def main() -> None:
                 "--root",
                 support.ROOT,
                 "--enforce-clean-worktree-child",
-                *( ["--shell", support.SHELL] if support.SHELL else [] ),
+                *(["--shell", support.SHELL] if support.SHELL else []),
             ],
             cwd=support.ROOT,
             stdin=subprocess.DEVNULL,
