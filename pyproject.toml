@@ -7,7 +7,7 @@ name = "handy-coder-mcp"
 version = "2.0.0"
 description = "Workspace-confined MCP server for coding agents"
 requires-python = ">=3.11"
-dependencies = ["mcp>=1.2,<2", "tree-sitter>=0.23,<0.26", "tree-sitter-c-sharp>=0.23,<0.24", "beautifulsoup4>=4.12,<5", "jsbeautifier>=1.15,<2", "pytest", "ruff"]
+dependencies = ["mcp>=1.2,<2", "pydantic>=2,<3", "tree-sitter>=0.23,<0.26", "tree-sitter-c-sharp>=0.23,<0.24", "beautifulsoup4>=4.12,<5", "jsbeautifier>=1.15,<2", "pytest", "ruff", "syntax_checker", "py_compile", "pycompile"]
 
 [project.optional-dependencies]
 continue = ["pyyaml>=6"]
@@ -28,4 +28,3 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
-

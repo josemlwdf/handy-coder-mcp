@@ -9,3 +9,6 @@ beautifulsoup4>=4.12,<5
 jsbeautifier>=1.15,<2
 pytest
 ruff
+syntax_checker
+py_compile
+pycompile
