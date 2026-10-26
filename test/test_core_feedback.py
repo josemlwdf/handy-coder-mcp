@@ -1,3 +1,5 @@
+"""Module documentation."""
+
 import errno
 import os
 import shutil
@@ -9,43 +11,72 @@ from pathlib import Path
 from unittest.mock import patch
 
 from lib import support
-from lib.core import apply_edits, code_search, find_files, git_manage, read_files, run_tests
+from lib.core import (
+    apply_edits,
+    code_search,
+    find_files,
+    git_manage,
+    read_files,
+    run_tests,
+)
 from lib.core import diagnostics, terminal_exec
 from lib.extras import web_fetch
 
 
 class FakeMCP:
-    def __init__(self):
+    """FakeMCP class."""
+
+    def __init__(self) -> None:
+        """Init function."""
         self.tools = {}
         self.descriptions = {}
 
     def tool(self, description):
+        """Tool function."""
+
         def register(function):
+            """Register function."""
             self.tools[function.__name__] = function
             self.descriptions[function.__name__] = description
             return function
+
         return register
 
 
 class CoreFeedbackTests(unittest.TestCase):
-    def setUp(self):
+    """CoreFeedbackTests class."""
+
+    def setUp(self) -> None:
+        """SetUp function."""
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name).resolve()
         support.configure(str(self.root))
         self.mcp = FakeMCP()
-        for module in (apply_edits, code_search, find_files, git_manage, read_files, run_tests, diagnostics, terminal_exec):
+        for module in (
+            apply_edits,
+            code_search,
+            find_files,
+            git_manage,
+            read_files,
+            run_tests,
+            diagnostics,
+            terminal_exec,
+        ):
             module.register(self.mcp)
 
-    def tearDown(self):
+    def tearDown(self) -> None:
+        """TearDown function."""
         self.temp_dir.cleanup()
         support.configure(str(Path(__file__).resolve().parents[1]))
 
     def test_scans_keep_partial_results_and_report_broken_directories(self):
+        """Test scans keep partial results and report broken directories function."""
         (self.root / "good.py").write_text("needle\n", encoding="utf-8")
         (self.root / "broken").mkdir()
         original_scandir = os.scandir
 
         def fail_broken(path):
+            """Fail broken function."""
             if Path(path).name == "broken":
                 raise OSError(errno.ENODEV, "No such device", str(path))
             return original_scandir(path)
@@ -60,6 +91,7 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual([error["path"] for error in matches["errors"]], ["broken"])
 
     def test_search_glob_prunes_unmatched_directory_branches(self):
+        """Test search glob prunes unmatched directory branches function."""
         target = self.root / "src" / "nested"
         target.mkdir(parents=True)
         (target / "hit.py").write_text("needle\n", encoding="utf-8")
@@ -68,38 +100,45 @@ class CoreFeedbackTests(unittest.TestCase):
         (unrelated / "hit.py").write_text("needle\n", encoding="utf-8")
 
         original_scandir = os.scandir
-        visited = []
+        visited: list = []
 
         def record_scandir(path):
+            """Record scandir function."""
             visited.append(Path(path).relative_to(self.root).as_posix())
             return original_scandir(path)
 
         with patch("lib.support.os.scandir", side_effect=record_scandir):
-            result = self.mcp.tools["search_text"](
-                "needle", path_glob="src/**/*.py"
-            )
+            result = self.mcp.tools["search_text"]("needle", path_glob="src/**/*.py")
 
-        self.assertEqual([match["path"] for match in result["matches"]], ["src/nested/hit.py"])
+        self.assertEqual(
+            [match["path"] for match in result["matches"]], ["src/nested/hit.py"]
+        )
         self.assertNotIn("unrelated", visited)
 
-    def test_read_and_edit_responses_include_canonical_paths(self):
+    def test_read_and_edit_responses_include_canonical_paths(self) -> None:
+        """Test read and edit responses include canonical paths function."""
         file_path = self.root / "sample.txt"
         file_path.write_text("old value\n", encoding="utf-8")
 
         read_result = self.mcp.tools["read_files"]([str(file_path)])
-        edit_result = self.mcp.tools["apply_edits"]([apply_edits.Edit(
-            path=str(file_path), pattern="old", replacement="new"
-        )], summary="test change")
+        edit_result = self.mcp.tools["apply_edits"](
+            [apply_edits.Edit(path=str(file_path), pattern="old", replacement="new")],
+            summary="test change",
+        )
 
         # read_files: relative path is always present; no host-leaking resolved_path.
         self.assertEqual(read_result["files"][0]["path"], "sample.txt")
-        self.assertNotIn("resolved_path", read_result["files"][0],
-                         "resolved_path must not be exposed (security: leaks host paths)")
+        self.assertNotIn(
+            "resolved_path",
+            read_result["files"][0],
+            "resolved_path must not be exposed (security: leaks host paths)",
+        )
         # apply_edits: the path echoed back is the caller-supplied value.
         self.assertEqual(edit_result["edits"][0]["path"], str(file_path))
         self.assertIn("Use relative paths.", self.mcp.descriptions["read_files"])
 
-    def test_generic_pyproject_does_not_trigger_unfiltered_pytest(self):
+    def test_generic_pyproject_does_not_trigger_unfiltered_pytest(self) -> None:
+        """Test generic pyproject does not trigger unfiltered pytest function."""
         (self.root / "pyproject.toml").write_text(
             "[project]\nname = 'sample'\n", encoding="utf-8"
         )
@@ -110,17 +149,25 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertFalse(result["supported"])
         run_process.assert_not_called()
 
-    def test_filtered_pytest_runs_without_workspace_wide_test_discovery(self):
+    def test_filtered_pytest_runs_without_workspace_wide_test_discovery(self) -> None:
+        """Test filtered pytest runs without workspace wide test discovery function."""
         (self.root / "pyproject.toml").write_text(
             "[project]\nname = 'sample'\n", encoding="utf-8"
         )
-        (self.root / "test_one.py").write_text("def test_one(): pass\n", encoding="utf-8")
-        process_result = {
-            "stdout": "", "stderr": "", "exit_code": 0,
-            "timed_out": False, "duration_ms": 1,
+        (self.root / "test_one.py").write_text(
+            "def test_one(): pass\n", encoding="utf-8"
+        )
+        process_result: dict = {
+            "stdout": "",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": False,
+            "duration_ms": 1,
         }
 
-        with patch("lib.core.run_tests.run_process", return_value=process_result) as run_process:
+        with patch(
+            "lib.core.run_tests.run_process", return_value=process_result
+        ) as run_process:
             result = self.mcp.tools["run_tests"](
                 test_framework="pytest", filter_path="test_one.py"
             )
@@ -128,23 +175,30 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertTrue(result["supported"])
         run_process.assert_called_once()
 
-    def test_pytest_configuration_enables_unfiltered_test_run(self):
+    def test_pytest_configuration_enables_unfiltered_test_run(self) -> None:
+        """Test pytest configuration enables unfiltered test run function."""
         (self.root / "pyproject.toml").write_text(
             "[tool.pytest.ini_options]\naddopts = '-q'\n", encoding="utf-8"
         )
-        process_result = {
-            "stdout": "", "stderr": "", "exit_code": 0,
-            "timed_out": False, "duration_ms": 1,
+        process_result: dict = {
+            "stdout": "",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": False,
+            "duration_ms": 1,
         }
 
-        with patch("lib.core.run_tests.run_process", return_value=process_result) as run_process:
+        with patch(
+            "lib.core.run_tests.run_process", return_value=process_result
+        ) as run_process:
             result = self.mcp.tools["run_tests"]()
 
         self.assertTrue(result["supported"])
         self.assertEqual(result["framework"], "pytest")
         run_process.assert_called_once()
 
-    def test_git_unavailable_returns_normalized_error(self):
+    def test_git_unavailable_returns_normalized_error(self) -> None:
+        """Test git unavailable returns normalized error function."""
         with patch("lib.core.git_manage.shutil.which", return_value=None):
             result = self.mcp.tools["git_manage"]("status")
 
@@ -152,15 +206,18 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "git_unavailable")
         self.assertEqual(result["exit_code"], 127)
 
-    def test_non_repository_git_error_is_normalized(self):
-        check_result = {
+    def test_non_repository_git_error_is_normalized(self) -> None:
+        """Test non repository git error is normalized function."""
+        check_result: dict = {
             "stdout": "",
             "stderr": "fatal: not a git repository (or any parent directory)",
             "exit_code": 128,
         }
         with (
             patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
-            patch("lib.core.git_manage.run_process", return_value=check_result) as run_process,
+            patch(
+                "lib.core.git_manage.run_process", return_value=check_result
+            ) as run_process,
         ):
             result = self.mcp.tools["git_manage"]("diff")
 
@@ -169,15 +226,16 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertNotIn("usage:", result["message"].lower())
         run_process.assert_called_once()
 
-    def test_push_action_runs_git_push_with_valid_args(self):
-        check_result = {
+    def test_push_action_runs_git_push_with_valid_args(self) -> None:
+        """Test push action runs git push with valid args function."""
+        check_result: dict = {
             "stdout": "true",
             "stderr": "",
             "exit_code": 0,
             "timed_out": False,
             "duration_ms": 1,
         }
-        push_result = {
+        push_result: dict = {
             "stdout": "pushed",
             "stderr": "",
             "exit_code": 0,
@@ -186,18 +244,28 @@ class CoreFeedbackTests(unittest.TestCase):
         }
         with (
             patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
-            patch("lib.core.git_manage.run_process", side_effect=[check_result, push_result]) as run_process,
+            patch(
+                "lib.core.git_manage.run_process",
+                side_effect=[check_result, push_result],
+            ) as run_process,
         ):
             result = self.mcp.tools["git_manage"]("push", args=["origin", "main"])
 
         self.assertEqual(result["exit_code"], 0)
-        self.assertEqual(run_process.call_args_list[1].args[0], ["/usr/bin/git", "push", "origin", "main"])
+        self.assertEqual(
+            run_process.call_args_list[1].args[0],
+            ["/usr/bin/git", "push", "origin", "main"],
+        )
 
-    def test_push_rejects_unsupported_options(self):
+    def test_push_rejects_unsupported_options(self) -> None:
+        """Test push rejects unsupported options function."""
         with self.assertRaisesRegex(ValueError, "Unsupported push option"):
             self.mcp.tools["git_manage"]("push", args=["--force", "origin", "main"])
 
-    def test_git_description_suggests_initialization_when_no_repo_is_found(self):
+    def test_git_description_suggests_initialization_when_no_repo_is_found(
+        self,
+    ) -> None:
+        """Test git description suggests initialization when no repo is found function."""
         self.mcp.tools["git_manage"]("status")
         description = self.mcp.descriptions["git_manage"]
 
@@ -205,30 +273,36 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIn("ask whether", description)
         self.assertIn("action='init'", description)
 
-    def test_git_arguments_have_schema_descriptions(self):
-        annotations = get_type_hints(
-            self.mcp.tools["git_manage"], include_extras=True
-        )
+    def test_git_arguments_have_schema_descriptions(self) -> None:
+        """Test git arguments have schema descriptions function."""
+        annotations = get_type_hints(self.mcp.tools["git_manage"], include_extras=True)
 
         for name in ("action", "args", "repo_path"):
             with self.subTest(argument=name):
                 metadata = get_args(annotations[name])[1:]
-                descriptions = [
+                descriptions: list = [
                     item.description
                     for item in metadata
                     if getattr(item, "description", None)
                 ]
                 self.assertTrue(descriptions, f"{name} must have a schema description")
 
-    def test_git_discovery_is_deferred_until_first_tool_call(self):
+    def test_git_discovery_is_deferred_until_first_tool_call(self) -> None:
+        """Test git discovery is deferred until first tool call function."""
         mcp = FakeMCP()
         with patch("lib.core.git_manage.discover_repositories") as discover:
             git_manage.register(mcp)
 
         discover.assert_not_called()
-        self.assertIn("discovery runs when this tool is first called", mcp.descriptions["git_manage"])
+        self.assertIn(
+            "discovery runs when this tool is first called",
+            mcp.descriptions["git_manage"],
+        )
 
-    def test_discovery_lists_descendant_repositories_but_stops_at_root_repo(self):
+    def test_discovery_lists_descendant_repositories_but_stops_at_root_repo(
+        self,
+    ) -> None:
+        """Test discovery lists descendant repositories but stops at root repo function."""
         first = self.root / "projects" / "first"
         second = self.root / "projects" / "second"
         (first / ".git").mkdir(parents=True)
@@ -243,7 +317,8 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(repositories, (".",))
         self.assertEqual(errors, ())
 
-    def test_multiple_repositories_require_a_matching_repo_path(self):
+    def test_multiple_repositories_require_a_matching_repo_path(self) -> None:
+        """Test multiple repositories require a matching repo path function."""
         first = self.root / "first"
         second = self.root / "second"
         (first / ".git").mkdir(parents=True)
@@ -257,7 +332,7 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIn("'first'\n- 'second'", mcp.descriptions["git_manage"])
         self.assertIn("For every action, set repo_path", mcp.descriptions["git_manage"])
 
-        result = {
+        result: dict = {
             "stdout": "true",
             "stderr": "",
             "exit_code": 0,
@@ -266,14 +341,17 @@ class CoreFeedbackTests(unittest.TestCase):
         }
         with (
             patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
-            patch("lib.core.git_manage.run_process", return_value=result) as run_process,
+            patch(
+                "lib.core.git_manage.run_process", return_value=result
+            ) as run_process,
         ):
             mcp.tools["git_manage"]("status", repo_path="second")
 
         self.assertEqual(run_process.call_args_list[0].kwargs["cwd"], second)
         self.assertEqual(run_process.call_args_list[1].kwargs["cwd"], second)
 
-    def test_tool_description_updates_fastmcp_tool_registry(self):
+    def test_tool_description_updates_fastmcp_tool_registry(self) -> None:
+        """Test tool description updates fastmcp tool registry function."""
         tool = type("Tool", (), {"description": "before"})()
         manager = type("ToolManager", (), {"_tools": {"git_manage": tool}})()
         mcp = type("MCP", (), {"_tool_manager": manager})()
@@ -283,11 +361,14 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(manager._tools["git_manage"].description, "after")
 
     def test_init_creates_root_repo_and_updates_description(self):
+        """Test init creates root repo and updates description function."""
         (self.root / "node_modules").mkdir()
         (self.root / "custom").mkdir()
         (self.root / "custom" / "__pycache__").mkdir()
-        (self.root / ".gitignore").write_text("# keep me\ncustom-rule\n", encoding="utf-8")
-        result = {
+        (self.root / ".gitignore").write_text(
+            "# keep me\ncustom-rule\n", encoding="utf-8"
+        )
+        result: dict = {
             "stdout": "Initialized empty Git repository",
             "stderr": "",
             "exit_code": 0,
@@ -296,6 +377,7 @@ class CoreFeedbackTests(unittest.TestCase):
         }
 
         def initialize(command, *, cwd):
+            """Initialize function."""
             (cwd / ".git").mkdir()
             return result
 
@@ -318,10 +400,13 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIn("node_modules/", ignore_text)
         self.assertIn("__pycache__/", ignore_text)
         git_manage._maintain_gitignore(self.root)
-        self.assertEqual((self.root / ".gitignore").read_text(encoding="utf-8"), ignore_text)
+        self.assertEqual(
+            (self.root / ".gitignore").read_text(encoding="utf-8"), ignore_text
+        )
 
     @unittest.skipUnless(shutil.which("git"), "Git is not installed")
-    def test_add_creates_ignore_file_before_staging(self):
+    def test_add_creates_ignore_file_before_staging(self) -> None:
+        """Test add creates ignore file before staging function."""
         subprocess.run(["git", "init", "--quiet", str(self.root)], check=True)
         (self.root / "node_modules").mkdir()
         (self.root / "new.txt").write_text("stage me\n", encoding="utf-8")
@@ -334,12 +419,16 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIn("tmp/", ignore_text)
         self.assertIn("node_modules/", ignore_text)
         staged = subprocess.run(
-            ["git", "ls-files", "--", "new.txt"], cwd=self.root,
-            check=True, capture_output=True, text=True,
+            ["git", "ls-files", "--", "new.txt"],
+            cwd=self.root,
+            check=True,
+            capture_output=True,
+            text=True,
         )
         self.assertEqual(staged.stdout.strip(), "new.txt")
 
-    def test_init_is_rejected_when_a_repository_is_already_available(self):
+    def test_init_is_rejected_when_a_repository_is_already_available(self) -> None:
+        """Test init is rejected when a repository is already available function."""
         (self.root / "project" / ".git").mkdir(parents=True)
         mcp = FakeMCP()
         git_manage.register(mcp)
@@ -349,7 +438,8 @@ class CoreFeedbackTests(unittest.TestCase):
                 mcp.tools["git_manage"]("init")
 
     @unittest.skipUnless(shutil.which("git"), "Git is not installed")
-    def test_git_status_still_runs_inside_a_repository(self):
+    def test_git_status_still_runs_inside_a_repository(self) -> None:
+        """Test git status still runs inside a repository function."""
         subprocess.run(
             ["git", "init", "--quiet", str(self.root)],
             check=True,
@@ -365,21 +455,27 @@ class CoreFeedbackTests(unittest.TestCase):
     # New hardening tests
     # ------------------------------------------------------------------
 
-    def test_atomic_edit_second_invalid_edit_leaves_first_unapplied(self):
+    def test_atomic_edit_second_invalid_edit_leaves_first_unapplied(self) -> None:
         """A failed validation in a later edit must leave all earlier files unchanged."""
         file_a = self.root / "a.txt"
         file_a.write_text("hello world\n", encoding="utf-8")
 
-        result = self.mcp.tools["apply_edits"]([
-            apply_edits.Edit(path="a.txt", pattern="hello", replacement="goodbye"),
-            apply_edits.Edit(path="a.txt", pattern="DOES_NOT_EXIST", replacement="x"),
-        ], summary="test change")
+        result = self.mcp.tools["apply_edits"](
+            [
+                apply_edits.Edit(path="a.txt", pattern="hello", replacement="goodbye"),
+                apply_edits.Edit(
+                    path="a.txt", pattern="DOES_NOT_EXIST", replacement="x"
+                ),
+            ],
+            summary="test change",
+        )
         self.assertEqual(result.get("error_code"), "no_match")
 
         # File a.txt must be unchanged because the batch was rejected
         self.assertEqual(file_a.read_text(encoding="utf-8"), "hello world\n")
 
-    def test_read_files_returns_total_lines_and_applied_range(self):
+    def test_read_files_returns_total_lines_and_applied_range(self) -> None:
+        """Test read files returns total lines and applied range function."""
         f = self.root / "lines.txt"
         f.write_text("one\ntwo\nthree\nfour\nfive\n", encoding="utf-8")
 
@@ -394,7 +490,8 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(entry["applied_end"], 4)
         self.assertEqual(entry["content"], "two\nthree\nfour")
 
-    def test_read_files_total_lines_without_range(self):
+    def test_read_files_total_lines_without_range(self) -> None:
+        """Test read files total lines without range function."""
         f = self.root / "simple.txt"
         f.write_text("a\nb\nc\n", encoding="utf-8")
 
@@ -404,7 +501,8 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(entry["total_lines"], 3)
         self.assertNotIn("applied_start", entry)
 
-    def test_code_search_returns_error_code_for_invalid_regex(self):
+    def test_code_search_returns_error_code_for_invalid_regex(self) -> None:
+        """Test code search returns error code for invalid regex function."""
         result = self.mcp.tools["search_text"]("(unclosed", is_regex=True)
 
         self.assertEqual(result.get("error_code"), "invalid_regex")
@@ -412,7 +510,8 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIn("matches", result)
         self.assertEqual(result["matches"], [])
 
-    def test_find_files_excludes_generated_dirs_by_default(self):
+    def test_find_files_excludes_generated_dirs_by_default(self) -> None:
+        """Test find files excludes generated dirs by default function."""
         (self.root / "__pycache__").mkdir()
         (self.root / "__pycache__" / "cached.py").write_text("x", encoding="utf-8")
         (self.root / "src").mkdir()
@@ -425,7 +524,8 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertNotIn("__pycache__/cached.py", paths)
         self.assertFalse(result["incomplete"])
 
-    def test_find_files_includes_generated_dirs_when_requested(self):
+    def test_find_files_includes_generated_dirs_when_requested(self) -> None:
+        """Test find files includes generated dirs when requested function."""
         (self.root / "__pycache__").mkdir()
         (self.root / "__pycache__" / "cached.py").write_text("x", encoding="utf-8")
 
@@ -433,7 +533,10 @@ class CoreFeedbackTests(unittest.TestCase):
 
         self.assertIn("__pycache__/cached.py", result["files"])
 
-    def test_find_files_suppresses_outside_workspace_symlink_diagnostics_by_default(self):
+    def test_find_files_suppresses_outside_workspace_symlink_diagnostics_by_default(
+        self,
+    ) -> None:
+        """Test find files suppresses outside workspace symlink diagnostics by default function."""
         (self.root / ".venv" / "bin").mkdir(parents=True)
         with tempfile.TemporaryDirectory() as outside_dir:
             outside_file = Path(outside_dir) / "python3"
@@ -443,9 +546,7 @@ class CoreFeedbackTests(unittest.TestCase):
             except OSError as exc:
                 self.skipTest(f"symlinks not supported: {exc}")
 
-            result = self.mcp.tools["find_files"](
-                "**/python*", include_generated=True
-            )
+            result = self.mcp.tools["find_files"]("**/python*", include_generated=True)
             detailed_result = self.mcp.tools["find_files"](
                 "**/python*", include_generated=True, include_diagnostics=True
             )
@@ -454,17 +555,20 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(result["errors"], [])
         self.assertEqual(
             detailed_result["errors"],
-            [{
-                "path": ".venv/bin/python3",
-                "message": "Skipped a file that resolves outside the authorized workspace",
-            }],
+            [
+                {
+                    "path": ".venv/bin/python3",
+                    "message": "Skipped a file that resolves outside the authorized workspace",
+                }
+            ],
         )
 
-    def test_run_tests_parses_pytest_output(self):
+    def test_run_tests_parses_pytest_output(self) -> None:
+        """Test run tests parses pytest output function."""
         (self.root / "pyproject.toml").write_text(
             "[tool.pytest.ini_options]\naddopts = '-q'\n", encoding="utf-8"
         )
-        process_result = {
+        process_result: dict = {
             "stdout": "5 passed, 1 failed in 0.3s",
             "stderr": "",
             "exit_code": 1,
@@ -479,11 +583,12 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(result["parsed"]["passed"], 5)
         self.assertEqual(result["parsed"]["failed"], 1)
 
-    def test_diagnostics_returns_exit_code(self):
+    def test_diagnostics_returns_exit_code(self) -> None:
+        """Test diagnostics returns exit code function."""
         (self.root / "pyproject.toml").write_text(
             "[tool.ruff]\nline-length = 88\n", encoding="utf-8"
         )
-        process_result = {
+        process_result: dict = {
             "stdout": "",
             "stderr": "",
             "exit_code": 0,
@@ -491,18 +596,28 @@ class CoreFeedbackTests(unittest.TestCase):
             "duration_ms": 50,
         }
 
-        with patch("lib.support.run_process", return_value=process_result), \
-             patch("lib.core.diagnostics.run_process", return_value=process_result):
+        with (
+            patch("lib.support.run_process", return_value=process_result),
+            patch("lib.core.diagnostics.run_process", return_value=process_result),
+        ):
             result = self.mcp.tools["code_get_diagnostics"]()
 
         self.assertTrue(result["supported"])
         self.assertIn("exit_code", result)
 
-    def test_web_fetch_returns_http_status_and_truncated(self):
-        with patch.object(web_fetch, "_request", return_value=(
-            b"<html><title>T</title><p>Hello</p></html>",
-            "https://example.com/", "text/html", 200, False,
-        )):
+    def test_web_fetch_returns_http_status_and_truncated(self) -> None:
+        """Test web fetch returns http status and truncated function."""
+        with patch.object(
+            web_fetch,
+            "_request",
+            return_value=(
+                b"<html><title>T</title><p>Hello</p></html>",
+                "https://example.com/",
+                "text/html",
+                200,
+                False,
+            ),
+        ):
             result = web_fetch._fetch("https://example.com/")
 
         self.assertEqual(result["http_status"], 200)
@@ -512,53 +627,77 @@ class CoreFeedbackTests(unittest.TestCase):
     # Audit fix tests
     # ------------------------------------------------------------------
 
-    def test_run_tests_parser_failures_only_line(self):
+    def test_run_tests_parser_failures_only_line(self) -> None:
         """'1 failed in 0.13s' must produce parsed.failed=1, parsed.passed=0."""
         result = run_tests._parse_pytest_output("1 failed in 0.13s")
         self.assertIsNotNone(result)
         self.assertEqual(result["failed"], 1)
         self.assertEqual(result["passed"], 0)
 
-    def test_run_tests_parser_reversed_order(self):
+    def test_run_tests_parser_reversed_order(self) -> None:
         """'1 failed, 3 passed' (failed before passed) must give correct counts."""
         result = run_tests._parse_pytest_output("1 failed, 3 passed in 0.3s")
         self.assertIsNotNone(result)
         self.assertEqual(result["failed"], 1)
         self.assertEqual(result["passed"], 3)
 
-    def test_run_tests_parser_no_summary_returns_none(self):
+    def test_run_tests_parser_no_summary_returns_none(self) -> None:
         """Output with no recognisable summary line must return None."""
         self.assertIsNone(run_tests._parse_pytest_output("collected 0 items"))
 
-    def test_js_test_parser_counts_and_failure_details(self):
-        output = "Tests: 1 failed, 2 passed, 1 skipped, 4 total\n  ✕ suite › rejects input\n"
+    def test_js_test_parser_counts_and_failure_details(self) -> None:
+        """Test js test parser counts and failure details function."""
+        output: str = (
+            "Tests: 1 failed, 2 passed, 1 skipped, 4 total\n  ✕ suite › rejects input\n"
+        )
         parsed = run_tests._parse_js_test_output(output)
-        self.assertEqual((parsed["passed"], parsed["failed"], parsed["skipped"]), (2, 1, 1))
+        self.assertEqual(
+            (parsed["passed"], parsed["failed"], parsed["skipped"]), (2, 1, 1)
+        )
         self.assertEqual(parsed["failures"][0]["test_id"], "suite › rejects input")
-        vitest = run_tests._parse_js_test_output("❯ 1 failed | 2 passed | 1 skipped (4)\n❯ src/a.test.js (1)\n")
-        self.assertEqual((vitest["passed"], vitest["failed"], vitest["skipped"]), (2, 1, 1))
+        vitest = run_tests._parse_js_test_output(
+            "❯ 1 failed | 2 passed | 1 skipped (4)\n❯ src/a.test.js (1)\n"
+        )
+        self.assertEqual(
+            (vitest["passed"], vitest["failed"], vitest["skipped"]), (2, 1, 1)
+        )
         self.assertIsNone(run_tests._parse_js_test_output("runner crashed"))
 
-    def test_create_file_octal_permission_strings(self):
+    def test_create_file_octal_permission_strings(self) -> None:
+        """Test create file octal permission strings function."""
         from lib.core import create_file
-        self.assertEqual(create_file.create_file("mode.txt", permissions="0755", summary="test change")["created"], True)
+
+        self.assertEqual(
+            create_file.create_file(
+                "mode.txt", permissions="0755", summary="test change"
+            )["created"],
+            True,
+        )
         self.assertEqual((self.root / "mode.txt").stat().st_mode & 0o777, 0o755)
-        invalid = create_file.create_file("bad-mode.txt", permissions="0899", summary="test change")
+        invalid = create_file.create_file(
+            "bad-mode.txt", permissions="0899", summary="test change"
+        )
         self.assertEqual(invalid["error_code"], "invalid_permissions")
 
-    def test_git_transition_actions_schema_and_clean_guard(self):
+    def test_git_transition_actions_schema_and_clean_guard(self) -> None:
+        """Test git transition actions schema and clean guard function."""
         hints = get_type_hints(git_manage.git_manage, include_extras=True)
         self.assertIn("pull", str(hints["action"]))
         self.assertIn("merge", str(hints["action"]))
         self.assertIn("rebase", str(hints["action"]))
-        dirty = {"exit_code": 0, "stdout": "?? untracked\n", "stderr": ""}
-        with patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"), \
-             patch("lib.core.git_manage.run_process", side_effect=[{"exit_code": 0, "stdout": "true\n", "stderr": ""}, dirty]) as run:
+        dirty: dict = {"exit_code": 0, "stdout": "?? untracked\n", "stderr": ""}
+        with (
+            patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
+            patch(
+                "lib.core.git_manage.run_process",
+                side_effect=[{"exit_code": 0, "stdout": "true\n", "stderr": ""}, dirty],
+            ) as run,
+        ):
             result = git_manage.git_manage("pull")
         self.assertEqual(result["error_code"], "dirty_worktree")
         self.assertEqual(run.call_count, 2)
 
-    def test_git_manage_rediscovers_newly_created_repo(self):
+    def test_git_manage_rediscovers_newly_created_repo(self) -> None:
         """A repo created after the first git_manage call must be accepted."""
         # First call populates the cache with an empty repo list.
         with patch("lib.core.git_manage.shutil.which", return_value=None):
@@ -568,9 +707,12 @@ class CoreFeedbackTests(unittest.TestCase):
         repo = self.root / "project"
         (repo / ".git").mkdir(parents=True)
 
-        ok_result = {
-            "stdout": "true", "stderr": "", "exit_code": 0,
-            "timed_out": False, "duration_ms": 1,
+        ok_result: dict = {
+            "stdout": "true",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": False,
+            "duration_ms": 1,
         }
         with (
             patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
@@ -581,14 +723,17 @@ class CoreFeedbackTests(unittest.TestCase):
         # Should succeed (re-discovered the new repo), not raise ValueError.
         self.assertNotIn("error_code", result)
 
-    def test_git_manage_log_error_names_the_flag(self):
+    def test_git_manage_log_error_names_the_flag(self) -> None:
         """Unsupported log option error must name the offending flag."""
         (self.root / ".git").mkdir()
         mcp = FakeMCP()
         git_manage.register(mcp)
-        ok_result = {
-            "stdout": "true", "stderr": "", "exit_code": 0,
-            "timed_out": False, "duration_ms": 1,
+        ok_result: dict = {
+            "stdout": "true",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": False,
+            "duration_ms": 1,
         }
         with (
             patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
@@ -599,38 +744,42 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIn("--format=%H", str(ctx.exception))
         self.assertIn("Allowed", str(ctx.exception))
 
-    def test_read_files_returns_per_file_errors_for_missing_files(self):
+    def test_read_files_returns_per_file_errors_for_missing_files(self) -> None:
         """A missing file must appear in errors; valid files must still appear in files."""
         good = self.root / "good.txt"
         good.write_text("hello\n", encoding="utf-8")
 
         result = self.mcp.tools["read_files"](["good.txt", "missing.txt"])
 
-        file_paths = [f["path"] for f in result["files"]]
-        error_paths = [e["path"] for e in result["errors"]]
+        file_paths: list = [f["path"] for f in result["files"]]
+        error_paths: list = [e["path"] for e in result["errors"]]
         self.assertIn("good.txt", file_paths)
         self.assertIn("missing.txt", error_paths)
 
-    def test_read_files_all_missing_returns_empty_files_and_non_empty_errors(self):
+    def test_read_files_all_missing_returns_empty_files_and_non_empty_errors(
+        self,
+    ) -> None:
         """All-missing batch produces files=[] and non-empty errors."""
         result = self.mcp.tools["read_files"](["nope1.txt", "nope2.txt"])
         self.assertEqual(result["files"], [])
         self.assertEqual(len(result["errors"]), 2)
 
-    def test_terminal_exec_division_operator_not_rejected(self):
+    def test_terminal_exec_division_operator_not_rejected(self) -> None:
         """A shell command containing bare '/' (division) must not be rejected."""
         from lib.support import validate_shell_command
+
         # Should not raise — '/' is the division operator here, not a path.
         validate_shell_command("echo $((10 / 2))", self.root)
 
-    def test_terminal_exec_error_message_names_bad_token(self):
+    def test_terminal_exec_error_message_names_bad_token(self) -> None:
         """The path-guard error message must include the rejected token."""
         from lib.support import validate_shell_command
+
         with self.assertRaises(ValueError) as ctx:
             validate_shell_command("cat /etc/passwd", self.root)
         self.assertIn("/etc/passwd", str(ctx.exception))
 
-    def test_code_search_truncation_reason_max_results(self):
+    def test_code_search_truncation_reason_max_results(self) -> None:
         """Hitting max_results must set truncation_reason='max_results'."""
         for i in range(5):
             (self.root / f"f{i}.txt").write_text("needle\n", encoding="utf-8")
@@ -643,12 +792,14 @@ class CoreFeedbackTests(unittest.TestCase):
     def test_code_search_truncation_reason_time_limit(self):
         """A time-limit truncation must set truncation_reason='time_limit'."""
         import time as _time
+
         (self.root / "f.txt").write_text("needle\n", encoding="utf-8")
 
-        call_count = [0]
+        call_count: list = [0]
         real_monotonic = _time.monotonic
 
         def fake_monotonic():
+            """Fake monotonic function."""
             call_count[0] += 1
             # Subsequent calls advance past the deadline to stop the scan.
             if call_count[0] > 1:
@@ -662,33 +813,44 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(result.get("truncation_reason"), "time_limit")
 
     def test_code_search_deadline_interrupts_directory_enumeration(self):
+        """Test code search deadline interrupts directory enumeration function."""
         for index in range(25):
             (self.root / f"f{index}.txt").write_text("needle\n", encoding="utf-8")
 
         original_scandir = os.scandir
-        entries_seen = [0]
+        entries_seen: list = [0]
 
         class AdvancingScandir:
-            def __init__(self, path):
+            """AdvancingScandir class."""
+
+            def __init__(self, path) -> None:
+                """Init function."""
                 self.entries = original_scandir(path)
 
             def __enter__(self):
+                """Enter function."""
                 return self
 
-            def __exit__(self, exc_type, exc_value, traceback):
+            def __exit__(self, exc_type, exc_value, traceback) -> None:
+                """Exit function."""
                 self.entries.close()
 
             def __iter__(self):
+                """Iter function."""
                 return self
 
             def __next__(self):
+                """Next function."""
                 entry = next(self.entries)
                 entries_seen[0] += 1
                 return entry
 
         with (
             patch("lib.support.os.scandir", side_effect=AdvancingScandir),
-            patch("lib.core.code_search.time.monotonic", side_effect=lambda: entries_seen[0]),
+            patch(
+                "lib.core.code_search.time.monotonic",
+                side_effect=lambda: entries_seen[0],
+            ),
         ):
             result = self.mcp.tools["search_text"]("needle")
 
@@ -696,7 +858,8 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(result.get("truncation_reason"), "time_limit")
         self.assertLess(entries_seen[0], 25)
 
-    def test_code_search_skips_oversized_files_without_reading_them(self):
+    def test_code_search_skips_oversized_files_without_reading_them(self) -> None:
+        """Test code search skips oversized files without reading them function."""
         large_file = self.root / "simulations.db"
         with large_file.open("wb") as database:
             database.truncate(support.MAX_READ_BYTES + 1)
@@ -709,7 +872,7 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(result["matches"], [])
         read_text.assert_not_called()
 
-    def test_find_files_globstar_matches_zero_intermediate_dirs(self):
+    def test_find_files_globstar_matches_zero_intermediate_dirs(self) -> None:
         """src/**/*.py must match src/foo.py (zero intermediate directories)."""
         src = self.root / "src"
         src.mkdir()
@@ -723,12 +886,12 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIn("src/foo.py", files, "zero-dir case not matched")
         self.assertIn("src/sub/bar.py", files, "one-dir case not matched")
 
-    def test_diagnostics_tool_not_installed_error_code(self):
+    def test_diagnostics_tool_not_installed_error_code(self) -> None:
         """When the tool binary cannot start, error_code='tool_not_installed' is returned."""
         (self.root / "pyproject.toml").write_text(
             "[tool.ruff]\nline-length = 88\n", encoding="utf-8"
         )
-        process_result = {
+        process_result: dict = {
             "stdout": "",
             "stderr": "Failed to start process: [Errno 2] No such file or directory: 'ruff'",
             "exit_code": 1,
@@ -746,7 +909,7 @@ class CoreFeedbackTests(unittest.TestCase):
     # Remediation tests (audit fixes round 2)
     # ------------------------------------------------------------------
 
-    def test_read_files_binary_file_returns_per_file_error_code(self):
+    def test_read_files_binary_file_returns_per_file_error_code(self) -> None:
         """A non-UTF-8 file must produce error_code='binary_file' and not crash the batch."""
         good = self.root / "good.txt"
         good.write_text("hello\n", encoding="utf-8")
@@ -755,33 +918,39 @@ class CoreFeedbackTests(unittest.TestCase):
 
         result = self.mcp.tools["read_files"](["good.txt", "bad.bin"])
 
-        file_paths = [f["path"] for f in result["files"]]
+        file_paths: list = [f["path"] for f in result["files"]]
         self.assertIn("good.txt", file_paths)
-        error_codes = {e["path"]: e.get("error_code") for e in result["errors"]}
+        error_codes: dict = {e["path"]: e.get("error_code") for e in result["errors"]}
         self.assertIn("bad.bin", error_codes)
         self.assertEqual(error_codes["bad.bin"], "binary_file")
 
-    def test_apply_edits_error_includes_edit_index(self):
+    def test_apply_edits_error_includes_edit_index(self) -> None:
         """A failed edit must mention the zero-based [edit N] index in its message."""
         f = self.root / "target.txt"
         f.write_text("hello world\n", encoding="utf-8")
 
-        result = self.mcp.tools["apply_edits"]([
-            apply_edits.Edit(path="target.txt", pattern="hello", replacement="hi"),
-            apply_edits.Edit(path="target.txt", pattern="NOPE", replacement="x"),
-        ], summary="test change")
+        result = self.mcp.tools["apply_edits"](
+            [
+                apply_edits.Edit(path="target.txt", pattern="hello", replacement="hi"),
+                apply_edits.Edit(path="target.txt", pattern="NOPE", replacement="x"),
+            ],
+            summary="test change",
+        )
         self.assertIn("[edit 1]", result.get("message", ""))
         self.assertEqual(result.get("edit_index"), 1)
 
-    def test_apply_edits_returns_invalid_regex_error_code(self):
+    def test_apply_edits_returns_invalid_regex_error_code(self) -> None:
         """An invalid regex must yield a structured error, not an exception, and write nothing."""
         f = self.root / "rx.txt"
         f.write_text("hello world\n", encoding="utf-8")
 
-        result = self.mcp.tools["apply_edits"]([
-            apply_edits.Edit(path="rx.txt", pattern="hello", replacement="hi"),
-            apply_edits.Edit(path="rx.txt", pattern="(unclosed", replacement="x"),
-        ], summary="test change")
+        result = self.mcp.tools["apply_edits"](
+            [
+                apply_edits.Edit(path="rx.txt", pattern="hello", replacement="hi"),
+                apply_edits.Edit(path="rx.txt", pattern="(unclosed", replacement="x"),
+            ],
+            summary="test change",
+        )
 
         self.assertEqual(result.get("error_code"), "invalid_regex")
         self.assertEqual(result.get("edit_index"), 1)
@@ -789,15 +958,18 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(result.get("edits"), [])
         self.assertEqual(f.read_text(encoding="utf-8"), "hello world\n")
 
-    def test_apply_edits_returns_no_match_error_code(self):
+    def test_apply_edits_returns_no_match_error_code(self) -> None:
         """A pattern that matches nothing must return no_match and write nothing."""
         f = self.root / "nm.txt"
         f.write_text("hello world\n", encoding="utf-8")
 
-        result = self.mcp.tools["apply_edits"]([
-            apply_edits.Edit(path="nm.txt", pattern="hello", replacement="hi"),
-            apply_edits.Edit(path="nm.txt", pattern="NOPE", replacement="x"),
-        ], summary="test change")
+        result = self.mcp.tools["apply_edits"](
+            [
+                apply_edits.Edit(path="nm.txt", pattern="hello", replacement="hi"),
+                apply_edits.Edit(path="nm.txt", pattern="NOPE", replacement="x"),
+            ],
+            summary="test change",
+        )
 
         self.assertEqual(result.get("error_code"), "no_match")
         self.assertEqual(result.get("edit_index"), 1)
@@ -805,11 +977,11 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(result.get("edits"), [])
         self.assertEqual(f.read_text(encoding="utf-8"), "hello world\n")
 
-    def test_apply_edits_returns_path_error_codes(self):
+    def test_apply_edits_returns_path_error_codes(self) -> None:
         """Bad paths must return structured codes without leaking host paths."""
         (self.root / "adir").mkdir()
         (self.root / "bin.dat").write_bytes(b"\xff\xfe\x00\x80")
-        cases = [
+        cases: list = [
             ("missing.txt", "not_found"),
             ("../outside.txt", "path_escape"),
             ("adir", "not_a_file"),
@@ -827,15 +999,19 @@ class CoreFeedbackTests(unittest.TestCase):
                 self.assertNotIn(str(self.root), result.get("message", ""))
                 self.assertEqual(result.get("edits"), [])
 
-    def test_apply_edits_expand_groups_flag(self):
+    def test_apply_edits_expand_groups_flag(self) -> None:
         """expand_groups=True expands \\1 / \\g<name>; the default stays literal."""
         f = self.root / "grp.txt"
         f.write_text("john smith\n", encoding="utf-8")
         edit = apply_edits.Edit(
-            path="grp.txt", pattern=r"(?P<first>\w+) (\w+)", replacement=r"\2, \g<first>"
+            path="grp.txt",
+            pattern=r"(?P<first>\w+) (\w+)",
+            replacement=r"\2, \g<first>",
         )
 
-        literal = self.mcp.tools["apply_edits"]([edit], dry_run=True, summary="test change")
+        literal = self.mcp.tools["apply_edits"](
+            [edit], dry_run=True, summary="test change"
+        )
         self.assertIn(r"+\2, \g<first>", literal["edits"][0]["diff"])
 
         self.mcp.tools["apply_edits"]([edit], expand_groups=True, summary="test change")
@@ -844,12 +1020,14 @@ class CoreFeedbackTests(unittest.TestCase):
         # A reference to a nonexistent group is a structured error, not an exception.
         f.write_text("john smith\n", encoding="utf-8")
         bad = apply_edits.Edit(path="grp.txt", pattern=r"(\w+)", replacement=r"\5")
-        result = self.mcp.tools["apply_edits"]([bad], expand_groups=True, summary="test change")
+        result = self.mcp.tools["apply_edits"](
+            [bad], expand_groups=True, summary="test change"
+        )
         self.assertEqual(result.get("error_code"), "invalid_replacement")
         self.assertEqual(result.get("edit_index"), 0)
         self.assertEqual(f.read_text(encoding="utf-8"), "john smith\n")
 
-    def test_apply_edits_returns_match_count(self):
+    def test_apply_edits_returns_match_count(self) -> None:
         """Each result entry must include matches with the replacement count."""
         f = self.root / "multi.txt"
         f.write_text("a a a\n", encoding="utf-8")
@@ -861,13 +1039,17 @@ class CoreFeedbackTests(unittest.TestCase):
         )
         self.assertEqual(result["edits"][0]["matches"], 3)
 
-    def test_apply_edits_dry_run_does_not_write(self):
+    def test_apply_edits_dry_run_does_not_write(self) -> None:
         """dry_run=True must compute diffs but leave the file unchanged."""
         f = self.root / "dry.txt"
         f.write_text("original\n", encoding="utf-8")
 
         result = self.mcp.tools["apply_edits"](
-            [apply_edits.Edit(path="dry.txt", pattern="original", replacement="changed")],
+            [
+                apply_edits.Edit(
+                    path="dry.txt", pattern="original", replacement="changed"
+                )
+            ],
             dry_run=True,
             summary="test change",
         )
@@ -875,7 +1057,7 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIn("diff", result["edits"][0])
         self.assertEqual(f.read_text(encoding="utf-8"), "original\n")
 
-    def test_apply_edits_dry_run_false_writes(self):
+    def test_apply_edits_dry_run_false_writes(self) -> None:
         """dry_run=False (default) must write changes to disk."""
         f = self.root / "write.txt"
         f.write_text("before\n", encoding="utf-8")
@@ -886,12 +1068,13 @@ class CoreFeedbackTests(unittest.TestCase):
         )
         self.assertEqual(f.read_text(encoding="utf-8"), "after\n")
 
-    def test_terminal_exec_quoted_slash_not_rejected(self):
+    def test_terminal_exec_quoted_slash_not_rejected(self) -> None:
         """A token like '// comment' inside quotes must not trigger the path guard."""
         from lib.support import validate_shell_command
+
         validate_shell_command('echo "// changed by script"', self.root)
 
-    def test_code_search_total_matches_seen_on_truncation(self):
+    def test_code_search_total_matches_seen_on_truncation(self) -> None:
         """When truncated by max_results, total_matches_seen must be populated."""
         for i in range(10):
             (self.root / f"f{i}.txt").write_text("needle\n", encoding="utf-8")
@@ -903,7 +1086,7 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(result["total_matches_seen"], 10)
         self.assertEqual(result["omitted_count"], 7)
 
-    def test_code_search_no_truncation_has_total_matches(self):
+    def test_code_search_no_truncation_has_total_matches(self) -> None:
         """Non-truncated results must still include total_matches_seen=len(matches)."""
         (self.root / "one.txt").write_text("needle\n", encoding="utf-8")
 
@@ -912,49 +1095,62 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertFalse(result["truncated"])
         self.assertEqual(result["total_matches_seen"], len(result["matches"]))
 
-    def test_diagnostics_ok_field_true_on_success(self):
+    def test_diagnostics_ok_field_true_on_success(self) -> None:
         """ok must be True when exit_code is 0."""
         (self.root / "pyproject.toml").write_text(
             "[tool.ruff]\nline-length = 88\n", encoding="utf-8"
         )
-        process_result = {
-            "stdout": "", "stderr": "", "exit_code": 0,
-            "timed_out": False, "duration_ms": 10,
+        process_result: dict = {
+            "stdout": "",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": False,
+            "duration_ms": 10,
         }
         with patch("lib.core.diagnostics.run_process", return_value=process_result):
             result = self.mcp.tools["code_get_diagnostics"]()
         self.assertTrue(result["ok"])
 
-    def test_diagnostics_ok_field_false_on_failure(self):
+    def test_diagnostics_ok_field_false_on_failure(self) -> None:
         """ok must be False when exit_code is non-zero."""
         (self.root / "pyproject.toml").write_text(
             "[tool.ruff]\nline-length = 88\n", encoding="utf-8"
         )
-        process_result = {
-            "stdout": "E501 line too long", "stderr": "", "exit_code": 1,
-            "timed_out": False, "duration_ms": 10,
+        process_result: dict = {
+            "stdout": "E501 line too long",
+            "stderr": "",
+            "exit_code": 1,
+            "timed_out": False,
+            "duration_ms": 10,
         }
         with patch("lib.core.diagnostics.run_process", return_value=process_result):
             result = self.mcp.tools["code_get_diagnostics"]()
         self.assertFalse(result["ok"])
 
-    def test_diagnostics_falls_back_to_next_candidate_on_tool_not_installed(self):
+    def test_diagnostics_falls_back_to_next_candidate_on_tool_not_installed(
+        self,
+    ) -> None:
         """When the first tool is not installed, the next candidate must be tried."""
         (self.root / "pyproject.toml").write_text(
             "[tool.ruff]\nline-length = 88\n[tool.mypy]\nstrict = true\n",
             encoding="utf-8",
         )
-        ruff_missing = {
-            "stdout": "", "exit_code": 1,
+        ruff_missing: dict = {
+            "stdout": "",
+            "exit_code": 1,
             "stderr": "Failed to start process: [Errno 2] No such file or directory: 'ruff'",
-            "timed_out": False, "duration_ms": 1,
+            "timed_out": False,
+            "duration_ms": 1,
         }
-        mypy_ok = {
-            "stdout": "Success: no issues found", "stderr": "", "exit_code": 0,
-            "timed_out": False, "duration_ms": 50,
+        mypy_ok: dict = {
+            "stdout": "Success: no issues found",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": False,
+            "duration_ms": 50,
         }
 
-        call_results = [ruff_missing, mypy_ok]
+        call_results: list = [ruff_missing, mypy_ok]
         with patch("lib.core.diagnostics.run_process", side_effect=call_results):
             result = self.mcp.tools["code_get_diagnostics"]()
 
@@ -962,7 +1158,7 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(result["check"], "mypy")
         self.assertTrue(result["ok"])
 
-    def test_diagnostics_malformed_config_returns_invalid_config(self):
+    def test_diagnostics_malformed_config_returns_invalid_config(self) -> None:
         """A malformed config file must yield a structured error, not a decode exception."""
         (self.root / "package.json").write_text("{not json", encoding="utf-8")
         result = self.mcp.tools["code_get_diagnostics"]()
@@ -974,24 +1170,35 @@ class CoreFeedbackTests(unittest.TestCase):
         (self.root / "pyproject.toml").write_text("[tool.ruff\n", encoding="utf-8")
         result = self.mcp.tools["code_get_diagnostics"]()
         self.assertEqual(result.get("error_code"), "invalid_config")
-        self.assertEqual([e["file"] for e in result["config_errors"]], ["pyproject.toml"])
+        self.assertEqual(
+            [e["file"] for e in result["config_errors"]], ["pyproject.toml"]
+        )
         self.assertNotIn(str(self.root), str(result["config_errors"]))
 
-    def test_diagnostics_reports_skipped_candidates_and_config_errors(self):
+    def test_diagnostics_reports_skipped_candidates_and_config_errors(self) -> None:
         """Fallback history must be visible: skipped tools and unusable config files."""
         (self.root / "package.json").write_text("{not json", encoding="utf-8")
         (self.root / "pyproject.toml").write_text(
-            "[tool.ruff]\nline-length = 88\n[tool.mypy]\nstrict = true\n", encoding="utf-8"
+            "[tool.ruff]\nline-length = 88\n[tool.mypy]\nstrict = true\n",
+            encoding="utf-8",
         )
-        ruff_missing = {
-            "stdout": "", "stderr": "Failed to start process: [Errno 2] 'ruff'",
-            "exit_code": 1, "timed_out": False, "duration_ms": 1,
+        ruff_missing: dict = {
+            "stdout": "",
+            "stderr": "Failed to start process: [Errno 2] 'ruff'",
+            "exit_code": 1,
+            "timed_out": False,
+            "duration_ms": 1,
         }
-        mypy_ok = {
-            "stdout": "ok", "stderr": "", "exit_code": 0,
-            "timed_out": False, "duration_ms": 5,
+        mypy_ok: dict = {
+            "stdout": "ok",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": False,
+            "duration_ms": 5,
         }
-        with patch("lib.core.diagnostics.run_process", side_effect=[ruff_missing, mypy_ok]):
+        with patch(
+            "lib.core.diagnostics.run_process", side_effect=[ruff_missing, mypy_ok]
+        ):
             result = self.mcp.tools["code_get_diagnostics"]()
         self.assertEqual(result["check"], "mypy")
         self.assertEqual(
@@ -999,9 +1206,116 @@ class CoreFeedbackTests(unittest.TestCase):
         )
         self.assertEqual([e["file"] for e in result["config_errors"]], ["package.json"])
 
-    def test_run_tests_parser_extracts_failures_list(self):
+    def test_diagnostics_typescript_precheck_runs_tsc(self) -> None:
+        """Selecting tsc_no_emit should run TypeScript compile precheck without emit."""
+        (self.root / "tsconfig.json").write_text("{}\n", encoding="utf-8")
+        process_result: dict = {
+            "stdout": "",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": False,
+            "duration_ms": 9,
+        }
+        with patch(
+            "lib.core.diagnostics.run_process", return_value=process_result
+        ) as run:
+            result = self.mcp.tools["code_get_diagnostics"](check="tsc_no_emit")
+
+        self.assertTrue(result["supported"])
+        self.assertEqual(result["check"], "tsc_no_emit")
+        command = run.call_args.args[0]
+        self.assertIn("--noEmit", command)
+
+    def test_diagnostics_html_syntax_sweep_reports_findings(self) -> None:
+        """HTML syntax sweep should report malformed HTML across project files."""
+        (self.root / "broken.html").write_text("<div><span></div>\n", encoding="utf-8")
+
+        result = self.mcp.tools["code_get_diagnostics"](check="html_syntax_sweep")
+
+        self.assertEqual(result["check"], "html_syntax_sweep")
+        self.assertFalse(result["ok"])
+        self.assertIn("broken.html", result["stdout"])
+
+    def test_diagnostics_json_parse_reports_parse_errors(self) -> None:
+        """JSON parse check should fail with file-specific parse errors."""
+        (self.root / "config.json").write_text("{bad json}\n", encoding="utf-8")
+
+        result = self.mcp.tools["code_get_diagnostics"](check="json_parse")
+
+        self.assertEqual(result["check"], "json_parse")
+        self.assertFalse(result["ok"])
+        self.assertIn("config.json", result["stdout"])
+
+    def test_diagnostics_shell_syntax_uses_bash_when_shellcheck_missing(self):
+        """Shell syntax check should fall back to bash -n when shellcheck is unavailable."""
+        (self.root / "script.sh").write_text("echo ok\n", encoding="utf-8")
+        process_result: dict = {
+            "stdout": "",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": False,
+            "duration_ms": 5,
+        }
+
+        def fake_which(name):
+            """Fake which function."""
+            if name == "shellcheck":
+                return None
+            if name == "bash":
+                return "/bin/bash"
+            return shutil.which(name)
+
+        with (
+            patch("lib.core.diagnostics.shutil.which", side_effect=fake_which),
+            patch(
+                "lib.core.diagnostics.run_process", return_value=process_result
+            ) as run,
+        ):
+            result = self.mcp.tools["code_get_diagnostics"](check="shell_syntax")
+
+        self.assertEqual(result["check"], "shell_syntax")
+        self.assertTrue(result["ok"])
+        self.assertEqual(run.call_args.args[0][0], "bash")
+        self.assertEqual(run.call_args.args[0][1], "-n")
+
+    def test_diagnostics_shell_syntax_uses_external_bin_shellcheck(self):
+        """Shell syntax should use external_bin/shellcheck when PATH lacks shellcheck."""
+        (self.root / "script.sh").write_text("echo ok\n", encoding="utf-8")
+        external_bin = self.root / "external_bin"
+        external_bin.mkdir()
+        shellcheck = external_bin / "shellcheck"
+        shellcheck.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        process_result: dict = {
+            "stdout": "",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": False,
+            "duration_ms": 4,
+        }
+
+        def fake_which(name):
+            """Fake which function."""
+            if name == "shellcheck":
+                return None
+            if name == "bash":
+                return "/bin/bash"
+            return shutil.which(name)
+
+        with (
+            patch("lib.core.diagnostics.shutil.which", side_effect=fake_which),
+            patch(
+                "lib.core.diagnostics.run_process", return_value=process_result
+            ) as run,
+        ):
+            result = self.mcp.tools["code_get_diagnostics"](check="shell_syntax")
+
+        self.assertEqual(result["check"], "shell_syntax")
+        self.assertTrue(result["ok"])
+        self.assertEqual(run.call_args.args[0][0], str(shellcheck))
+
+    def test_run_tests_parser_extracts_failures_list(self) -> None:
         """FAILED lines must be parsed into parsed.failures with test_id and file."""
-        output = (
+        output: str = (
             "FAILED test/test_foo.py::TestBar::test_baz - AssertionError: 0 != 1\n"
             "1 failed in 0.5s\n"
         )
@@ -1009,26 +1323,31 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIn("failures", result)
         self.assertEqual(len(result["failures"]), 1)
-        self.assertEqual(result["failures"][0]["test_id"], "test/test_foo.py::TestBar::test_baz")
+        self.assertEqual(
+            result["failures"][0]["test_id"], "test/test_foo.py::TestBar::test_baz"
+        )
         self.assertEqual(result["failures"][0]["file"], "test/test_foo.py")
         self.assertIn("message", result["failures"][0])
 
-    def test_run_tests_parser_no_failures_key_when_all_pass(self):
+    def test_run_tests_parser_no_failures_key_when_all_pass(self) -> None:
         """When no FAILED lines are present, failures key must be absent."""
         result = run_tests._parse_pytest_output("5 passed in 0.1s")
         self.assertIsNotNone(result)
         self.assertNotIn("failures", result)
 
-    def test_git_manage_fast_path_skips_discovery_when_git_marker_present(self):
+    def test_git_manage_fast_path_skips_discovery_when_git_marker_present(self) -> None:
         """With a .git marker and explicit repo_path, no discovery scan should run."""
         repo = self.root / "myrepo"
         (repo / ".git").mkdir(parents=True)
         mcp = FakeMCP()
         git_manage.register(mcp)
 
-        ok_result = {
-            "stdout": "true", "stderr": "", "exit_code": 0,
-            "timed_out": False, "duration_ms": 1,
+        ok_result: dict = {
+            "stdout": "true",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": False,
+            "duration_ms": 1,
         }
         with (
             patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
@@ -1039,17 +1358,23 @@ class CoreFeedbackTests(unittest.TestCase):
 
         discover.assert_not_called()
 
-    def test_git_manage_init_accepts_repo_path_subdirectory(self):
+    def test_git_manage_init_accepts_repo_path_subdirectory(self) -> dict:
         """init with repo_path must initialize that subdirectory, not just workspace root."""
         mcp = FakeMCP()
         git_manage.register(mcp)
         sub = self.root / "subproject"
         sub.mkdir()
 
-        def initialize(command, *, cwd):
+        def initialize(command, *, cwd) -> dict:
+            """Initialize function."""
             (cwd / ".git").mkdir()
-            return {"stdout": "Initialized", "stderr": "", "exit_code": 0,
-                    "timed_out": False, "duration_ms": 1}
+            return {
+                "stdout": "Initialized",
+                "stderr": "",
+                "exit_code": 0,
+                "timed_out": False,
+                "duration_ms": 1,
+            }
 
         with (
             patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
