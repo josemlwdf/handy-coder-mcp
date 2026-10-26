@@ -1,3 +1,5 @@
+"""Module documentation."""
+
 import os
 import unittest
 from pathlib import Path
@@ -13,11 +15,17 @@ from lib.subagents.roles import get_role
 
 
 class FakeMCP:
-    def __init__(self):
+    """FakeMCP class."""
+
+    def __init__(self) -> None:
+        """Init function."""
         self.tools = {}
 
     def tool(self, description):
+        """Tool function."""
+
         def register(function):
+            """Register function."""
             self.tools[function.__name__] = function
             return function
 
@@ -25,12 +33,16 @@ class FakeMCP:
 
 
 class SubagentToolTests(unittest.TestCase):
+    """SubagentToolTests class."""
+
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
+        """SetUpClass function."""
         support.configure(str(Path(__file__).resolve().parents[1]))
 
-    def setUp(self):
+    def setUp(self) -> None:
         # reset module-level singleton state by reloading in-process
+        """SetUp function."""
         import importlib
 
         importlib.reload(subagent_tools)
@@ -42,12 +54,13 @@ class SubagentToolTests(unittest.TestCase):
         # Cooperative frames only open for an explicit SUBAGENT_BACKEND=cooperative.
         subagent_tools._COOP_EXPLICIT = True
 
-
-    def test_new_roles_are_available(self):
+    def test_new_roles_are_available(self) -> None:
+        """Test new roles are available function."""
         self.assertIsNotNone(get_role("generalist"))
         self.assertIsNotNone(get_role("coder"))
 
-    def test_roles_expose_write_tools_by_usage(self):
+    def test_roles_expose_write_tools_by_usage(self) -> None:
+        """Test roles expose write tools by usage function."""
         planner = get_role("planner")
         coder = get_role("coder")
         explorer = get_role("explorer")
@@ -60,7 +73,8 @@ class SubagentToolTests(unittest.TestCase):
         self.assertIn("apply_edits", coder.allowed_tools)
         self.assertNotIn("apply_edits", explorer.allowed_tools)
 
-    def test_planner_and_coder_prompts_require_repository_evidence(self):
+    def test_planner_and_coder_prompts_require_repository_evidence(self) -> None:
+        """Test planner and coder prompts require repository evidence function."""
         planner = get_role("planner")
         coder = get_role("coder")
         self.assertIsNotNone(planner)
@@ -78,7 +92,8 @@ class SubagentToolTests(unittest.TestCase):
         self.assertIn("before editing", coder.system_prompt.lower())
         self.assertIn("verify", coder.system_prompt.lower())
 
-    def test_planner_and_coder_result_formats_request_paths_and_findings(self):
+    def test_planner_and_coder_result_formats_request_paths_and_findings(self) -> None:
+        """Test planner and coder result formats request paths and findings function."""
         planner = get_role("planner")
         coder = get_role("coder")
         self.assertIsNotNone(planner)
@@ -91,12 +106,18 @@ class SubagentToolTests(unittest.TestCase):
         self.assertIn("conflict", planner_format)
 
         coder_format = coder.result_format.lower()
-        for section in ("inspected facts", "changes made", "validation performed", "unresolved blockers"):
+        for section in (
+            "inspected facts",
+            "changes made",
+            "validation performed",
+            "unresolved blockers",
+        ):
             self.assertIn(section, coder_format)
         self.assertIn("file paths", coder_format)
         self.assertIn("verified", coder_format)
 
-    def test_registers_five_subagent_tools(self):
+    def test_registers_five_subagent_tools(self) -> None:
+        """Test registers five subagent tools function."""
         self.assertEqual(
             set(self.mcp.tools),
             {
@@ -108,7 +129,8 @@ class SubagentToolTests(unittest.TestCase):
             },
         )
 
-    def test_cooperative_lifecycle(self):
+    def test_cooperative_lifecycle(self) -> None:
+        """Test cooperative lifecycle function."""
         run = self.mcp.tools["subagent_run"](role="explorer", task="inspect README")
         self.assertEqual(run["status"], "delegated_to_host")
         task_id = run["task_id"]
@@ -125,26 +147,30 @@ class SubagentToolTests(unittest.TestCase):
         page = self.mcp.tools["subagent_result"](task_id=task_id)
         self.assertIn("README", page["result"])
 
-    def test_scope_guard_blocks_out_of_role_tool(self):
+    def test_scope_guard_blocks_out_of_role_tool(self) -> None:
+        """Test scope guard blocks out of role tool function."""
         run = self.mcp.tools["subagent_run"](role="explorer", task="inspect")
         self.assertEqual(run["status"], "delegated_to_host")
         blocked = subagent_tools.before_tool_call("apply_edits", {})
         self.assertIsNotNone(blocked)
         self.assertEqual(blocked["error_code"], "subagent_scope_violation")
 
-    def test_scope_guard_allows_write_tools_for_coder(self):
+    def test_scope_guard_allows_write_tools_for_coder(self) -> None:
+        """Test scope guard allows write tools for coder function."""
         run = self.mcp.tools["subagent_run"](role="coder", task="implement")
         self.assertEqual(run["status"], "delegated_to_host")
         self.assertIsNone(subagent_tools.before_tool_call("create_file", {}))
         self.assertIsNone(subagent_tools.before_tool_call("apply_edits", {}))
 
-    def test_reminder_trailer_is_appended(self):
+    def test_reminder_trailer_is_appended(self) -> None:
+        """Test reminder trailer is appended function."""
         self.mcp.tools["subagent_run"](role="explorer", task="inspect")
         wrapped = subagent_tools.after_tool_call("read_files", {"message": "ok"})
         self.assertIn("subagent_reminder", wrapped)
         self.assertIn("subagent_complete", wrapped["subagent_reminder"])
 
-    def test_only_actual_file_changes_are_recorded(self):
+    def test_only_actual_file_changes_are_recorded(self) -> None:
+        """Test only actual file changes are recorded function."""
         subagent_tools.after_tool_call(
             "create_file",
             {"path": "created.txt", "created": True, "overwritten": False},
@@ -171,7 +197,8 @@ class SubagentToolTests(unittest.TestCase):
             [{"summary": "Create a tracked file", "paths": ["created.txt"]}],
         )
 
-    def test_five_successful_write_calls_dispatch_one_scoped_committer(self):
+    def test_five_successful_write_calls_dispatch_one_scoped_committer(self) -> None:
+        """Test five successful write calls dispatch one scoped committer function."""
         with patch.object(
             subagent_tools,
             "subagent_run",
@@ -180,7 +207,11 @@ class SubagentToolTests(unittest.TestCase):
             for index in range(4):
                 subagent_tools.after_tool_call(
                     "create_file",
-                    {"path": f"file-{index}.txt", "created": True, "overwritten": False},
+                    {
+                        "path": f"file-{index}.txt",
+                        "created": True,
+                        "overwritten": False,
+                    },
                     {"summary": f"Change {index}"},
                 )
 
@@ -190,10 +221,13 @@ class SubagentToolTests(unittest.TestCase):
                 {"summary": "Edit two related files"},
             )
 
-            self.assertEqual(result["automatic_commit"], {
-                "status": "running",
-                "task_id": "commit-task",
-            })
+            self.assertEqual(
+                result["automatic_commit"],
+                {
+                    "status": "running",
+                    "task_id": "commit-task",
+                },
+            )
             run_committer.assert_called_once()
             self.assertEqual(run_committer.call_args.kwargs["role"], "committer")
             self.assertFalse(run_committer.call_args.kwargs["wait"])
@@ -221,12 +255,19 @@ class SubagentToolTests(unittest.TestCase):
                 [{"summary": "Later change", "paths": ["later.txt"]}],
             )
 
-    def test_committer_dispatch_failure_is_reported_with_summaries(self):
-        with patch.object(subagent_tools, "subagent_run", side_effect=ValueError("task limit reached")):
+    def test_committer_dispatch_failure_is_reported_with_summaries(self) -> None:
+        """Test committer dispatch failure is reported with summaries function."""
+        with patch.object(
+            subagent_tools, "subagent_run", side_effect=ValueError("task limit reached")
+        ):
             for index in range(4):
                 subagent_tools.after_tool_call(
                     "create_file",
-                    {"path": f"file-{index}.txt", "created": True, "overwritten": False},
+                    {
+                        "path": f"file-{index}.txt",
+                        "created": True,
+                        "overwritten": False,
+                    },
                     {"summary": f"Change {index}"},
                 )
 
@@ -240,8 +281,9 @@ class SubagentToolTests(unittest.TestCase):
         self.assertEqual(result["automatic_commit"]["message"], "task limit reached")
         self.assertIn("Change 4", result["automatic_commit"]["summaries"])
 
-    def test_threshold_automatically_delegates_to_committer_role(self):
-        result = None
+    def test_threshold_automatically_delegates_to_committer_role(self) -> None:
+        """Test threshold automatically delegates to committer role function."""
+        result: None = None
         for index in range(5):
             result = subagent_tools.after_tool_call(
                 "create_file",
@@ -254,7 +296,9 @@ class SubagentToolTests(unittest.TestCase):
         self.assertIn("Change 4", automatic_commit["instructions"])
         self.assertIn("committer", automatic_commit["instructions"])
         self.assertEqual(
-            self.mcp.tools["subagent_status"](task_id=automatic_commit["task_id"])["state"],
+            self.mcp.tools["subagent_status"](task_id=automatic_commit["task_id"])[
+                "state"
+            ],
             "delegated",
         )
         self.mcp.tools["subagent_cancel"](
@@ -262,7 +306,8 @@ class SubagentToolTests(unittest.TestCase):
             confirm=True,
         )
 
-    def test_successful_committer_action_completes_frame_automatically(self):
+    def test_successful_committer_action_completes_frame_automatically(self) -> None:
+        """Test successful committer action completes frame automatically function."""
         run = self.mcp.tools["subagent_run"](role="committer", task="commit changes")
 
         result = subagent_tools.after_tool_call(
@@ -279,11 +324,16 @@ class SubagentToolTests(unittest.TestCase):
         )
         self.assertNotIn("subagent_reminder", result)
 
-    def test_unsuccessful_committer_action_stays_open_for_explicit_completion(self):
+    def test_unsuccessful_committer_action_stays_open_for_explicit_completion(
+        self,
+    ) -> None:
+        """Test unsuccessful committer action stays open for explicit completion function."""
         run = self.mcp.tools["subagent_run"](role="committer", task="commit changes")
 
         result = subagent_tools.after_tool_call(
-            "git_manage", {"exit_code": 1, "stderr": "nothing staged"}, {"action": "commit"}
+            "git_manage",
+            {"exit_code": 1, "stderr": "nothing staged"},
+            {"action": "commit"},
         )
 
         self.assertIn("subagent_reminder", result)
@@ -295,7 +345,8 @@ class SubagentToolTests(unittest.TestCase):
             task_id=run["task_id"], result="Commit skipped: nothing staged."
         )
 
-    def test_frame_expiry_is_five_minutes_and_task_ttl_stays_separate(self):
+    def test_frame_expiry_is_five_minutes_and_task_ttl_stays_separate(self) -> None:
+        """Test frame expiry is five minutes and task ttl stays separate function."""
         limits = SubagentLimits()
         self.assertEqual(limits.frame_ttl_seconds, 300)
         self.assertEqual(limits.task_ttl_seconds, 1200)
@@ -306,7 +357,8 @@ class SubagentToolTests(unittest.TestCase):
         self.assertEqual(frame.expires_at - frame.opened_at, 300)
         self.assertEqual(task.expires_at - task.created_at, 1200)
 
-    def test_expired_cooperative_frame_is_removed_and_task_fails(self):
+    def test_expired_cooperative_frame_is_removed_and_task_fails(self) -> None:
+        """Test expired cooperative frame is removed and task fails function."""
         manager = SubagentManager(SubagentLimits())
         with patch("lib.subagents.manager.time.time", return_value=100.0):
             task = manager.create_task("explorer", "inspect", "cooperative", None, None)
@@ -317,39 +369,47 @@ class SubagentToolTests(unittest.TestCase):
             self.assertIsNone(manager.open_frame())
             self.assertEqual(manager.get_task(task.task_id).state, "failed")
 
-
-    def test_direct_backend_wait_completes_inline(self):
+    def test_direct_backend_wait_completes_inline(self) -> None:
+        """Test direct backend wait completes inline function."""
         subagent_tools.configure_runtime(client_capabilities=None)
         subagent_tools._BACKEND = "direct:openai"
 
-        with patch.object(subagent_loop, "run_loop", return_value=("- finding: quick result", 1, 42)):
-            out = self.mcp.tools["subagent_run"](role="explorer", task="inspect quickly", wait=True)
+        with patch.object(
+            subagent_loop, "run_loop", return_value=("- finding: quick result", 1, 42)
+        ):
+            out = self.mcp.tools["subagent_run"](
+                role="explorer", task="inspect quickly", wait=True
+            )
 
         self.assertEqual(out["status"], "completed")
         self.assertEqual(out["backend"], "direct:openai")
         self.assertIn("finding", out["result"])
         self.assertEqual(out["usage"]["turns"], 1)
 
-    def test_explicit_continue_model_overrides_backend_and_is_reported(self):
+    def test_explicit_continue_model_overrides_backend_and_is_reported(self) -> tuple:
+        """Test explicit continue model overrides backend and is reported function."""
         selected = ResolvedContinue(
             ContinueModel("fast", "openai", "gpt-fast", None, api_key="secret"),
             "/private/config.yaml",
         )
         subagent_tools._BACKEND = "sampling"
-        captured = {}
+        captured: dict = {}
 
-        def run_loop(backend, _role, _task, _context, _deliverable, **kwargs):
+        def run_loop(backend, _role, _task, _context, _deliverable, **kwargs) -> tuple:
+            """Run loop function."""
             captured["backend"] = backend
             captured["model"] = kwargs["continue_model"]
             return "- finding: quick result", 1, 42
 
-        with patch.object(subagent_tools, "resolve_continue_models", return_value=[selected]):
+        with patch.object(
+            subagent_tools, "resolve_continue_models", return_value=[selected]
+        ):
             with patch.object(subagent_loop, "run_loop", side_effect=run_loop):
                 out = self.mcp.tools["subagent_run"](
                     role="explorer", task="inspect quickly", model="fast", wait=True
                 )
 
-        expected = {"name": "fast", "provider": "openai", "model": "gpt-fast"}
+        expected: dict = {"name": "fast", "provider": "openai", "model": "gpt-fast"}
         self.assertEqual(captured["backend"], "continue:openai")
         self.assertIs(captured["model"], selected.model)
         self.assertEqual(out["model"], expected)
@@ -359,18 +419,23 @@ class SubagentToolTests(unittest.TestCase):
         self.assertEqual(status["model"], expected)
         self.assertEqual(result["model"], expected)
 
-    def test_unknown_explicit_continue_model_is_rejected(self):
+    def test_unknown_explicit_continue_model_is_rejected(self) -> None:
+        """Test unknown explicit continue model is rejected function."""
         with patch.object(subagent_tools, "resolve_continue_models", return_value=[]):
-            with self.assertRaisesRegex(ValueError, "Unknown or unavailable Continue model"):
+            with self.assertRaisesRegex(
+                ValueError, "Unknown or unavailable Continue model"
+            ):
                 self.mcp.tools["subagent_run"](
                     role="explorer", task="inspect", model="missing"
                 )
 
-    def test_direct_backend_can_return_running(self):
+    def test_direct_backend_can_return_running(self) -> tuple:
+        """Test direct backend can return running function."""
         subagent_tools.configure_runtime(client_capabilities=None)
         subagent_tools._BACKEND = "direct:openai"
 
-        def slow_run(*_args, **_kwargs):
+        def slow_run(*_args, **_kwargs) -> tuple:
+            """Slow run function."""
             import time
 
             time.sleep(0.8)
@@ -378,17 +443,21 @@ class SubagentToolTests(unittest.TestCase):
 
         with patch.dict(os.environ, {"SUBAGENT_WAIT_SECONDS": "0.05"}, clear=False):
             with patch.object(subagent_loop, "run_loop", side_effect=slow_run):
-                out = self.mcp.tools["subagent_run"](role="explorer", task="inspect slowly", wait=True)
+                out = self.mcp.tools["subagent_run"](
+                    role="explorer", task="inspect slowly", wait=True
+                )
 
         self.assertEqual(out["status"], "running")
         status = self.mcp.tools["subagent_status"](task_id=out["task_id"])
         self.assertIn(status["state"], {"running", "done"})
 
-    def test_cancelled_running_task_stays_cancelled(self):
+    def test_cancelled_running_task_stays_cancelled(self) -> tuple:
+        """Test cancelled running task stays cancelled function."""
         subagent_tools.configure_runtime(client_capabilities=None)
         subagent_tools._BACKEND = "direct:openai"
 
-        def slow_run(*_args, **_kwargs):
+        def slow_run(*_args, **_kwargs) -> tuple:
+            """Slow run function."""
             import time
 
             time.sleep(0.6)
@@ -396,9 +465,13 @@ class SubagentToolTests(unittest.TestCase):
 
         with patch.dict(os.environ, {"SUBAGENT_WAIT_SECONDS": "0.05"}, clear=False):
             with patch.object(subagent_loop, "run_loop", side_effect=slow_run):
-                out = self.mcp.tools["subagent_run"](role="explorer", task="cancel me", wait=True)
+                out = self.mcp.tools["subagent_run"](
+                    role="explorer", task="cancel me", wait=True
+                )
                 self.assertEqual(out["status"], "running")
-                cancelled = self.mcp.tools["subagent_cancel"](task_id=out["task_id"], confirm=True)
+                cancelled = self.mcp.tools["subagent_cancel"](
+                    task_id=out["task_id"], confirm=True
+                )
 
         self.assertEqual(cancelled["state"], "cancelled")
 
@@ -408,16 +481,92 @@ class SubagentToolTests(unittest.TestCase):
         status = self.mcp.tools["subagent_status"](task_id=out["task_id"])
         self.assertEqual(status["state"], "cancelled")
 
+    def test_startup_clean_worktree_no_repository_is_noop(self) -> None:
+        """Test startup clean worktree no repository is noop function."""
+        with patch("lib.core.git_manage.discover_repositories", return_value=((), ())):
+            with patch.object(subagent_tools, "subagent_run") as run_committer:
+                result = subagent_tools.enforce_clean_worktree_on_startup()
+
+        self.assertFalse(result["enforced"])
+        self.assertEqual(result["reason"], "no_repository")
+        run_committer.assert_not_called()
+
+    def test_startup_clean_worktree_dispatches_committer_for_dirty_repo(self) -> None:
+        """Test startup clean worktree dispatches committer for dirty repo function."""
+        dirty_status: dict = {
+            "exit_code": 0,
+            "staged": [{"path": "tracked.py"}],
+            "working_tree": [],
+            "untracked_files": [],
+        }
+        clean_status: dict = {
+            "exit_code": 0,
+            "staged": [],
+            "working_tree": [],
+            "untracked_files": [],
+        }
+        with patch(
+            "lib.core.git_manage.discover_repositories", return_value=((".",), ())
+        ):
+            with patch(
+                "lib.core.git_manage.git_manage",
+                side_effect=[dirty_status, clean_status],
+            ):
+                with patch.object(
+                    subagent_tools,
+                    "subagent_run",
+                    return_value={
+                        "status": "completed",
+                        "result": "Committed startup cleanup.",
+                    },
+                ) as run_committer:
+                    result = subagent_tools.enforce_clean_worktree_on_startup()
+
+        self.assertTrue(result["enforced"])
+        self.assertEqual(result["repositories"], ["."])
+        run_committer.assert_called_once()
+        self.assertEqual(run_committer.call_args.kwargs["role"], "committer")
+        self.assertTrue(run_committer.call_args.kwargs["wait"])
+
+    def test_startup_clean_worktree_raises_when_committer_unavailable(self) -> None:
+        """Test startup clean worktree raises when committer unavailable function."""
+        dirty_status: dict = {
+            "exit_code": 0,
+            "staged": [],
+            "working_tree": [{"path": "pending.txt"}],
+            "untracked_files": ["pending.txt"],
+        }
+        with patch(
+            "lib.core.git_manage.discover_repositories", return_value=((".",), ())
+        ):
+            with patch("lib.core.git_manage.git_manage", return_value=dirty_status):
+                with patch.object(
+                    subagent_tools,
+                    "subagent_run",
+                    return_value={
+                        "status": "unavailable",
+                        "message": "No subagent LLM available; continue the task yourself in this conversation.",
+                    },
+                ):
+                    with self.assertRaisesRegex(
+                        RuntimeError, "could not run to completion"
+                    ):
+                        subagent_tools.enforce_clean_worktree_on_startup()
+
 
 class UnavailableBackendTests(unittest.TestCase):
-    def setUp(self):
+    """UnavailableBackendTests class."""
+
+    def setUp(self) -> None:
+        """SetUp function."""
         import importlib
 
         importlib.reload(subagent_tools)
         self.mcp = FakeMCP()
         subagent_tools.register(self.mcp)
 
-    def test_fallback_cooperative_returns_unavailable_and_opens_no_frame(self):
+    def test_fallback_cooperative_returns_unavailable_and_opens_no_frame(self) -> None:
+        """Test fallback cooperative returns unavailable and opens no frame function."""
         subagent_tools._BACKEND = "cooperative"
         subagent_tools._COOP_EXPLICIT = False
         out = self.mcp.tools["subagent_run"](role="explorer", task="inspect")
@@ -426,20 +575,29 @@ class UnavailableBackendTests(unittest.TestCase):
         self.assertIsNone(subagent_tools._MANAGER.open_frame())
         self.assertIsNone(subagent_tools.before_tool_call("apply_edits", {}))
 
-    def test_write_role_runs_on_loop_backend_without_opt_in(self):
+    def test_write_role_runs_on_loop_backend_without_opt_in(self) -> None:
+        """Test write role runs on loop backend without opt in function."""
         subagent_tools._BACKEND = "direct:openai"
-        with patch.object(subagent_loop, "run_loop", return_value=("- implemented", 1, 10)):
-            out = self.mcp.tools["subagent_run"](role="coder", task="implement", wait=True)
+        with patch.object(
+            subagent_loop, "run_loop", return_value=("- implemented", 1, 10)
+        ):
+            out = self.mcp.tools["subagent_run"](
+                role="coder", task="implement", wait=True
+            )
         self.assertEqual(out["status"], "completed")
         self.assertIn("task_id", out)
 
 
 class LoopBackendTests(unittest.TestCase):
-    def test_run_loop_returns_final_result(self):
+    """LoopBackendTests class."""
+
+    def test_run_loop_returns_final_result(self) -> str:
+        """Test run loop returns final result function."""
         role = get_role("explorer")
         self.assertIsNotNone(role)
 
-        def sampling_fn(_system_prompt, _messages, _max_tokens):
+        def sampling_fn(_system_prompt, _messages, _max_tokens) -> str:
+            """Sampling fn function."""
             return '{"final":"- finding: completed"}'
 
         result, turns, tokens = subagent_loop.run_loop(
@@ -454,12 +612,14 @@ class LoopBackendTests(unittest.TestCase):
         self.assertEqual(turns, 1)
         self.assertGreater(tokens, 0)
 
-    def test_run_loop_executes_allowed_tool_then_finishes(self):
+    def test_run_loop_executes_allowed_tool_then_finishes(self) -> str:
+        """Test run loop executes allowed tool then finishes function."""
         role = get_role("explorer")
         self.assertIsNotNone(role)
-        calls = {"n": 0}
+        calls: dict = {"n": 0}
 
-        def sampling_fn(_system_prompt, _messages, _max_tokens):
+        def sampling_fn(_system_prompt, _messages, _max_tokens) -> str:
+            """Sampling fn function."""
             if calls["n"] == 0:
                 calls["n"] += 1
                 return '{"tool":"find_files","args":{"glob_pattern":"README.md","exclude_pattern":null,"include_generated":false}}'
@@ -476,11 +636,13 @@ class LoopBackendTests(unittest.TestCase):
         self.assertIn("finding", result)
         self.assertEqual(turns, 2)
 
-    def test_run_loop_rejects_disallowed_tool(self):
+    def test_run_loop_rejects_disallowed_tool(self) -> str:
+        """Test run loop rejects disallowed tool function."""
         role = get_role("explorer")
         self.assertIsNotNone(role)
 
-        def sampling_fn(_system_prompt, _messages, _max_tokens):
+        def sampling_fn(_system_prompt, _messages, _max_tokens) -> str:
+            """Sampling fn function."""
             return '{"tool":"apply_edits","args":{}}'
 
         with self.assertRaises(RuntimeError) as ctx:
@@ -496,8 +658,11 @@ class LoopBackendTests(unittest.TestCase):
 
 
 class ResolveBackendTests(unittest.TestCase):
-    def test_resolve_backend_env_matrix(self):
+    """ResolveBackendTests class."""
+
+    def test_resolve_backend_env_matrix(self) -> None:
         # Continue discovery is default-on, so opt out to reach the cooperative floor.
+        """Test resolve backend env matrix function."""
         with patch.dict(os.environ, {"SUBAGENT_CONTINUE": "0"}, clear=True):
             self.assertEqual(resolve_backend({}), "cooperative")
 

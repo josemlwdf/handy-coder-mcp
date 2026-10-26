@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import threading
+import time
 from typing import Annotated, Any
 
 from pydantic import Field
@@ -201,16 +202,40 @@ def enforce_clean_worktree_on_startup(timeout_seconds: float = 120.0) -> dict[st
             "repositories": list(repositories),
         }
 
-    try:
-        dispatch = subagent_run(
-            role="committer",
-            task=_startup_task(dirty),
-            context="Automatically dispatched during MCP startup to enforce a clean worktree policy.",
-            deliverable="One short status per repository: commit hash/message or why no commit was made.",
-            wait=True,
+    # Continue deployments can be in cooldown independently. Retry the startup
+    # committer with each configured model so one unavailable deployment does
+    # not prevent MCP startup when another model is usable.
+    models = resolve_continue_models() if _backend().startswith("continue:") else []
+    model_names = [item.model.name for item in models]
+    attempts: list[dict[str, Any]] = []
+    dispatch: dict[str, Any] | None = None
+    candidates: list[str | None] = [None]
+    candidates.extend(name for name in model_names if name)
+    for candidate in candidates:
+        try:
+            result = subagent_run(
+                role="committer",
+                task=_startup_task(dirty),
+                context="Automatically dispatched during MCP startup to enforce a clean worktree policy.",
+                deliverable="One short status per repository: commit hash/message or why no commit was made.",
+                wait=True,
+                **({"model": candidate} if candidate is not None else {}),
+            )
+        except ValueError as exc:
+            attempts.append({"model": candidate, "error": str(exc)})
+            continue
+        if not isinstance(result, dict):
+            attempts.append({"model": candidate, "error": "unexpected response"})
+            continue
+        dispatch = result
+        if result.get("status") in {"completed", "running"}:
+            break
+        attempts.append({"model": candidate, "result": result})
+    if dispatch is None or dispatch.get("status") not in {"completed", "running"}:
+        raise RuntimeError(
+            "Startup committer could not run to completion: "
+            f"{attempts[-1].get('result') or attempts[-1].get('error') if attempts else 'no available model'}"
         )
-    except ValueError as exc:
-        raise RuntimeError(f"Startup committer dispatch failed: {exc}") from exc
 
     if not isinstance(dispatch, dict):
         raise RuntimeError("Startup committer dispatch returned an unexpected response")

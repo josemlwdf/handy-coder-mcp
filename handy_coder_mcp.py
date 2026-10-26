@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -141,6 +142,11 @@ def main() -> None:
     )
     parser.add_argument("-r", "--root", default=None, help="Authorized workspace root")
     parser.add_argument("-s", "--shell", default=None, help="Override command shell")
+    parser.add_argument(
+        "--enforce-clean-worktree-child",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     args = parser.parse_args()
 
     resolved_root = _resolve_root(args.root)
@@ -149,6 +155,17 @@ def main() -> None:
     except Exception as exc:
         print(f"[handy-coder-mcp] Startup failed: {exc}", file=sys.stderr)
         raise SystemExit(1)
+
+    if args.enforce_clean_worktree_child:
+        subagent_tools.configure_runtime(client_capabilities=None)
+        try:
+            subagent_tools.enforce_clean_worktree_on_startup()
+        except Exception as exc:  # noqa: BLE001 - background enforcement must not affect the MCP process
+            print(
+                f"[handy-coder-mcp] Background clean-worktree enforcement failed: {exc}",
+                file=sys.stderr,
+            )
+        return
 
     detected_ide = ide_detector.detect_ide()
     ide_info = f"; ide: {detected_ide}" if detected_ide else ""
@@ -185,18 +202,26 @@ def main() -> None:
     _assert_tool_argument_types_known(mcp)
 
     try:
-        enforcement = subagent_tools.enforce_clean_worktree_on_startup()
-    except RuntimeError as exc:
-        print(
-            f"[handy-coder-mcp] Startup blocked by clean-worktree enforcement: {exc}",
-            file=sys.stderr,
+        subprocess.Popen(
+            [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "--root",
+                support.ROOT,
+                "--enforce-clean-worktree-child",
+                *( ["--shell", support.SHELL] if support.SHELL else [] ),
+            ],
+            cwd=support.ROOT,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
         )
-        raise SystemExit(1)
-    if enforcement.get("enforced"):
-        repositories = ", ".join(enforcement.get("repositories", [])) or "."
+    except OSError as exc:
         print(
-            "[handy-coder-mcp] Startup committer cleaned repositories before serving: "
-            f"{repositories}",
+            "[handy-coder-mcp] Could not launch background clean-worktree enforcement: "
+            f"{exc}",
             file=sys.stderr,
         )
 
