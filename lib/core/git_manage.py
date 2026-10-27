@@ -44,6 +44,9 @@ _COMMIT_MESSAGE_HINT: str = (
     "Use a meaningful commit message that summarizes the staged changes (for example: "
     "'fix(parser): handle empty tokens')."
 )
+_ADD_FOLLOWUP_HINT: str = (
+    "Next, run commit with -m and use a message that summarizes the staged changes."
+)
 _GENERIC_COMMIT_SUBJECTS: set = {
     "wip",
     "update",
@@ -797,6 +800,8 @@ def git_manage(
     result = _route_failure_to_stderr(
         run_process([git, action, *git_args], cwd=selected_path)
     )
+    if action == "add" and result.get("exit_code") == 0:
+        result["hint"] = _ADD_FOLLOWUP_HINT
     if action == "commit" and result.get("exit_code") != 0:
         result["hint"] = commit_message_hint or _COMMIT_MESSAGE_HINT
     if action == "status" and result.get("exit_code") == 0:

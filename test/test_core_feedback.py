@@ -414,6 +414,7 @@ class CoreFeedbackTests(unittest.TestCase):
         result = self.mcp.tools["git_manage"]("add", args=["new.txt"], repo_path=".")
 
         self.assertEqual(result["exit_code"], 0, result)
+        self.assertIn("commit with -m", result.get("hint", ""))
         ignore_text = (self.root / ".gitignore").read_text(encoding="utf-8")
         self.assertIn(".handy-coder/", ignore_text)
         self.assertIn("tmp/", ignore_text)
