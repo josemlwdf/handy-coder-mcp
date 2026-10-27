@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "handy-coder": {
+      "type": "stdio",
+      "command": "${PLUGIN_ROOT}/.venv/bin/python",
+      "args": ["${PLUGIN_ROOT}/handy_coder_mcp.py"],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}
