@@ -4,6 +4,7 @@ import errno
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from typing import get_args, get_type_hints
@@ -174,6 +175,41 @@ class CoreFeedbackTests(unittest.TestCase):
 
         self.assertTrue(result["supported"])
         run_process.assert_called_once()
+        self.assertEqual(
+            run_process.call_args.args[0][:3], [sys.executable, "-m", "pytest"]
+        )
+
+    def test_filtered_pytest_prefers_project_venv_python(self) -> None:
+        """When .venv exists, run_tests should invoke pytest via the venv Python binary."""
+        (self.root / "pyproject.toml").write_text(
+            "[project]\nname = 'sample'\n", encoding="utf-8"
+        )
+        (self.root / "test_one.py").write_text(
+            "def test_one(): pass\n", encoding="utf-8"
+        )
+        venv_python = self.root / ".venv" / "bin" / "python"
+        venv_python.parent.mkdir(parents=True)
+        venv_python.write_text("", encoding="utf-8")
+        process_result: dict = {
+            "stdout": "",
+            "stderr": "",
+            "exit_code": 0,
+            "timed_out": False,
+            "duration_ms": 1,
+        }
+
+        with patch(
+            "lib.core.run_tests.run_process", return_value=process_result
+        ) as run_process:
+            result = self.mcp.tools["run_tests"](
+                test_framework="pytest", filter_path="test_one.py"
+            )
+
+        self.assertTrue(result["supported"])
+        run_process.assert_called_once()
+        self.assertEqual(
+            run_process.call_args.args[0][:3], [str(venv_python), "-m", "pytest"]
+        )
 
     def test_pytest_configuration_enables_unfiltered_test_run(self) -> None:
         """Test pytest configuration enables unfiltered test run function."""

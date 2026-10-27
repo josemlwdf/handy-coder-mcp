@@ -280,7 +280,7 @@ This addendum supersedes the sections above where they conflict.
 - **Cooperative is explicit only.** `delegated_to_host` and its frame (five-minute TTL, tool allowlist) happen only when `SUBAGENT_BACKEND=cooperative` is set.
 - **Continue backend.** Default-on in auto mode (`SUBAGENT_CONTINUE=0` turns it off; `SUBAGENT_BACKEND=continue` forces it), it reuses a chat model from the user's Continue config. Auto order: sampling, provider key in the environment, Continue, Ollama. It spends the user's own credits or local model.
 - **Trust.** The workspace `.continue/config.yaml` is untrusted, so `${{ secrets.* }}` references in it are not resolved. Keys and header values are redacted from error text and never appear in `get_capabilities`.
-- **Loop writes.** Loop backends run every role, including write-capable ones. Loop tool calls run in a server thread with a deadline and are not isolated in the worker process; workspace confinement comes from `support.inside()`.
+- **Loop writes.** Loop backends run every role, including write-capable ones. Loop tool calls use the worker subprocess supervisor when the selected callable is worker-eligible; `subagent_status` and `subagent_result` remain in-process because they depend on in-memory task state. Workspace confinement still comes from `support.inside()`.
 - **Cancel.** `subagent_cancel(confirm=true)` sets a per-task event that the loop checks each turn and before each tool call. An HTTP request already in flight still completes.
 
 ## Continue loop interoperability notes

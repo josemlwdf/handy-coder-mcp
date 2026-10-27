@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import re
@@ -28,6 +29,26 @@ if TYPE_CHECKING:
 ToolFn = Callable[..., dict]
 SamplingFn = Callable[[str, list[dict[str, str]], int], str]
 
+_IN_PROCESS_LOOP_TOOLS: set[str] = {"subagent_status", "subagent_result"}
+
+
+def _call_subagent_tool(name: str, args: dict[str, Any]) -> dict:
+    """Call subagent tool function."""
+    from . import tools
+
+    return getattr(tools, name)(**args)
+
+
+def _tool_subagent_status(**args) -> dict:
+    """Expose subagent_status as a regular callable for the loop allowlist."""
+    return _call_subagent_tool("subagent_status", args)
+
+
+def _tool_subagent_result(**args) -> dict:
+    """Expose subagent_result as a regular callable for the loop allowlist."""
+    return _call_subagent_tool("subagent_result", args)
+
+
 _ALLOWED_TOOLS: dict[str, ToolFn] = {
     "read_files": read_files.read_files,
     "search_text": code_search.search_text,
@@ -38,16 +59,9 @@ _ALLOWED_TOOLS: dict[str, ToolFn] = {
     "run_tests": run_tests.run_tests,
     "git_manage": git_manage.git_manage,
     # Resolve these lazily: tools imports loop during module initialization.
-    "subagent_status": lambda **args: _call_subagent_tool("subagent_status", args),
-    "subagent_result": lambda **args: _call_subagent_tool("subagent_result", args),
+    "subagent_status": _tool_subagent_status,
+    "subagent_result": _tool_subagent_result,
 }
-
-
-def _call_subagent_tool(name: str, args: dict[str, Any]) -> dict:
-    """Call subagent tool function."""
-    from . import tools
-
-    return getattr(tools, name)(**args)
 
 
 _TOOL_ARGUMENTS: dict = {
@@ -433,19 +447,27 @@ class SubagentCancelled(RuntimeError):
     pass
 
 
-# Tool calls from loop backends run in a server thread with a deadline. They are
-# NOT isolated in the worker process (importing worker_supervisor here would be
-# circular); file access is confined to the workspace by support.inside().
+def _is_worker_eligible(fn: ToolFn) -> bool:
+    """Return whether a callable can be resolved by module/name in worker processes."""
+    module_name = getattr(fn, "__module__", None)
+    function_name = getattr(fn, "__name__", None)
+    if not isinstance(module_name, str) or not isinstance(function_name, str):
+        return False
+    if function_name == "<lambda>":
+        return False
+    try:
+        module = importlib.import_module(module_name)
+    except Exception:  # noqa: BLE001
+        return False
+    return getattr(module, function_name, None) is fn
 
 
-def _call_tool(
+def _call_tool_in_thread(
     fn: ToolFn,
     args: dict[str, Any],
     deadline: float = 60.0,
-    *,
-    tool_name: str | None = None,
 ) -> dict:
-    """Call tool function."""
+    """Run a tool callable in a daemon thread as a fallback for in-process tools."""
     box: dict[str, Any] = {}
 
     def target() -> None:
@@ -463,6 +485,32 @@ def _call_tool(
     if thread.is_alive():
         return {"error": f"tool timed out after {deadline:.0f}s"}
     return box.get("result", {"error": "tool returned no result"})
+
+
+def _call_tool(
+    fn: ToolFn,
+    args: dict[str, Any],
+    deadline: float = 60.0,
+    *,
+    tool_name: str | None = None,
+) -> dict:
+    """Call a loop tool with process isolation when possible."""
+    if tool_name in _IN_PROCESS_LOOP_TOOLS or not _is_worker_eligible(fn):
+        return _call_tool_in_thread(fn, args, deadline)
+
+    from .. import worker_supervisor
+
+    try:
+        result = worker_supervisor.run_tool_in_worker(
+            fn,
+            args=(),
+            kwargs=args,
+            deadline=max(1.0, float(deadline)),
+            mcp=None,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc)}
+    return result if isinstance(result, dict) else {"result": result}
 
 
 def _check_cancel(cancel_event: Any) -> None:

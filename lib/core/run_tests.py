@@ -1,6 +1,7 @@
+"""Module documentation."""
+
 import json
 import sys
-import importlib.util
 import configparser
 import tomllib
 from pathlib import Path
@@ -9,7 +10,9 @@ from typing import Annotated, Literal
 from pydantic import Field
 from ..support import inside, run_process, describe, setup_required, path_escape_message
 
+
 def _has_python_test_setup(root) -> bool:
+    """Has python test setup function."""
     if any((root / name).is_file() for name in ("pytest.ini",)):
         return True
     for name in ("pyproject.toml",):
@@ -28,13 +31,14 @@ def _has_python_test_setup(root) -> bool:
     if any(root.glob("test_*.py")):
         return True
     return any(
-        directory.is_dir() and (
-            any(directory.glob("test_*.py")) or any(directory.glob("*_test.py"))
-        )
+        directory.is_dir()
+        and (any(directory.glob("test_*.py")) or any(directory.glob("*_test.py")))
         for directory in (root / "test", root / "tests")
     )
 
+
 def _pytest_preflight_notes(root: Path, target: Path | None) -> list[str]:
+    """Pytest preflight notes function."""
     notes: list[str] = []
     if target is not None:
         return notes
@@ -49,6 +53,7 @@ def _pytest_preflight_notes(root: Path, target: Path | None) -> list[str]:
 
 
 def _pytest_failure_hints(output: str) -> list[str]:
+    """Pytest failure hints function."""
     hints: list[str] = []
     if "ModuleNotFoundError: No module named 'lib'" in output:
         hints.append(
@@ -59,29 +64,56 @@ def _pytest_failure_hints(output: str) -> list[str]:
     return hints
 
 
-def _pytest_command() -> list[str]:
-    if importlib.util.find_spec("pytest") is not None:
-        return [sys.executable, "-m", "pytest"]
-    return ["pytest"]
+def _venv_python(root: Path) -> str | None:
+    """Venv python function."""
+    for directory_name in (".venv", "venv"):
+        venv_root = root / directory_name
+        if not venv_root.is_dir():
+            continue
+        for relative_path in (
+            Path("Scripts") / "python.exe",
+            Path("Scripts") / "python",
+            Path("bin") / "python",
+            Path("bin") / "python3",
+        ):
+            candidate = venv_root / relative_path
+            if candidate.is_file():
+                return str(candidate)
+    return None
+
+
+def _pytest_command(root: Path) -> list[str]:
+    """Pytest command function."""
+    python_binary = _venv_python(root) or sys.executable
+    return [python_binary, "-m", "pytest"]
 
 
 def _package_config(root) -> dict:
+    """Package config function."""
     package = root / "package.json"
     if not package.is_file():
         return {}
     return json.loads(package.read_text(encoding="utf-8"))
 
+
 def _package_runner_markers(package: dict) -> tuple[set[str], str]:
+    """Package runner markers function."""
     configured = set()
     for section in ("dependencies", "devDependencies"):
         dependencies = package.get(section, {})
         if isinstance(dependencies, dict):
             configured.update(dependencies)
     scripts = package.get("scripts", {})
-    script_text = " ".join(str(command) for command in scripts.values()) if isinstance(scripts, dict) else ""
+    script_text = (
+        " ".join(str(command) for command in scripts.values())
+        if isinstance(scripts, dict)
+        else ""
+    )
     return configured, script_text
 
+
 def _has_test_setup(root, framework: str) -> bool:
+    """Has test setup function."""
     if framework == "pytest":
         return _has_python_test_setup(root)
     if framework in ("jest", "vitest"):
@@ -90,7 +122,9 @@ def _has_test_setup(root, framework: str) -> bool:
         return framework in configured or framework in script_text
     return False
 
+
 def _detect_framework(root) -> str | None:
+    """Detect framework function."""
     package = _package_config(root)
     configured, script_text = _package_runner_markers(package)
     if "vitest" in configured or "vitest" in script_text:
@@ -100,6 +134,7 @@ def _detect_framework(root) -> str | None:
     if _has_python_test_setup(root):
         return "pytest"
     return None
+
 
 def _parse_pytest_output(stdout: str) -> dict | None:
     """Extract summary counts and per-test failure identifiers from pytest terminal output.
@@ -113,22 +148,25 @@ def _parse_pytest_output(stdout: str) -> dict | None:
       "FAILED test/test_foo.py::TestClass::test_method - AssertionError: ..."
     """
     import re
+
     # Confirm there is a summary line at all before allocating counts.
-    if not re.search(r'\d+\s+(?:passed|failed|error)', stdout):
+    if not re.search(r"\d+\s+(?:passed|failed|error)", stdout):
         return None
     counts: dict[str, int] = {"passed": 0, "failed": 0, "errors": 0, "warnings": 0}
-    for m in re.finditer(r'(\d+)\s+(passed|failed|errors?|warnings?)', stdout):
-        key = m.group(2).rstrip("s")   # normalise plural: "errors" -> "error"
+    for m in re.finditer(r"(\d+)\s+(passed|failed|errors?|warnings?)", stdout):
+        key = m.group(2).rstrip("s")  # normalise plural: "errors" -> "error"
         if key == "error":
-            key = "errors"
+            key: str = "errors"
         if key == "warning":
-            key = "warnings"
+            key: str = "warnings"
         if key in counts:
             counts[key] = int(m.group(1))
 
     # Extract individual FAILED test identifiers.
-    failures = []
-    for m in re.finditer(r'^FAILED\s+([\w/\\.\-]+::[\w:.\-]+)(?: - (.*))?$', stdout, re.MULTILINE):
+    failures: list = []
+    for m in re.finditer(
+        r"^FAILED\s+([\w/\\.\-]+::[\w:.\-]+)(?: - (.*))?$", stdout, re.MULTILINE
+    ):
         test_id = m.group(1).strip()
         message = (m.group(2) or "").strip()
         parts = test_id.split("::", 1)
@@ -148,15 +186,24 @@ def _parse_pytest_output(stdout: str) -> dict | None:
 def _parse_js_test_output(stdout: str) -> dict | None:
     """Extract common Jest/Vitest test summary counts and failed test names."""
     import re
-    counts = {"passed": 0, "failed": 0, "skipped": 0}
-    found = False
-    for label, key in (("passed", "passed"), ("failed", "failed"),
-                       ("skipped", "skipped"), ("pending", "skipped"), ("todo", "skipped")):
+
+    counts: dict = {"passed": 0, "failed": 0, "skipped": 0}
+    found: bool = False
+    for label, key in (
+        ("passed", "passed"),
+        ("failed", "failed"),
+        ("skipped", "skipped"),
+        ("pending", "skipped"),
+        ("todo", "skipped"),
+    ):
         matches = re.findall(rf"(\d+)\s+{label}\b", stdout, re.I)
         if matches:
             counts[key] = sum(map(int, matches))
-            found = True
-    failures = [{"test_id": m.group(1)} for m in re.finditer(r"^\s*[×✗✕❯●]\s+(.+?)\s*$", stdout, re.M)]
+            found: bool = True
+    failures: list = [
+        {"test_id": m.group(1)}
+        for m in re.finditer(r"^\s*[×✗✕❯●]\s+(.+?)\s*$", stdout, re.M)
+    ]
     if not found:
         return None
     if failures:
@@ -167,17 +214,37 @@ def _parse_js_test_output(stdout: str) -> dict | None:
 def run_tests(
     test_framework: Annotated[
         Literal["jest", "pytest", "vitest"] | None,
-        Field(description="Test framework to use; omit to detect Jest, Vitest, or pytest from the workspace."),
+        Field(
+            description="Test framework to use; omit to detect Jest, Vitest, or pytest from the workspace."
+        ),
     ] = None,
     filter_path: Annotated[
         str | None,
-        Field(description="Optional workspace-relative test file or target path. When supplied and points to test files, runs without requiring workspace-wide test discovery."),
+        Field(
+            description="Optional workspace-relative test file or target path. When supplied and points to test files, runs without requiring workspace-wide test discovery."
+        ),
     ] = None,
-    fail_fast: Annotated[bool, Field(description="Stop after the first failure where the runner supports it.")] = False,
-    parallel: Annotated[int | None, Field(ge=1, le=64, description="Optional worker count; pytest requires pytest-xdist for values greater than one.")] = None,
-    coverage: Annotated[bool, Field(description="Enable coverage collection when supported by the test runner.")] = False,
+    fail_fast: Annotated[
+        bool,
+        Field(description="Stop after the first failure where the runner supports it."),
+    ] = False,
+    parallel: Annotated[
+        int | None,
+        Field(
+            ge=1,
+            le=64,
+            description="Optional worker count; pytest requires pytest-xdist for values greater than one.",
+        ),
+    ] = None,
+    coverage: Annotated[
+        bool,
+        Field(
+            description="Enable coverage collection when supported by the test runner."
+        ),
+    ] = False,
     verbose: Annotated[bool, Field(description="Request verbose test output.")] = False,
 ) -> dict:
+    """Run tests function."""
     root = inside(".")
     framework = test_framework
     detection_trace: list[dict[str, str]] = []
@@ -185,9 +252,18 @@ def run_tests(
         raise ValueError("test_framework must be jest, pytest, or vitest")
     if not framework:
         framework = _detect_framework(root)
-        detection_trace.append({"source": "workspace configuration", "status": f"detected:{framework}" if framework else "no_supported_framework"})
+        detection_trace.append(
+            {
+                "source": "workspace configuration",
+                "status": f"detected:{framework}"
+                if framework
+                else "no_supported_framework",
+            }
+        )
     else:
-        detection_trace.append({"source": "test_framework parameter", "status": f"selected:{framework}"})
+        detection_trace.append(
+            {"source": "test_framework parameter", "status": f"selected:{framework}"}
+        )
     if not framework:
         return {
             "supported": False,
@@ -198,16 +274,28 @@ def run_tests(
         try:
             target = inside(filter_path, must_exist=True)
         except FileNotFoundError:
-            return {"supported": False, "error_code": "not_found",
-                    "message": f"Test filter path not found: {filter_path}", "path": filter_path}
+            return {
+                "supported": False,
+                "error_code": "not_found",
+                "message": f"Test filter path not found: {filter_path}",
+                "path": filter_path,
+            }
         except ValueError:
-            return {"supported": False, "error_code": "path_escape",
-                    "message": path_escape_message(filter_path), "path": filter_path}
+            return {
+                "supported": False,
+                "error_code": "path_escape",
+                "message": path_escape_message(filter_path),
+                "path": filter_path,
+            }
         if not target.is_file() and not target.is_dir():
-            return {"supported": False, "error_code": "not_a_file_or_directory",
-                    "message": f"Test filter path is not a file or directory: {filter_path}", "path": filter_path}
+            return {
+                "supported": False,
+                "error_code": "not_a_file_or_directory",
+                "message": f"Test filter path is not a file or directory: {filter_path}",
+                "path": filter_path,
+            }
     else:
-        target = None
+        target: None = None
     if target is None and not _has_test_setup(root, framework):
         return {
             "supported": False,
@@ -220,22 +308,55 @@ def run_tests(
     preflight_notes: list[str] = []
     if framework == "pytest":
         preflight_notes = _pytest_preflight_notes(root, target)
-        cmd = _pytest_command() + (["-x"] if fail_fast else []) + (["-n", str(parallel)] if parallel else []) + (["--cov"] if coverage else []) + (["-v"] if verbose else []) + ([str(target)] if target else [])
+        cmd = (
+            _pytest_command(root)
+            + (["-x"] if fail_fast else [])
+            + (["-n", str(parallel)] if parallel else [])
+            + (["--cov"] if coverage else [])
+            + (["-v"] if verbose else [])
+            + ([str(target)] if target else [])
+        )
     else:
-        cmd = ["npx", "--no-install", framework, "run"] + (["--bail"] if fail_fast and framework == "jest" else []) + (["--maxWorkers", str(parallel)] if parallel and framework == "jest" else []) + (["--coverage"] if coverage else []) + (["--verbose"] if verbose else []) + ([str(target)] if target else [])
+        cmd = (
+            ["npx", "--no-install", framework, "run"]
+            + (["--bail"] if fail_fast and framework == "jest" else [])
+            + (
+                ["--maxWorkers", str(parallel)]
+                if parallel and framework == "jest"
+                else []
+            )
+            + (["--coverage"] if coverage else [])
+            + (["--verbose"] if verbose else [])
+            + ([str(target)] if target else [])
+        )
     result = run_process(cmd, cwd=root)
     if result.get("stderr", "").startswith("Failed to start process:"):
-        requirement = "binary:pytest" if framework == "pytest" else f"package:{framework}"
-        command = "python -m pip install pytest" if framework == "pytest" else "npm install --save-dev " + framework
+        requirement = (
+            "binary:pytest" if framework == "pytest" else f"package:{framework}"
+        )
+        command = (
+            "python -m pip install pytest"
+            if framework == "pytest"
+            else "npm install --save-dev " + framework
+        )
         return {
             **setup_required(
-                missing_requirements=[requirement], remediation_commands=[command],
+                missing_requirements=[requirement],
+                remediation_commands=[command],
                 documentation_url="docs/SETUP.md#test-execution-setup-run_tests-pytest",
-                message=f"The configured {framework} test runner could not be started.", error_code="tool_not_installed",
+                message=f"The configured {framework} test runner could not be started.",
+                error_code="tool_not_installed",
             ),
-            "framework": framework, "detection_trace": detection_trace, **result,
+            "framework": framework,
+            "detection_trace": detection_trace,
+            **result,
         }
-    out = {"supported": True, "framework": framework, "detection_trace": detection_trace, **result}
+    out: dict = {
+        "supported": True,
+        "framework": framework,
+        "detection_trace": detection_trace,
+        **result,
+    }
     combined_output = result.get("stdout", "") + result.get("stderr", "")
     if framework == "pytest":
         parsed = _parse_pytest_output(combined_output)
@@ -254,10 +375,13 @@ def run_tests(
 
 
 def register(mcp):
-    return mcp.tool(description=describe(
-        "Run configured Jest, Vitest, or pytest tests; unfiltered runs require recognized test setup. "
-        "filter_path is workspace-confined; when it points to test files, discovery is skipped. "
-        "Returns parsed summary counts when available; for pytest, also returns failures list with "
-        "test_id, file, and message fields for each failed test, plus optional hints for common import issues. "
-        "When to use: Execute project tests."
-    ))(run_tests)
+    """Register function."""
+    return mcp.tool(
+        description=describe(
+            "Run configured Jest, Vitest, or pytest tests; unfiltered runs require recognized test setup. "
+            "filter_path is workspace-confined; when it points to test files, discovery is skipped. "
+            "Returns parsed summary counts when available; for pytest, also returns failures list with "
+            "test_id, file, and message fields for each failed test, plus optional hints for common import issues. "
+            "When to use: Execute project tests."
+        )
+    )(run_tests)
