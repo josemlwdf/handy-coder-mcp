@@ -414,7 +414,7 @@ class AuditRegressionTests(unittest.TestCase):
                 action="delete", name="regression", confirm=True
             )
             self.assertTrue(deleted["deleted"])
-            self.assertTrue((self.root / "skills/regression.md.bak").is_file())
+            self.assertTrue((self.root / "skills/regression/SKILL.md.bak").is_file())
             self.assertEqual(
                 skills.skills_manage(action="delete", name="plan", confirm=True)[
                     "error_code"

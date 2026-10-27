@@ -155,7 +155,7 @@ Committing is left entirely to the user or to an explicit request, and `git_mana
 
 ### Skills
 
-`skills_manage` stores and retrieves reusable skills, which are Markdown files with a small frontmatter block (`name`, `description`, `invokable`) in the project's `skills` directory. Set `HANDY-CODER_SKILLS_DIR` to use a different directory. The directory is not tied to `--root`.
+`skills_manage` stores and retrieves reusable skills as Markdown files with a small frontmatter block (`name`, `description`, `invokable`) at `skills/<skill-name>/SKILL.md`. Set `HANDY_CODER_SKILLS_DIR` to use a different base directory. The skills directory is not tied to `--root`.
 
 - `action: "list"` returns every skill's `name`, `description` and `invokable` flag, plus an `errors` array for files that could not be read.
 - `action: "get"` with `name` returns the full `content` and the `body` without frontmatter.

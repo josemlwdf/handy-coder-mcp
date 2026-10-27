@@ -56,7 +56,7 @@ def get_capabilities() -> dict:
         "find_files": {"available": True, "note": "always enabled"},
         "skills_manage": {
             "available": True,
-            "note": "list, get, or save skills; directory override via HANDY_CODER_SKILLS_DIR",
+            "note": "list/get/save skills at skills/<name>/SKILL.md; base directory override via HANDY_CODER_SKILLS_DIR",
         },
         "orchestrator": {
             "available": True,
