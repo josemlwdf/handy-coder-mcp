@@ -108,6 +108,7 @@ class AuditRegressionTests(unittest.TestCase):
                     "get_capabilities": object(),
                     "get_tool_details": object(),
                     "index_codebase": object(),
+                    "code_intel": object(),
                     "skills_manage": object(),
                 }
             )
@@ -115,7 +116,13 @@ class AuditRegressionTests(unittest.TestCase):
         result = system_info.get_capabilities()
         self.assertEqual(
             set(result["tools"]),
-            {"get_capabilities", "get_tool_details", "index_codebase", "skills_manage"},
+            {
+                "code_intel",
+                "get_capabilities",
+                "get_tool_details",
+                "index_codebase",
+                "skills_manage",
+            },
         )
         self.assertIn(
             "HANDY_CODER_SKILLS_DIR", result["tools"]["skills_manage"]["note"]

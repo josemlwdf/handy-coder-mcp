@@ -96,11 +96,15 @@ def get_capabilities() -> dict:
         },
         "index_codebase": {
             "available": True,
-            "note": "incrementally indexes local C# files into .handy-coder/code_index.sqlite3 (Tree-sitter and SQLite FTS5); run it before code_navigator; failures return error_code index_unavailable",
+            "note": "incrementally indexes local C# files into .handy-coder/code_index.sqlite3 (Tree-sitter and SQLite FTS5); standalone indexing endpoint; failures return error_code index_unavailable",
         },
         "code_navigator": {
             "available": True,
             "note": "search_code, get_symbol, or find_references over the local C# index; find_references is syntactic, not compiler-resolved; returns a hint when the index is empty",
+        },
+        "code_intel": {
+            "available": True,
+            "note": "unified code intelligence facade: action=index runs indexing, action=navigate runs code navigation and can auto-index when the local index is empty",
         },
         "get_tool_details": {
             "available": True,
@@ -136,6 +140,7 @@ def get_capabilities() -> dict:
             "web_search",
             "index_codebase",
             "code_navigator",
+            "code_intel",
             "get_tool_details",
         ):
             tools.setdefault(name, {"available": True, "note": "registered MCP tool"})
