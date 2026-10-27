@@ -12,6 +12,7 @@ from ..subagents.resolve import (
     resolve_continue_models,
 )
 from ..support import describe
+from .gowitness_screenshot import gowitness_available
 from ..subagents.roles import ROLES
 
 _MCP: None = None
@@ -24,6 +25,7 @@ def get_capabilities() -> dict:
     pytest_ok = shutil.which("pytest") is not None
 
     subagent_backend = resolve_backend()
+    screenshot_available, screenshot_note = gowitness_available()
     # Only non-secret identifiers: provider, model name and config path. Never the key.
     continue_info: None = None
     continue_models = resolve_continue_models()
@@ -86,6 +88,11 @@ def get_capabilities() -> dict:
             "available": True,
             "note": "searches the public web via DuckDuckGo Lite and returns titles, snippets, and links; requires outbound network access",
         },
+        "capture_url_screenshot": {
+            "available": screenshot_available,
+            "note": "captures URL screenshots to tmp/ via gowitness; "
+            + screenshot_note,
+        },
         "code_intel": {
             "available": True,
             "note": "unified code intelligence facade: action=index runs indexing, action=navigate runs code navigation and can auto-index when the local index is empty",
@@ -122,6 +129,7 @@ def get_capabilities() -> dict:
     else:
         for name in (
             "web_search",
+            "capture_url_screenshot",
             "code_intel",
             "get_tool_details",
         ):

@@ -5,10 +5,11 @@ import unittest
 from mcp.server.fastmcp import FastMCP
 
 from lib import code_index, tool_details
-from lib.core import code_navigator, system_info, web_search_tool
+from lib.core import code_navigator, gowitness_screenshot, system_info, web_search_tool
 
 NAMED_TOOLS: tuple = (
     "web_search",
+    "capture_url_screenshot",
     "code_intel",
     "get_tool_details",
 )
@@ -58,6 +59,7 @@ class CapabilityNotesTests(unittest.TestCase):
         mcp = FastMCP("t")
         tool_details.install(mcp)
         web_search_tool.register(mcp)
+        gowitness_screenshot.register(mcp)
         code_navigator.register(mcp)
         system_info.register(mcp)
         registered = set(mcp._tool_manager._tools)

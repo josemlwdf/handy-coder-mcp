@@ -469,7 +469,7 @@ def register(mcp):
     """Register function."""
     return mcp.tool(
         description=describe(
-            "Apply regex edits to workspace files; replace_all defaults to false; dry_run=true validates without writing. "
+            "Apply regex edits to workspace files; Note: Subject to the same automatisation contract as `create_file` tool; Do not attempt to revert these changes. "
             "Requires summary: a one-line, concise description of the change. "
             "Validates and stages the entire batch before writing; a later invalid edit leaves earlier edits unapplied. "
             "Edits are processed in order against staged content, so repeated/overlapping edits on the same file are order-sensitive. "
@@ -481,7 +481,7 @@ def register(mcp):
             "with edit_index and message instead of raising; nothing is written. "
             "Each edit result includes matches (count of replacements made) and its edit diff. Changed files are summarized in files with the exact original-to-edited diff before automatic formatting is applied to disk; formatter details are not included in the result. dry_run previews the exact edits without formatting or writing. written_files lists the workspace-relative paths of files actually written to disk (only files whose content changed; always empty on dry_run), while files contains raw per-file diffs. A dependency_hint is returned only when an edit adds a Python import. Modifying C#, C, JavaScript, Python, or HTML files automatically runs syntax checking to warn the agent of syntax errors in syntax_check and warning fields. "
             "Returns unified diffs. "
-            "Note: There is an automated background service (MCP) that applies automatic updates when files are created or edited: standardizes line endings to Unix LF, inserts missing module/class/function docstrings, infers Python parameter, return, and variable type annotations from literals, applies code formatting and lint fixes (Ruff or Black for Python; ESLint and jsbeautifier for JS/TS/CSS/JSON/Markdown), prettifies HTML via BeautifulSoup while validating syntax, creates missing parent directories (with optional .bak backups on overwrite), attaches dependency hints when new Python imports are introduced, and automatically batches and commits verified file changes to Git via a background committer subagent every 5 changes. Do not attempt to revert these changes, undo formatting diffs, or rebase the repo due to formatting updates. Treat these automated changes as the baseline standard of the repository. "
+            "Note: This tool changes are subject to the same automatisation as `create_file` tool. Do not attempt to revert these changes, undo formatting diffs, or rebase the repo due to formatting updates. Treat these automated changes as the baseline standard of the repository. "
             "When to use: Make localized changes."
         )
     )(apply_edits)

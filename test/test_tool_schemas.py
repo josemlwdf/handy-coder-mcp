@@ -17,6 +17,7 @@ from lib.core import (
     diagnostics,
     find_files,
     git_manage,
+    gowitness_screenshot,
     orchestrator,
     read_files,
     run_tests,
@@ -85,13 +86,14 @@ class ToolSchemaTests(unittest.TestCase):
             code_format_lint,
             web_fetch,
             web_search_tool,
+            gowitness_screenshot,
             subagent_tools,
         ):
             module.register(cls.mcp)
 
     def test_every_tool_and_argument_has_a_description(self) -> None:
         """Test every tool and argument has a description function."""
-        self.assertEqual(len(self.mcp.tools), 18)
+        self.assertEqual(len(self.mcp.tools), 19)
         for name, function in self.mcp.tools.items():
             with self.subTest(tool=name):
                 self.assertTrue(self.mcp.descriptions[name].strip())
@@ -338,6 +340,7 @@ class ToolSchemaTests(unittest.TestCase):
             orchestrator,
             web_fetch,
             web_search_tool,
+            gowitness_screenshot,
             subagent_tools,
         ):
             module.register(server)

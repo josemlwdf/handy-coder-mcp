@@ -44,7 +44,7 @@ def _load_fastmcp():
 from lib import error_handler  # noqa: E402
 from lib import support, tool_details, worker_supervisor  # noqa: E402
 from lib.core import code_navigator  # noqa: E402
-from lib.core import web_search_tool  # noqa: E402
+from lib.core import gowitness_screenshot, web_search_tool  # noqa: E402
 from lib.core import (  # noqa: E402
     apply_edits,
     build_project,
@@ -153,6 +153,7 @@ _DESTRUCTIVE_TOOL_HINTS = frozenset(
         "orchestrator",
         "skills_manage",
         "subagent_manage",
+        "capture_url_screenshot",
     }
 )
 
@@ -257,6 +258,7 @@ def main() -> None:
         build_project,
         web_fetch,
         web_search_tool,
+        gowitness_screenshot,
         system_info,
         skills,
         orchestrator,

@@ -61,8 +61,8 @@ _GENERIC_COMMIT_SUBJECTS: set = {
     "temp",
     "commit",
 }
-_DISALLOWED_COMMIT_WORD = re.compile(r"\\bchore\\b", re.IGNORECASE)
-_DISALLOWED_COMMIT_NOUN = re.compile(r"\\bcommit\\b", re.IGNORECASE)
+_DISALLOWED_COMMIT_WORD = re.compile(r"\bchore\b", re.IGNORECASE)
+_DISALLOWED_COMMIT_NOUN = re.compile(r"\bcommit\b", re.IGNORECASE)
 
 
 def discover_repositories() -> tuple[tuple[str, ...], tuple[dict[str, str], ...]]:

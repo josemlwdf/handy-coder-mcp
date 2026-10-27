@@ -45,9 +45,9 @@ ROLES: dict[str, Role] = {
             "implementation plan focused on high-leverage execution steps. Optimize for an orchestrator that retains only minimal context and delegates the rest."
         ),
         allowed_tools=_READ_ONLY_TOOLS,
-        max_turns=8,
-        max_tokens=1800,
-        max_tool_calls=12,
+        max_turns=20,
+        max_tokens=4000,
+        max_tool_calls=20,
         result_format=(
             "Markdown implementation plan with sections: Objective, Assumptions, Scope, Risks, "
             "Execution Strategy, and Validation."
@@ -61,9 +61,9 @@ ROLES: dict[str, Role] = {
             "and avoid speculative claims."
         ),
         allowed_tools=_READ_ONLY_TOOLS,
-        max_turns=8,
-        max_tokens=1500,
-        max_tool_calls=12,
+        max_turns=20,
+        max_tokens=4000,
+        max_tool_calls=20,
         result_format="Bullet list with evidence and one concise conclusion.",
         validator=_non_empty,
     ),
@@ -78,9 +78,9 @@ ROLES: dict[str, Role] = {
             "code_get_diagnostics",
             "run_tests",
         ),
-        max_turns=8,
-        max_tokens=1800,
-        max_tool_calls=16,
+        max_turns=20,
+        max_tokens=4000,
+        max_tool_calls=20,
         result_format="Sections: Findings, Evidence, Suggested next step.",
         validator=_reviewer_result,
     ),
@@ -100,9 +100,9 @@ ROLES: dict[str, Role] = {
             *_READ_ONLY_TOOLS,
             *_WRITE_TOOLS,
         ),
-        max_turns=6,
-        max_tokens=1200,
-        max_tool_calls=10,
+        max_turns=20,
+        max_tokens=4000,
+        max_tool_calls=20,
         result_format=(
             "Markdown checklist for tasks.md where every task starts with [ ] and includes "
             "relevant file paths, verified constraints/evidence, and a short non-interference "
@@ -129,9 +129,9 @@ ROLES: dict[str, Role] = {
             "code_get_diagnostics",
             "run_tests",
         ),
-        max_turns=10,
-        max_tokens=2200,
-        max_tool_calls=18,
+        max_turns=20,
+        max_tokens=4000,
+        max_tool_calls=100,
         result_format=(
             "Concise sections: Inspected facts (with file paths), Changes made (with file paths), "
             "Validation performed (with output), and Unresolved blockers or assumption conflicts "
@@ -159,7 +159,7 @@ ROLES: dict[str, Role] = {
             "error, read that result and correct the call before deciding the task is blocked."
         ),
         allowed_tools=(*_READ_ONLY_TOOLS, "git_manage"),
-        max_turns=8,
+        max_turns=20,
         max_tokens=1200,
         max_tool_calls=12,
         result_format="One short status: commit hash and message, or why no commit was made.",
