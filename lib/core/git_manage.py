@@ -61,6 +61,7 @@ _GENERIC_COMMIT_SUBJECTS: set = {
     "temp",
     "commit",
 }
+_DISALLOWED_COMMIT_SUBJECT_PREFIX = re.compile(r"^chore:\\s*commit\\b", re.IGNORECASE)
 
 
 def discover_repositories() -> tuple[tuple[str, ...], tuple[dict[str, str], ...]]:
@@ -452,6 +453,11 @@ def git_manage(
         commit_message = args[message_index + 1].strip()
         if not commit_message:
             raise ValueError("commit message cannot be blank")
+        commit_subject = commit_message.splitlines()[0].strip()
+        if _DISALLOWED_COMMIT_SUBJECT_PREFIX.match(commit_subject):
+            raise ValueError(
+                "commit message cannot start with 'chore: commit'; use a meaningful message that summarizes staged changes"
+            )
         commit_message_hint = _commit_message_hint_for(commit_message)
         if any(
             arg.startswith("-") for arg in args[:message_index] if arg != "-a"
