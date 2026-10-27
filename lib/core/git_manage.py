@@ -61,8 +61,7 @@ _GENERIC_COMMIT_SUBJECTS: set = {
     "temp",
     "commit",
 }
-_DISALLOWED_COMMIT_WORD = re.compile(r"\bchore\b", re.IGNORECASE)
-_DISALLOWED_COMMIT_NOUN = re.compile(r"\bcommit\b", re.IGNORECASE)
+_DISALLOWED_COMMIT_WORD = re.compile(r"\bcommit\b", re.IGNORECASE)
 
 
 def discover_repositories() -> tuple[tuple[str, ...], tuple[dict[str, str], ...]]:
@@ -457,7 +456,7 @@ def git_manage(
         commit_subject = commit_message.splitlines()[0].strip()
         if _DISALLOWED_COMMIT_WORD.search(
             commit_message
-        ) and _DISALLOWED_COMMIT_NOUN.search(commit_message):
+        ):
             raise ValueError(
                 "commit message cannot contain both 'chore' and 'commit'; use a meaningful message that summarizes staged changes"
             )
