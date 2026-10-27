@@ -6,12 +6,14 @@ from mcp.server.fastmcp import FastMCP
 
 from lib import code_index, tool_details
 from lib.core import code_navigator, gowitness_screenshot, system_info, web_search_tool
+from lib.subagents import tools as subagent_tools
 
 NAMED_TOOLS: tuple = (
     "web_search",
     "capture_url_screenshot",
     "code_intel",
     "get_tool_details",
+    "inspect_image",
 )
 
 
@@ -61,6 +63,7 @@ class CapabilityNotesTests(unittest.TestCase):
         web_search_tool.register(mcp)
         gowitness_screenshot.register(mcp)
         code_navigator.register(mcp)
+        subagent_tools.register(mcp)
         system_info.register(mcp)
         registered = set(mcp._tool_manager._tools)
         for name in NAMED_TOOLS:

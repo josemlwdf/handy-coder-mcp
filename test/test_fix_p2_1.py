@@ -111,6 +111,19 @@ class StructuredErrorTests(unittest.TestCase):
         self.assert_structured(result)
         self.assertEqual(result["error_code"], "unknown_tool")
 
+    def test_get_tool_details_accepts_prefixed_alias(self) -> None:
+        """Test get tool details accepts prefixed alias function."""
+        result = self.call("get_tool_details", {"tool_name": "handy_coder_read_files"})
+        self.assertEqual(result["tool_name"], "read_files")
+        self.assertNotIn("error_code", result)
+
+    def test_get_tool_details_prefixed_unknown_suggests_canonical(self) -> None:
+        """Test get tool details prefixed unknown suggests canonical function."""
+        result = self.call("get_tool_details", {"tool_name": "handy_coder_nope"})
+        self.assert_structured(result)
+        self.assertEqual(result["error_code"], "unknown_tool")
+        self.assertIn("Try canonical tool name 'nope'", result["message"])
+
     def test_read_files_invalid_line_range(self) -> None:
         """Test read files invalid line range function."""
         result = self.call(

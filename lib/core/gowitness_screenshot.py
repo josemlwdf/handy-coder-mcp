@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,12 +17,18 @@ from .. import support
 from ..support import describe, inside, run_process, setup_required
 
 _IMAGE_EXTENSIONS: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".webp")
+_BENIGN_STDERR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"cannot\s+unmarshal.*CookiePartitionKey", re.IGNORECASE),
+        "Chrome DevTools protocol parser noise was detected and ignored.",
+    ),
+)
 
 
 def _external_bin_candidates() -> list[Path]:
     """Return workspace-local gowitness binary candidates."""
     root = Path(support.ROOT)
-    candidates: list = [root / "external_bin" / "gowitness"]
+    candidates: list[Path] = [root / "external_bin" / "gowitness"]
     if os.name == "nt":
         candidates.extend(
             [
@@ -76,6 +83,28 @@ def _discover_images(output_dir: Path) -> list[Path]:
     return sorted(images, key=lambda item: item.stat().st_mtime)
 
 
+def _classify_stderr(stderr_text: str) -> tuple[str, list[str]]:
+    """Split stderr output into meaningful lines and non-fatal warning summaries."""
+    meaningful_lines: list[str] = []
+    warnings: list[str] = []
+
+    for line in stderr_text.splitlines():
+        if not line.strip():
+            continue
+        matched: bool = False
+        for pattern, warning in _BENIGN_STDERR_PATTERNS:
+            if pattern.search(line):
+                if warning not in warnings:
+                    warnings.append(warning)
+                matched: bool = True
+                break
+        if not matched:
+            meaningful_lines.append(line)
+
+    meaningful_stderr = "\n".join(meaningful_lines)
+    return meaningful_stderr, warnings
+
+
 def capture_url_screenshot(
     url: Annotated[
         str,
@@ -92,6 +121,12 @@ def capture_url_screenshot(
             description="Page load timeout passed to gowitness in seconds (1-120).",
         ),
     ] = 20,
+    debug: Annotated[
+        bool,
+        Field(
+            description="When true, include raw stderr output in stderr_raw for diagnostics.",
+        ),
+    ] = False,
 ) -> dict:
     """Capture a full-page screenshot for one URL and save it under tmp/."""
     try:
@@ -139,6 +174,9 @@ def capture_url_screenshot(
     process_timeout_ms = max(20_000, (int(timeout_seconds) + 15) * 1000)
     execution = run_process(command, cwd=".", timeout_ms=process_timeout_ms)
 
+    stderr_raw = execution.get("stderr", "")
+    stderr_clean, stderr_warnings = _classify_stderr(stderr_raw)
+
     images = _discover_images(output_dir)
     if not images:
         if execution.get("timed_out"):
@@ -174,6 +212,16 @@ def capture_url_screenshot(
     output_path = output_dir.relative_to(Path(support.ROOT)).as_posix()
     stat = image_file.stat()
 
+    warnings = list(stderr_warnings)
+    if execution.get("exit_code", 0) != 0:
+        warnings.append(
+            "gowitness returned a non-zero exit code, but a screenshot file was produced"
+        )
+    if stderr_clean:
+        warnings.append(
+            "gowitness wrote diagnostic stderr output during successful capture"
+        )
+
     response: dict = {
         "ok": True,
         "url": normalized_url,
@@ -183,12 +231,11 @@ def capture_url_screenshot(
         "exit_code": execution.get("exit_code"),
         "timed_out": execution.get("timed_out", False),
         "stdout": execution.get("stdout", ""),
-        "stderr": execution.get("stderr", ""),
+        "stderr": stderr_clean,
+        "warnings": warnings,
     }
-    if execution.get("exit_code", 0) != 0:
-        response["warning"] = (
-            "gowitness returned a non-zero exit code, but a screenshot file was produced"
-        )
+    if debug:
+        response["stderr_raw"] = stderr_raw
     return response
 
 

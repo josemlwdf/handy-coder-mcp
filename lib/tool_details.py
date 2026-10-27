@@ -26,7 +26,9 @@ def _published_description(name: str, description: str) -> str:
     """Keep editing guidance visible in the regular tool listing."""
     if name in {"create_file", "apply_edits"}:
         start = description.find("Note: There is an automated background service (MCP)")
-        end_marker = "Treat these automated changes as the baseline standard of the repository."
+        end_marker: str = (
+            "Treat these automated changes as the baseline standard of the repository."
+        )
         end = description.find(end_marker, start) if start >= 0 else -1
         if end >= 0:
             note = description[start : end + len(end_marker)]
@@ -240,6 +242,18 @@ def _nested_detail(
     return item
 
 
+def _canonical_tool_name(tool_name: str) -> str:
+    """Normalize external tool-name aliases to this server's canonical registry name."""
+    canonical = (tool_name or "").strip()
+    if canonical.startswith("functions."):
+        canonical = canonical.split(".", 1)[1]
+    if canonical.startswith("handy_coder_"):
+        canonical = canonical[len("handy_coder_") :]
+    if canonical.startswith("mcp__") and "__" in canonical:
+        canonical = canonical.rsplit("__", 1)[-1]
+    return canonical
+
+
 def install(mcp: Any) -> None:
     """Wrap FastMCP registration, retaining original details and publishing brief schemas."""
     catalog: dict[str, dict] = {}
@@ -260,7 +274,9 @@ def install(mcp: Any) -> None:
             manager_tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
             runtime_tool = manager_tools.get(name)
             if runtime_tool is not None:
-                runtime_tool.description = _published_description(name, description or "")
+                runtime_tool.description = _published_description(
+                    name, description or ""
+                )
             full_schema = _schema(runtime_tool) if runtime_tool is not None else {}
             if _schema_has_unknown_argument_types(full_schema):
                 full_schema = _fallback_argument_schema(function)
@@ -296,33 +312,46 @@ def install(mcp: Any) -> None:
 
     def get_tool_details(
         tool_name: Annotated[
-            str, Field(description="Name of a tool registered in this server instance.")
+            str,
+            Field(
+                description=(
+                    "Canonical registered tool name (for example 'read_files'). "
+                    "Prefixed aliases such as 'handy_coder_read_files' are accepted."
+                )
+            ),
         ],
     ) -> dict:
         """Get tool details function."""
-        entry = catalog.get(tool_name)
-        if entry is None:
-            return {
-                "error_code": "unknown_tool",
-                "message": f"Unknown or unavailable tool: {tool_name}",
-            }
+        requested_name = (tool_name or "").strip()
+        canonical_name = _canonical_tool_name(requested_name)
         manager_tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
-        runtime_tool = manager_tools.get(tool_name)
-        if runtime_tool is None:
+
+        resolved_name = requested_name
+        entry = catalog.get(resolved_name)
+        runtime_tool = manager_tools.get(resolved_name)
+        if (entry is None or runtime_tool is None) and canonical_name != requested_name:
+            resolved_name = canonical_name
+            entry = catalog.get(resolved_name)
+            runtime_tool = manager_tools.get(resolved_name)
+
+        if entry is None or runtime_tool is None:
+            message = f"Unknown or unavailable tool: {requested_name}"
+            if canonical_name and canonical_name != requested_name:
+                message = f"{message}. Try canonical tool name '{canonical_name}'."
             return {
                 "error_code": "unknown_tool",
-                "message": f"Unknown or unavailable tool: {tool_name}",
+                "message": message,
             }
         schema = copy.deepcopy(entry["inputSchema"])
         # Runtime descriptions can change after startup (currently git_manage).
         live_description = getattr(runtime_tool, "description", None)
         description = entry["description"]
         if live_description and live_description != _published_description(
-            tool_name, entry["description"]
+            resolved_name, entry["description"]
         ):
             description = live_description
         return {
-            "tool_name": tool_name,
+            "tool_name": resolved_name,
             "description": description,
             "arguments": _arguments(schema),
             "definitions": schema.get("$defs", {}),

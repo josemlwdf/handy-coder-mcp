@@ -116,6 +116,10 @@ def get_capabilities() -> dict:
             },
             "note": "unified lifecycle endpoint with action=run|status|result|complete|cancel",
         },
+        "inspect_image": {
+            "available": True,
+            "note": "inspects a workspace image with a multimodal backend via the generalist subagent profile",
+        },
     }
 
     registry = getattr(getattr(_MCP, "_tool_manager", None), "_tools", {})
@@ -132,6 +136,7 @@ def get_capabilities() -> dict:
             "capture_url_screenshot",
             "code_intel",
             "get_tool_details",
+            "inspect_image",
         ):
             tools.setdefault(name, {"available": True, "note": "registered MCP tool"})
     tools.setdefault(

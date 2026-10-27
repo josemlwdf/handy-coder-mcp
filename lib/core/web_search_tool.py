@@ -7,15 +7,15 @@ import re
 import ssl
 import sys
 import time
-from urllib.parse import quote_plus, unquote
+from urllib.parse import parse_qs, quote_plus, unquote, urlparse
 from urllib.request import Request, urlopen
 from typing import Annotated
 
 from pydantic import Field
 from ..support import describe
 
-REQUEST_TIMEOUT = 15.0
-HEADERS = {
+REQUEST_TIMEOUT: float = 15.0
+HEADERS: dict = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
@@ -23,35 +23,187 @@ HEADERS = {
 
 # ── Subject-aware query optimization ──────────────────────────────────
 
-SUBJECT_MODIFIERS = [
-    ({"recipe", "cooking", "bake", "food", "pasta", "soup", "cake", "salad", "grill",
-      "roast", "ingredient", "dish", "cuisine", "cook", "meal", "dinner", "lunch",
-      "breakfast", "appetizer", "dessert"}, "recipe"),
-    ({"github", "repo", "repository", "boilerplate", "template", "open source",
-      "framework", "npm package", "pip install"}, "site:github.com"),
-    ({"zero day", "cve", "vulnerability", "exploit", "malware", "ransomware",
-      "penetration test", "pentest", "cybersecurity", "infosec", "firewall", "patch",
-      "security advisory", "breach"}, "cybersecurity"),
-    ({"python", "pypi", "pip install", "django", "flask", "fastapi", "numpy", "pandas",
-      "python3", "conda"}, "python"),
-    ({"album", "song", "band", "artist", "music", "lyrics", "discography", "single",
-      "track", "vinyl", "spotify", "concert", "genre"}, "music"),
-    ({"things to do", "visit", "travel", "tourism", "hotel", "flight", "itinerary",
-      "attractions", "sightseeing", "vacation", "trip", "destination", "landmark",
-      "museum", "guide"}, "travel guide"),
-    ({"theorem", "proof", "equation", "formula", "eigenvalue", "matrix", "calculus",
-      "algebra", "topology", "integral", "derivative", "mathematics", "math",
-      "linear algebra", "statistics", "probability", "geometry"}, "mathematics"),
-    ({"rtx", "gtx", "gpu", "cpu", "benchmark", "review", "specs", "ram", "ssd",
-      "motherboard", "processor", "graphics card", "hardware", "laptop review",
-      "phone review", "performance"}, "review benchmarks"),
-    ({"treatment", "symptoms", "diagnosis", "medical", "health", "disease", "therapy",
-      "drug", "medication", "clinical", "patient", "hypertension", "diabetes",
-      "cancer", "vaccine", "prescription"}, "health medical"),
+SUBJECT_MODIFIERS: list = [
+    (
+        {
+            "recipe",
+            "cooking",
+            "bake",
+            "food",
+            "pasta",
+            "soup",
+            "cake",
+            "salad",
+            "grill",
+            "roast",
+            "ingredient",
+            "dish",
+            "cuisine",
+            "cook",
+            "meal",
+            "dinner",
+            "lunch",
+            "breakfast",
+            "appetizer",
+            "dessert",
+        },
+        "recipe",
+    ),
+    (
+        {
+            "github",
+            "repo",
+            "repository",
+            "boilerplate",
+            "template",
+            "open source",
+            "framework",
+            "npm package",
+            "pip install",
+        },
+        "site:github.com",
+    ),
+    (
+        {
+            "zero day",
+            "cve",
+            "vulnerability",
+            "exploit",
+            "malware",
+            "ransomware",
+            "penetration test",
+            "pentest",
+            "cybersecurity",
+            "infosec",
+            "firewall",
+            "patch",
+            "security advisory",
+            "breach",
+        },
+        "cybersecurity",
+    ),
+    (
+        {
+            "python",
+            "pypi",
+            "pip install",
+            "django",
+            "flask",
+            "fastapi",
+            "numpy",
+            "pandas",
+            "python3",
+            "conda",
+        },
+        "python",
+    ),
+    (
+        {
+            "album",
+            "song",
+            "band",
+            "artist",
+            "music",
+            "lyrics",
+            "discography",
+            "single",
+            "track",
+            "vinyl",
+            "spotify",
+            "concert",
+            "genre",
+        },
+        "music",
+    ),
+    (
+        {
+            "things to do",
+            "visit",
+            "travel",
+            "tourism",
+            "hotel",
+            "flight",
+            "itinerary",
+            "attractions",
+            "sightseeing",
+            "vacation",
+            "trip",
+            "destination",
+            "landmark",
+            "museum",
+            "guide",
+        },
+        "travel guide",
+    ),
+    (
+        {
+            "theorem",
+            "proof",
+            "equation",
+            "formula",
+            "eigenvalue",
+            "matrix",
+            "calculus",
+            "algebra",
+            "topology",
+            "integral",
+            "derivative",
+            "mathematics",
+            "math",
+            "linear algebra",
+            "statistics",
+            "probability",
+            "geometry",
+        },
+        "mathematics",
+    ),
+    (
+        {
+            "rtx",
+            "gtx",
+            "gpu",
+            "cpu",
+            "benchmark",
+            "review",
+            "specs",
+            "ram",
+            "ssd",
+            "motherboard",
+            "processor",
+            "graphics card",
+            "hardware",
+            "laptop review",
+            "phone review",
+            "performance",
+        },
+        "review benchmarks",
+    ),
+    (
+        {
+            "treatment",
+            "symptoms",
+            "diagnosis",
+            "medical",
+            "health",
+            "disease",
+            "therapy",
+            "drug",
+            "medication",
+            "clinical",
+            "patient",
+            "hypertension",
+            "diabetes",
+            "cancer",
+            "vaccine",
+            "prescription",
+        },
+        "health medical",
+    ),
 ]
 
 
 def optimize_query(query: str) -> str:
+    """Optimize query function."""
     ql = query.lower()
     for keywords, modifier in SUBJECT_MODIFIERS:
         if any(kw in ql for kw in keywords):
@@ -60,53 +212,140 @@ def optimize_query(query: str) -> str:
                 return f"{query} {modifier}"
     return query
 
+
 # ── DDG Lite HTML scraping ────────────────────────────────────────────
 
+
 def _fetch(url: str) -> str:
+    """Fetch function."""
     ctx = ssl._create_unverified_context()
     req = Request(url, headers=HEADERS)
     with urlopen(req, timeout=REQUEST_TIMEOUT, context=ctx) as resp:
         charset = resp.headers.get_content_charset() or "utf-8"
         return resp.read().decode(charset, errors="replace")
 
+
+_AD_QUERY_KEYS = frozenset(
+    {
+        "ad_domain",
+        "ad_provider",
+        "ad_type",
+        "click_metadata",
+        "msclkid",
+        "u3",
+    }
+)
+
+
+def _clean_text(raw_html: str) -> str:
+    """Clean text function."""
+    text = re.sub(r"<[^>]+>", "", raw_html)
+    return html.unescape(" ".join(text.split()))
+
+
+def _normalize_link(raw_link: str) -> tuple[str, bool]:
+    """Normalize link function."""
+    link = html.unescape(raw_link.strip())
+    if link.startswith("/"):
+        link = f"https://duckduckgo.com{link}"
+
+    parsed = urlparse(link)
+    query = parse_qs(parsed.query)
+    ad_like = bool(_AD_QUERY_KEYS.intersection(query.keys()))
+
+    if parsed.netloc.lower().endswith("duckduckgo.com"):
+        if parsed.path in {"/l/", "/l.js"} and query.get("uddg"):
+            link = unquote(query["uddg"][0])
+        elif parsed.path == "/y.js":
+            ad_like: bool = True
+            for key in ("u3", "u", "uddg"):
+                if query.get(key):
+                    link = unquote(query[key][0])
+                    break
+
+    parsed_link = urlparse(link)
+    if parsed_link.netloc.lower().endswith(
+        "duckduckgo.com"
+    ) and parsed_link.path.startswith(
+        "/duckduckgo-help-pages/company/ads-by-microsoft"
+    ):
+        ad_like: bool = True
+
+    return link, ad_like
+
+
 def parse_results(page: str) -> list:
-    results = []
+    """Parse results function."""
+    parsed_results: list[dict] = []
+    rows = re.findall(r"<tr\b[^>]*>.*?</tr>", page, flags=re.DOTALL | re.IGNORECASE)
 
-    # 1. Extract result blocks. In DDG Lite, results are often in <tr> or specific <table> rows.
-    # We look for the <a> tag with class "result-link" specifically.
-    # This regex finds the entire <a> tag regardless of attribute order.
-    link_tags = re.findall(r'<a[^>]+class=["\']result-link["\'][^>]*>.*?</a>', page, re.DOTALL)
+    for row in rows:
+        link_match = re.search(
+            r"<a[^>]*class=[\"'][^\"']*result-link[^\"']*[\"'][^>]*>.*?</a>",
+            row,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        snippet_match = re.search(
+            r"<td[^>]*class=[\"'][^\"']*result-snippet[^\"']*[\"'][^>]*>(.*?)</td>",
+            row,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
 
-    # 2. Extract snippets. Snippets follow the link in a <td> with class "result-snippet".
-    snippets = re.findall(r'<td[^>]+class=["\']result-snippet["\'][^>]*>(.*?)</td>', page, re.DOTALL)
+        snippet = _clean_text(snippet_match.group(1)) if snippet_match else ""
 
-    for i, tag in enumerate(link_tags[:10]):
-        # Extract href
-        href_match = re.search(r'href=["\']([^"\']+)["\']', tag)
-        link = href_match.group(1) if href_match else ""
+        if not link_match:
+            if snippet and parsed_results and not parsed_results[-1]["snippet"]:
+                parsed_results[-1]["snippet"] = snippet
+            continue
 
-        # Extract Title (text inside the <a> tag)
-        title = re.sub(r'<[^>]+>', '', tag).strip()
-        title = html.unescape(title)
+        href_match = re.search(
+            r"href=[\"']([^\"']+)[\"']",
+            link_match.group(0),
+            flags=re.IGNORECASE,
+        )
+        if not href_match:
+            continue
 
-        # Clean DDG internal redirects
-        if "uddg=" in link:
-            link = link.split("uddg=")[1].split("&")[0]
-            link = unquote(link)
-        elif link.startswith("/"):
-            link = f"https://duckduckgo.com{link}"
-
-        snippet = ""
-        if i < len(snippets):
-            snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip()
-            snippet = html.unescape(snippet)
+        title = _clean_text(link_match.group(0))
+        link, ad_like = _normalize_link(href_match.group(1))
 
         if title:
-            results.append({"title": title, "snippet": snippet, "link": link})
+            parsed_results.append(
+                {
+                    "title": title,
+                    "snippet": snippet,
+                    "link": link,
+                    "_ad_like": ad_like,
+                }
+            )
 
-    return results
+    deduped: list[dict] = []
+    seen_links: set[str] = set()
+    for result in parsed_results:
+        link = result["link"]
+        if link in seen_links:
+            continue
+        seen_links.add(link)
+        deduped.append(result)
+
+    deduped.sort(
+        key=lambda result: (result.get("_ad_like", False), not result["snippet"])
+    )
+
+    output: list[dict] = []
+    for result in deduped[:10]:
+        output.append(
+            {
+                "title": result["title"],
+                "snippet": result["snippet"],
+                "link": result["link"],
+            }
+        )
+    return output
+
 
 def search(query: str) -> list:
+    """Search function."""
     if not query.strip():
         return []
 
@@ -127,7 +366,13 @@ def search(query: str) -> list:
 
 
 def web_search(
-    query: Annotated[str, Field(min_length=1, description="Search query for public web pages; results include titles, snippets, and links.")],
+    query: Annotated[
+        str,
+        Field(
+            min_length=1,
+            description="Search query for public web pages; results include titles, snippets, and links.",
+        ),
+    ],
 ) -> dict:
     """Search the public web using DuckDuckGo Lite."""
     results = search(query)
@@ -135,13 +380,18 @@ def web_search(
 
 
 def register(mcp):
-    return mcp.tool(description=describe(
-        "Search the public web with DuckDuckGo Lite and return result titles, snippets, and links. "
-        "Use when current external information or a source URL is needed. "
-        "For known URLs, use web_fetch_docs to read the page contents."
-    ))(web_search)
+    """Register function."""
+    return mcp.tool(
+        description=describe(
+            "Search the public web with DuckDuckGo Lite and return result titles, snippets, and links. "
+            "Use when current external information or a source URL is needed. "
+            "For known URLs, use web_fetch_docs to read the page contents."
+        )
+    )(web_search)
 
-def main():
+
+def main() -> None:
+    """Main function."""
     if len(sys.argv) < 2:
         print("Usage: python web_search_tool.py 'your query'")
         sys.exit(1)
@@ -150,19 +400,21 @@ def main():
     try:
         queries = json.loads(raw_input) if raw_input.startswith("[") else [raw_input]
     except (json.JSONDecodeError, ValueError):
-        queries = [raw_input]
+        queries: list = [raw_input]
 
-    all_data = {}
+    all_data: dict = {}
     for q in queries[:10]:
         all_data[q] = search(q)
         if len(queries) > 1:
-            time.sleep(2.0) # Increased delay to be safer
+            time.sleep(2.0)  # Increased delay to be safer
 
     for q, results in all_data.items():
         print(f"\n🔍 {q}")
         print("─" * 60)
         if not results:
-            print("  No results found. (The structure might have changed or query was blocked)")
+            print(
+                "  No results found. (The structure might have changed or query was blocked)"
+            )
             continue
 
         for i, r in enumerate(results, 1):
@@ -174,6 +426,7 @@ def main():
                 print(f"     {r['snippet'][:200]}")
             print(f"     🔗 {r.get('link', 'No link')}")
             print()
+
 
 if __name__ == "__main__":
     main()

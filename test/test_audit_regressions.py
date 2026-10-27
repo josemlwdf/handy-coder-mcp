@@ -490,6 +490,44 @@ class AuditRegressionTests(unittest.TestCase):
             results = web_search_tool.search("question")
         self.assertNotIn("_optimized_query", results[0])
 
+    def test_web_search_parse_results_deprioritizes_ad_like_links(self) -> None:
+        """Test ad-like DDG redirect rows are sorted behind organic links."""
+        page: str = """
+        <table>
+          <tr>
+            <td><a class='result-link' href='https://duckduckgo.com/y.js?ad_domain=wix.com&u3=https%3A%2F%2Fads.example%2Flanding'>Ad Result</a></td>
+            <td class='result-snippet'>Sponsored listing</td>
+          </tr>
+          <tr>
+            <td><a class='result-link' href='http://www.example.com/'>Example Domain</a></td>
+            <td class='result-snippet'>Documentation domain</td>
+          </tr>
+        </table>
+        """
+        results = web_search_tool.parse_results(page)
+        self.assertEqual(results[0]["title"], "Example Domain")
+        self.assertEqual(results[0]["link"], "http://www.example.com/")
+        self.assertEqual(results[1]["title"], "Ad Result")
+        self.assertEqual(results[1]["link"], "https://ads.example/landing")
+
+    def test_web_search_parse_results_keeps_snippet_with_matching_link(self) -> None:
+        """Test snippet rows that follow link rows attach to the right result."""
+        page: str = """
+        <table>
+          <tr><td><a class='result-link' href='https://site-a.example/'>A title</a></td></tr>
+          <tr><td class='result-snippet'>A snippet</td></tr>
+          <tr><td><a class='result-link' href='https://site-b.example/'>B title</a></td></tr>
+          <tr><td class='result-snippet'>B snippet</td></tr>
+        </table>
+        """
+        results = web_search_tool.parse_results(page)
+        self.assertEqual(results[0]["title"], "A title")
+        self.assertEqual(results[0]["snippet"], "A snippet")
+        self.assertEqual(results[0]["link"], "https://site-a.example/")
+        self.assertEqual(results[1]["title"], "B title")
+        self.assertEqual(results[1]["snippet"], "B snippet")
+        self.assertEqual(results[1]["link"], "https://site-b.example/")
+
     def test_git_diff_is_returned_once_and_escaped_paths_are_structured(self) -> None:
         """Test git diff is returned once and escaped paths are structured function."""
         (self.root / ".git").mkdir()
