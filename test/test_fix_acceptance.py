@@ -1,3 +1,5 @@
+"""Module documentation."""
+
 import asyncio
 import json
 import os
@@ -11,19 +13,34 @@ from mcp.server.fastmcp import FastMCP
 
 from lib import error_handler, support, tool_details, worker_supervisor
 from lib.core import (
-    apply_edits, create_file, find_files, git_manage,
-    html_syntax_check, orchestrator_tasks, read_files, terminal_exec, web_search_tool,
+    apply_edits,
+    create_file,
+    diagnostics,
+    find_files,
+    git_manage,
+    orchestrator,
+    read_files,
+    terminal_exec,
+    web_search_tool,
 )
 from lib.subagents import tools as subagent_tools
 from lib.subagents.manager import SubagentManager
 
 
 def _build_server():
+    """Build server function."""
     mcp = FastMCP("acceptance")
     tool_details.install(mcp)
     for module in (
-        read_files, create_file, apply_edits, terminal_exec, find_files, git_manage,
-        html_syntax_check, web_search_tool, orchestrator_tasks,
+        read_files,
+        create_file,
+        apply_edits,
+        terminal_exec,
+        find_files,
+        git_manage,
+        diagnostics,
+        web_search_tool,
+        orchestrator,
     ):
         module.register(mcp)
     worker_supervisor.supervise_fastmcp_tools(mcp)
@@ -31,12 +48,18 @@ def _build_server():
     return mcp
 
 
-def _call(mcp, name, arguments, convert_result=False):
-    return asyncio.run(mcp._tool_manager.call_tool(name, arguments, convert_result=convert_result))
+def _call(mcp, name, arguments, convert_result: bool = False):
+    """Call function."""
+    return asyncio.run(
+        mcp._tool_manager.call_tool(name, arguments, convert_result=convert_result)
+    )
 
 
 class RepeatedWritesLeaveNoSubagentFrameTests(unittest.TestCase):
-    def setUp(self):
+    """RepeatedWritesLeaveNoSubagentFrameTests class."""
+
+    def setUp(self) -> None:
+        """SetUp function."""
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name).resolve()
         support.configure(str(self.root))
@@ -48,7 +71,9 @@ class RepeatedWritesLeaveNoSubagentFrameTests(unittest.TestCase):
             subprocess.run(cmd, cwd=self.root, check=True)
         (self.root / "seed.txt").write_text("seed\n", encoding="utf-8")
         subprocess.run(["git", "add", "seed.txt"], cwd=self.root, check=True)
-        subprocess.run(["git", "commit", "-m", "init", "--quiet"], cwd=self.root, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "init", "--quiet"], cwd=self.root, check=True
+        )
 
         self.manager = SubagentManager()
         for patcher in (
@@ -60,22 +85,44 @@ class RepeatedWritesLeaveNoSubagentFrameTests(unittest.TestCase):
             self.addCleanup(patcher.stop)
         self.mcp = _build_server()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
+        """TearDown function."""
         self.temp.cleanup()
         support.configure(str(Path(__file__).resolve().parents[1]))
 
-    def test_repeated_writes_have_no_nudge_gate_or_frame(self):
+    def test_repeated_writes_have_no_nudge_gate_or_frame(self) -> None:
+        """Test repeated writes have no nudge gate or frame function."""
         body = "line " * 40
-        results = []
+        results: list = []
         for index in range(8):
-            results.append(_call(self.mcp, "create_file", {
-                "path": f"f{index}.txt", "content": body, "summary": "add test file",
-            }))
+            results.append(
+                _call(
+                    self.mcp,
+                    "create_file",
+                    {
+                        "path": f"f{index}.txt",
+                        "content": body,
+                        "summary": "add test file",
+                    },
+                )
+            )
         for index in range(2):
-            results.append(_call(self.mcp, "apply_edits", {
-                "edits": [{"path": f"f{index}.txt", "pattern": "line", "replacement": "changed"}],
-                "summary": "rewrite first word",
-            }))
+            results.append(
+                _call(
+                    self.mcp,
+                    "apply_edits",
+                    {
+                        "edits": [
+                            {
+                                "path": f"f{index}.txt",
+                                "pattern": "line",
+                                "replacement": "changed",
+                            }
+                        ],
+                        "summary": "rewrite first word",
+                    },
+                )
+            )
         for result in results:
             self.assertNotIn("error_code", result, result)
             self.assertNotIn("commit_nudge", result)
@@ -86,56 +133,88 @@ class RepeatedWritesLeaveNoSubagentFrameTests(unittest.TestCase):
         self.assertIsNone(self.manager.open_frame())
 
         (self.root / "page.html").write_text("<p>ok</p>", encoding="utf-8")
-        check = _call(self.mcp, "html_syntax_check", {"path": "page.html"})
+        check = _call(self.mcp, "code_get_diagnostics", {"check": "html_syntax_sweep"})
         self.assertNotIn("error_code", check, check)
+        self.assertEqual(check.get("check"), "html_syntax_sweep")
 
-    def test_defer_commit_tool_is_not_registered(self):
-        names = {tool.name for tool in self.mcp._tool_manager.list_tools()}
+    def test_defer_commit_tool_is_not_registered(self) -> None:
+        """Test defer commit tool is not registered function."""
+        names: set = {tool.name for tool in self.mcp._tool_manager.list_tools()}
         self.assertNotIn("defer_commit", names)
 
-    def test_write_tools_require_one_line_summary(self):
+    def test_write_tools_require_one_line_summary(self) -> None:
+        """Test write tools require one line summary function."""
         (self.root / "a.txt").write_text("one", encoding="utf-8")
         missing = _call(self.mcp, "create_file", {"path": "m.txt", "content": "x"})
         self.assertIn("error_code", missing)
         self.assertFalse((self.root / "m.txt").exists())
-        multiline = _call(self.mcp, "create_file", {"path": "m.txt", "content": "x", "summary": "a\nb"})
+        multiline = _call(
+            self.mcp,
+            "create_file",
+            {"path": "m.txt", "content": "x", "summary": "a\nb"},
+        )
         self.assertEqual(multiline["error_code"], "invalid_summary", multiline)
         self.assertFalse((self.root / "m.txt").exists())
-        blank = _call(self.mcp, "apply_edits", {
-            "edits": [{"path": "a.txt", "pattern": "one", "replacement": "two"}], "summary": "  ",
-        })
+        blank = _call(
+            self.mcp,
+            "apply_edits",
+            {
+                "edits": [{"path": "a.txt", "pattern": "one", "replacement": "two"}],
+                "summary": "  ",
+            },
+        )
         self.assertEqual(blank["error_code"], "invalid_summary", blank)
         self.assertEqual((self.root / "a.txt").read_text(encoding="utf-8"), "one")
-        ok = _call(self.mcp, "apply_edits", {
-            "edits": [{"path": "a.txt", "pattern": "one", "replacement": "two"}], "summary": "change one to two",
-        })
+        ok = _call(
+            self.mcp,
+            "apply_edits",
+            {
+                "edits": [{"path": "a.txt", "pattern": "one", "replacement": "two"}],
+                "summary": "change one to two",
+            },
+        )
         self.assertNotIn("error_code", ok, ok)
 
 
 class InvalidCallsAreStructuredTests(unittest.TestCase):
+    """InvalidCallsAreStructuredTests class."""
+
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
+        """SetUpClass function."""
         cls.temp = tempfile.TemporaryDirectory()
         support.configure(str(Path(cls.temp.name).resolve()))
         cls.mcp = _build_server()
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
+        """TearDownClass function."""
         cls.temp.cleanup()
         support.configure(str(Path(__file__).resolve().parents[1]))
 
-    CASES = (
+    CASES: tuple = (
         ("web_search", {"query": ["not", "a", "string"]}),
-        ("orchestrator_update_task_status", {"status": "bogus", "task_contains": "x"}),
+        (
+            "orchestrator",
+            {"action": "update_task_status", "status": "bogus", "task_contains": "x"},
+        ),
         ("git_manage", {"action": 123}),
         ("get_tool_details", {"tool_name": ""}),
-        ("read_files", {"paths": ["a.txt"], "line_ranges": [
-            {"path": "a.txt", "start_line": 1, "end_line": 2, "bogus": 1}]}),
+        (
+            "read_files",
+            {
+                "paths": ["a.txt"],
+                "line_ranges": [
+                    {"path": "a.txt", "start_line": 1, "end_line": 2, "bogus": 1}
+                ],
+            },
+        ),
         ("find_files", {"glob_pattern": "*", "sort_by": 5}),
         ("terminal_exec", {}),
     )
 
-    def test_each_invalid_call_returns_error_code_and_message(self):
+    def test_each_invalid_call_returns_error_code_and_message(self) -> None:
+        """Test each invalid call returns error code and message function."""
         for name, arguments in self.CASES:
             with self.subTest(tool=name):
                 result = _call(self.mcp, name, arguments)

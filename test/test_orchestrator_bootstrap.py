@@ -1,22 +1,30 @@
+"""Module documentation."""
+
 import tempfile
 import unittest
 from pathlib import Path
 
 from lib import support
-from lib.core import orchestrator_bootstrap
+from lib.core import orchestrator
 
 
 class OrchestratorBootstrapTests(unittest.TestCase):
-    def setUp(self):
+    """OrchestratorBootstrapTests class."""
+
+    def setUp(self) -> None:
+        """SetUp function."""
         self._original_root = str(Path(support.ROOT))
 
-    def tearDown(self):
+    def tearDown(self) -> None:
+        """TearDown function."""
         support.configure(self._original_root)
 
-    def test_bootstrap_creates_plan_and_tasks_files(self):
+    def test_bootstrap_creates_plan_and_tasks_files(self) -> None:
+        """Test bootstrap creates plan and tasks files function."""
         with tempfile.TemporaryDirectory() as tmp:
             support.configure(tmp)
-            result = orchestrator_bootstrap.orchestrator_bootstrap(
+            result = orchestrator.orchestrator(
+                action="bootstrap",
                 user_task="Implement feature X with clear staging",
                 context="Prefer low-risk ordering",
             )
@@ -37,18 +45,25 @@ class OrchestratorBootstrapTests(unittest.TestCase):
             self.assertIn("- [ ]", tasks_text)
             self.assertIn("status: non_started", tasks_text)
 
-    def test_bootstrap_deletes_old_artifacts_and_recreates_them(self):
+    def test_bootstrap_deletes_old_artifacts_and_recreates_them(self) -> None:
+        """Test bootstrap deletes old artifacts and recreates them function."""
         with tempfile.TemporaryDirectory() as tmp:
             support.configure(tmp)
-            first = orchestrator_bootstrap.orchestrator_bootstrap(user_task="Initial task")
+            first = orchestrator.orchestrator(
+                action="bootstrap", user_task="Initial task"
+            )
             self.assertTrue(first["created"])
             self.assertEqual(first["deleted_files"], [])
 
             plan_path = Path(tmp) / first["implementation_plan"]
             tasks_path = Path(tmp) / first["tasks_file"]
-            tasks_path.write_text("- [x] [status: complete] stale task\n", encoding="utf-8")
+            tasks_path.write_text(
+                "- [x] [status: complete] stale task\n", encoding="utf-8"
+            )
 
-            again = orchestrator_bootstrap.orchestrator_bootstrap(user_task="Second task")
+            again = orchestrator.orchestrator(
+                action="bootstrap", user_task="Second task"
+            )
             self.assertTrue(again["created"])
             self.assertNotIn("error_code", again)
             self.assertEqual(
@@ -60,22 +75,27 @@ class OrchestratorBootstrapTests(unittest.TestCase):
             self.assertNotIn("stale task", tasks_text)
             self.assertIn("Second task", tasks_text)
 
-    def test_bootstrap_deletes_only_the_orchestrator_artifacts(self):
+    def test_bootstrap_deletes_only_the_orchestrator_artifacts(self) -> None:
+        """Test bootstrap deletes only the orchestrator artifacts function."""
         with tempfile.TemporaryDirectory() as tmp:
             support.configure(tmp)
-            first = orchestrator_bootstrap.orchestrator_bootstrap(user_task="Initial task")
+            first = orchestrator.orchestrator(
+                action="bootstrap", user_task="Initial task"
+            )
             state_dir = Path(tmp) / first["state_dir"]
             other = state_dir / "notes.md"
             other.write_text("keep me", encoding="utf-8")
 
-            orchestrator_bootstrap.orchestrator_bootstrap(user_task="Second task")
+            orchestrator.orchestrator(action="bootstrap", user_task="Second task")
             self.assertTrue(other.exists())
 
-    def test_bootstrap_overwrite_flag_is_ignored(self):
+    def test_bootstrap_overwrite_flag_is_ignored(self) -> None:
+        """Test bootstrap overwrite flag is ignored function."""
         with tempfile.TemporaryDirectory() as tmp:
             support.configure(tmp)
-            orchestrator_bootstrap.orchestrator_bootstrap(user_task="Initial task")
-            result = orchestrator_bootstrap.orchestrator_bootstrap(
+            orchestrator.orchestrator(action="bootstrap", user_task="Initial task")
+            result = orchestrator.orchestrator(
+                action="bootstrap",
                 user_task="Replacement task",
                 overwrite=True,
             )

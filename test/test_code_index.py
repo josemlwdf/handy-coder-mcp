@@ -96,7 +96,7 @@ class CodeIndexTests(unittest.TestCase):
             auto_index=False,
         )
         self.assertEqual(result["results"], [])
-        self.assertIn("run index_codebase", result["hint"])
+        self.assertIn("run code_intel(action='index')", result["hint"])
 
     def test_input_validation_and_isolation(self) -> None:
         """Test input validation and isolation function."""

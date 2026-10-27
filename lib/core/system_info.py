@@ -45,10 +45,6 @@ def get_capabilities() -> dict:
         # Core tools — always available
         "read_files": {"available": True, "note": "always enabled"},
         "create_file": {"available": True, "note": "always enabled"},
-        "html_syntax_check": {
-            "available": True,
-            "note": "dependency-free HTML structural syntax checker",
-        },
         "apply_edits": {"available": True, "note": "always enabled"},
         "terminal_exec": {"available": True, "note": "always enabled"},
         "search_text": {
@@ -60,13 +56,9 @@ def get_capabilities() -> dict:
             "available": True,
             "note": "list, get, or save skills; directory override via HANDY_CODER_SKILLS_DIR",
         },
-        "orchestrator_bootstrap": {
+        "orchestrator": {
             "available": True,
-            "note": "creates .handy-coder implementation-plan.md and tasks.md",
-        },
-        "orchestrator_update_task_status": {
-            "available": True,
-            "note": "atomically updates [status: ...] on one tasks.md line",
+            "note": "unified orchestrator tool with bootstrap and update_task_status actions",
         },
         "run_tests": {
             "available": pytest_ok,
@@ -93,14 +85,6 @@ def get_capabilities() -> dict:
         "web_search": {
             "available": True,
             "note": "searches the public web via DuckDuckGo Lite and returns titles, snippets, and links; requires outbound network access",
-        },
-        "index_codebase": {
-            "available": True,
-            "note": "incrementally indexes local C# files into .handy-coder/code_index.sqlite3 (Tree-sitter and SQLite FTS5); standalone indexing endpoint; failures return error_code index_unavailable",
-        },
-        "code_navigator": {
-            "available": True,
-            "note": "search_code, get_symbol, or find_references over the local C# index; find_references is syntactic, not compiler-resolved; returns a hint when the index is empty",
         },
         "code_intel": {
             "available": True,
@@ -138,8 +122,6 @@ def get_capabilities() -> dict:
     else:
         for name in (
             "web_search",
-            "index_codebase",
-            "code_navigator",
             "code_intel",
             "get_tool_details",
         ):

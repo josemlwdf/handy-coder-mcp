@@ -44,7 +44,6 @@ def _load_fastmcp():
 from lib import error_handler  # noqa: E402
 from lib import support, tool_details, worker_supervisor  # noqa: E402
 from lib.core import code_navigator  # noqa: E402
-from lib.core import html_syntax_check  # noqa: E402
 from lib.core import web_search_tool  # noqa: E402
 from lib.core import (  # noqa: E402
     apply_edits,
@@ -54,8 +53,7 @@ from lib.core import (  # noqa: E402
     diagnostics,
     find_files,
     git_manage,
-    orchestrator_bootstrap,
-    orchestrator_tasks,
+    orchestrator,
     read_files,
     run_tests,
     skills,
@@ -135,25 +133,24 @@ def _assert_tool_argument_types_known(mcp) -> None:
 
 _READ_ONLY_TOOL_HINTS = frozenset(
     {
-        "code_navigator",
         "find_files",
         "get_capabilities",
         "get_tool_details",
-        "html_syntax_check",
         "read_files",
         "search_text",
         "web_fetch_docs",
         "web_search",
+        "inspect_image",
     }
 )
 
 _DESTRUCTIVE_TOOL_HINTS = frozenset(
     {
+        "code_intel",
         "apply_edits",
         "create_file",
         "git_manage",
-        "orchestrator_bootstrap",
-        "orchestrator_update_task_status",
+        "orchestrator",
         "skills_manage",
         "subagent_manage",
     }
@@ -161,11 +158,9 @@ _DESTRUCTIVE_TOOL_HINTS = frozenset(
 
 _IDEMPOTENT_TOOL_HINTS = frozenset(
     {
-        "code_navigator",
         "find_files",
         "get_capabilities",
         "get_tool_details",
-        "html_syntax_check",
         "read_files",
         "search_text",
         "web_fetch_docs",
@@ -183,6 +178,7 @@ _OPEN_WORLD_TOOL_HINTS = frozenset(
         "terminal_exec",
         "web_fetch_docs",
         "web_search",
+        "inspect_image",
     }
 )
 
@@ -259,13 +255,11 @@ def main() -> None:
         run_tests,
         git_manage,
         build_project,
-        html_syntax_check,
         web_fetch,
         web_search_tool,
         system_info,
         skills,
-        orchestrator_bootstrap,
-        orchestrator_tasks,
+        orchestrator,
         subagent_tools,
         code_navigator,
     ):

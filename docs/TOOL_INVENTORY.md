@@ -7,23 +7,20 @@ Descriptions in the MCP tool list are brief. Call `get_tool_details` with a regi
 
 - `read_files`
 - `create_file`
-- `html_syntax_check` — checks workspace HTML for structural syntax errors and reports line numbers.
 - `apply_edits`
 - `terminal_exec`
 - `search_text`
 - `find_files`
-- `code_get_diagnostics`
+- `code_get_diagnostics` — includes `html_syntax_sweep` for workspace HTML structural syntax checks.
 - `run_tests`
 - `build_project` — detects and builds Python, Node, or .NET projects with structured diagnostics.
 - `git_manage` — successful `init` creates `test/` and `tmp/` and maintains `.gitignore`; `add` updates `.gitignore` before staging and accepts specific paths or `args: ["all"]` to stage every change.
 - `web_search` — searches the public web with DuckDuckGo Lite.
-- `index_codebase` — incrementally indexes workspace C# files in `.handy-coder/code_index.sqlite3`.
-- `code_navigator` — searches indexed symbols, returns current symbol source, or finds likely syntactic usages.
+- `code_intel` — unified C# tool: `action='index'` incrementally indexes workspace C# files in `.handy-coder/code_index.sqlite3`; `action='navigate'` performs indexed search/symbol/reference navigation.
 - `get_capabilities`
 - `get_tool_details` — returns full documentation for a currently registered tool.
 - `skills_manage`
-- `orchestrator_bootstrap`
-- `orchestrator_update_task_status`
+- `orchestrator` — unified orchestrator tool with `action='bootstrap'` and `action='update_task_status'`.
 
 ## Registered tools with optional runtime requirements
 
@@ -33,6 +30,6 @@ Descriptions in the MCP tool list are brief. Call `get_tool_details` with a regi
 
 - `subagent_manage` (unified lifecycle endpoint with `action=run|status|result|complete|cancel`)
 
-`index_codebase` runs on demand in an isolated worker process and can be called to build or refresh the index. The server starts without scanning the workspace. The index is local and incremental; see [Local C# code navigation](./SEMANTIC_SEARCH.md) for its behavior and limitations.
+`code_intel(action='index')` runs on demand in an isolated worker process and can be called to build or refresh the index. The server starts without scanning the workspace. The index is local and incremental; see [Local C# code navigation](./SEMANTIC_SEARCH.md) for its behavior and limitations.
 
 `web_search` and `web_fetch_docs` make outbound requests and require network access when called. The C# indexer uses the installed Tree-sitter C# parser and SQLite FTS5. See [optional feature setup](./SETUP.md) for details.

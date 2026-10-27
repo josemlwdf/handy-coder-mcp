@@ -8,7 +8,7 @@ invokable: true
 
 Use this skill when the user asks for an implementation plan, or when the task is large enough to benefit from coordinated subagents. The goal is to carry the task through implementation, not to stop after writing a plan.
 
-All tools below are Handy Coder MCP tools (exposed by the host with the `handy_coder_` prefix, e.g. `orchestrator_bootstrap` is `handy_coder_orchestrator_bootstrap`). Use them instead of ad-hoc shell commands whenever one fits.
+All tools below are Handy Coder MCP tools (exposed by the host with the `handy_coder_` prefix, e.g. `orchestrator` is `handy_coder_orchestrator`). Use them instead of ad-hoc shell commands whenever one fits.
 
 ## Workflow files
 
@@ -17,11 +17,11 @@ All tools below are Handy Coder MCP tools (exposed by the host with the `handy_c
 | `.handy-coder/implementation-plan.md` | Plan, context, subagent findings (**Generalist Assessment**), validation strategy. |
 | `.handy-coder/tasks.md` | Task tracker. One line per task: `[ ] [status: non_started] <task>` or `[ ] <task> [status: non_started]`. |
 
-Valid statuses: `non_started`, `interrupted`, `complete`, `failed`. Change them only with `orchestrator_update_task_status`, never by hand-editing the file.
+Valid statuses: `non_started`, `interrupted`, `complete`, `failed`. Change them only with `orchestrator(action='update_task_status', ...)`, never by hand-editing the file.
 
 ## Workflow
 
-1. **Bootstrap.** Call `orchestrator_bootstrap` with `user_task` and any relevant `context`. It deletes and recreates both workflow files. If an earlier plan or task list holds progress worth keeping, read it with `read_files` and carry the needed parts into `context` first.
+1. **Bootstrap.** Call `orchestrator` with `action='bootstrap'`, `user_task`, and any relevant `context`. It deletes and recreates both workflow files. If an earlier plan or task list holds progress worth keeping, read it with `read_files` and carry the needed parts into `context` first.
 2. **Pick models.** If more than one model is available, read `get_capabilities` (`subagents.continue.models`) and choose a suitable model per delegated task. Record the model each `subagent_manage(action='run', ...)` returns; report them in the final summary.
 3. **Assess scope.** Run a `generalist` subagent via `subagent_manage(action='run', ...)` to assess scope, assumptions, risks and the relevant project areas. Save its output in `implementation-plan.md` under **Generalist Assessment**.
    - Subagents cannot ask the user questions or invoke skills. If a material ambiguity must be resolved, use `grill-me` yourself, then pass the answer as `context`.
@@ -34,7 +34,7 @@ Valid statuses: `non_started`, `interrupted`, `complete`, `failed`. Change them 
    - `delegated_to_host`: follow the returned instructions, then close the task with `subagent_manage(action='complete', ...)` if required.
    - `unavailable` (no subagent LLM configured): do not retry. Do the step yourself in this conversation and record the outcome in `tasks.md`.
    - Stalled (no turns or tokens): do not poll repeatedly. Use `subagent_manage(action='cancel', confirm=true, reason=...)`, note it in the plan, and either retry once with a narrower task or do the work yourself.
-8. **Update the tracker.** After reviewing a result, call `orchestrator_update_task_status` with `complete`, `interrupted` or `failed`. Never mark a task `complete` before its changes have been inspected.
+8. **Update the tracker.** After reviewing a result, call `orchestrator(action='update_task_status', ...)` with `status='complete'`, `status='interrupted'`, or `status='failed'`. Never mark a task `complete` before its changes have been inspected.
 9. **Integrate and validate.** Resolve cross-task conflicts, then run the validation listed in the plan (see below) and report the outcome.
 
 ## Working rules
@@ -61,7 +61,7 @@ Use the plan's **Validation Strategy** and, as applicable:
 - `search_text` for removed or renamed symbols, so no stale references remain.
 - `code_get_diagnostics` for static issues.
 - `run_tests` for the relevant suite; separate new regressions from failures that also occur on the unchanged baseline.
-- `html_syntax_check` for edited HTML files.
+- `code_get_diagnostics` with `check: "html_syntax_sweep"` for edited HTML files.
 - `build_project` when the change affects the build.
 
 In the final response:

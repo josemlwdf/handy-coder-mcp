@@ -1,6 +1,8 @@
 """Module documentation."""
 
+import base64
 import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -121,8 +123,188 @@ class SubagentToolTests(unittest.TestCase):
         self.assertEqual(
             set(self.mcp.tools),
             {
+                "inspect_image",
                 "subagent_manage",
             },
+        )
+
+    def test_inspect_image_returns_unavailable_without_llm_backend(self) -> None:
+        """Test inspect image returns unavailable without llm backend function."""
+        subagent_tools._BACKEND = "cooperative"
+        subagent_tools._COOP_EXPLICIT = False
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_root = str(support.ROOT)
+            support.configure(temp_dir)
+            try:
+                image_path = Path(temp_dir) / "photo.png"
+                image_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 16)
+                out = self.mcp.tools["inspect_image"](
+                    image_path="photo.png", prompt="Describe the image"
+                )
+            finally:
+                support.configure(previous_root)
+
+        self.assertEqual(out["status"], "unavailable")
+        self.assertEqual(out["backend"], "cooperative")
+
+    def test_inspect_image_sends_multimodal_payload_to_openai_backends(self) -> None:
+        """Test inspect image sends multimodal payload to openai backends function."""
+        subagent_tools._BACKEND = "direct:openai"
+        captured: dict = {}
+
+        def fake_complete(
+            _base_url,
+            _model,
+            _api_key,
+            _system_prompt,
+            messages,
+            _max_tokens,
+            **_kwargs,
+        ) -> str:
+            """Fake complete function."""
+            captured["messages"] = messages
+            return "Image summary"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_root = str(support.ROOT)
+            support.configure(temp_dir)
+            try:
+                image_path = Path(temp_dir) / "photo.png"
+                image_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 16)
+                with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=False):
+                    with patch.object(
+                        subagent_loop,
+                        "_complete_openai_compatible",
+                        side_effect=fake_complete,
+                    ):
+                        out = self.mcp.tools["inspect_image"](
+                            image_path="photo.png", prompt="What do you see?"
+                        )
+            finally:
+                support.configure(previous_root)
+
+        self.assertEqual(out["status"], "completed")
+        self.assertEqual(out["backend"], "direct:openai")
+        self.assertEqual(out["result"], "Image summary")
+        self.assertTrue(captured["messages"])
+        content = captured["messages"][0]["content"]
+        self.assertEqual(content[0]["type"], "text")
+        self.assertEqual(content[1]["type"], "image_url")
+        self.assertIn("data:image/png;base64,", content[1]["image_url"]["url"])
+
+    def test_inspect_image_uses_sampling_callback_when_backend_is_sampling(
+        self,
+    ) -> None:
+        """Use configured runtime sampling callback for inspect_image when available."""
+        subagent_tools._BACKEND = "sampling"
+        captured: dict = {}
+
+        def fake_sampling(system_prompt, messages, max_tokens) -> str:
+            """Capture sampling call payload and return a stub description."""
+            captured["system_prompt"] = system_prompt
+            captured["messages"] = messages
+            captured["max_tokens"] = max_tokens
+            return "Sampling image summary"
+
+        subagent_tools._SAMPLING_CALLBACK = fake_sampling
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_root = str(support.ROOT)
+            support.configure(temp_dir)
+            try:
+                image_path = Path(temp_dir) / "photo.png"
+                image_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 16)
+                out = self.mcp.tools["inspect_image"](
+                    image_path="photo.png", prompt="Describe the image"
+                )
+            finally:
+                support.configure(previous_root)
+
+        self.assertEqual(out["status"], "completed")
+        self.assertEqual(out["backend"], "sampling")
+        self.assertEqual(out["result"], "Sampling image summary")
+        self.assertIn("messages", captured)
+        content = captured["messages"][0]["content"]
+        self.assertEqual(content[0]["type"], "text")
+        self.assertEqual(content[1]["type"], "image_url")
+        self.assertIn("data:image/png;base64,", content[1]["image_url"]["url"])
+
+    def test_inspect_image_sampling_without_callback_returns_unavailable(self) -> None:
+        """Return unavailable when sampling backend has no runtime callback."""
+        subagent_tools._BACKEND = "sampling"
+        subagent_tools._SAMPLING_CALLBACK = None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_root = str(support.ROOT)
+            support.configure(temp_dir)
+            try:
+                image_path = Path(temp_dir) / "photo.png"
+                image_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 16)
+                out = self.mcp.tools["inspect_image"](
+                    image_path="photo.png", prompt="Describe the image"
+                )
+            finally:
+                support.configure(previous_root)
+
+        self.assertEqual(out["status"], "unavailable")
+        self.assertEqual(out["backend"], "sampling")
+        self.assertIn("Sampling callback is not configured", out["message"])
+
+    def test_inspect_image_sampling_schema_matches_host_callback_contract(self) -> None:
+        """Validate exact sampling callback message schema for host integrations."""
+        captured: dict = {}
+
+        def host_sampling_callback(system_prompt, messages, max_tokens) -> str:
+            """Capture the exact callback payload shape used by inspect_image."""
+            captured["system_prompt"] = system_prompt
+            captured["messages"] = messages
+            captured["max_tokens"] = max_tokens
+            return "Contract summary"
+
+        subagent_tools.configure_runtime(
+            client_capabilities={"sampling": True},
+            sampling_callback=host_sampling_callback,
+        )
+
+        image_bytes = b"\x89PNG\r\n\x1a\n" + b"x" * 16
+        expected_image_url = "data:image/png;base64," + base64.b64encode(
+            image_bytes
+        ).decode("ascii")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_root = str(support.ROOT)
+            support.configure(temp_dir)
+            try:
+                image_path = Path(temp_dir) / "photo.png"
+                image_path.write_bytes(image_bytes)
+                out = self.mcp.tools["inspect_image"](
+                    image_path="photo.png", prompt="Describe the image contents"
+                )
+            finally:
+                support.configure(previous_root)
+
+        self.assertEqual(out["status"], "completed")
+        self.assertEqual(out["backend"], "sampling")
+        self.assertEqual(out["result"], "Contract summary")
+        self.assertIsInstance(captured["system_prompt"], str)
+        self.assertIn("Target result format:", captured["system_prompt"])
+        self.assertIsInstance(captured["max_tokens"], int)
+        self.assertGreaterEqual(captured["max_tokens"], 256)
+        self.assertEqual(
+            captured["messages"],
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe the image contents"},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": expected_image_url},
+                        },
+                    ],
+                }
+            ],
         )
 
     def test_cooperative_lifecycle(self) -> None:

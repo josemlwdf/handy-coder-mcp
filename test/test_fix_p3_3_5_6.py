@@ -9,14 +9,12 @@ from lib.core import code_navigator, system_info, web_search_tool
 
 NAMED_TOOLS: tuple = (
     "web_search",
-    "index_codebase",
-    "code_navigator",
     "code_intel",
     "get_tool_details",
 )
 
 
-class IndexCodebaseSchemaTests(unittest.TestCase):
+class CodeIntelSchemaTests(unittest.TestCase):
     """IndexCodebaseSchemaTests class."""
 
     def setUp(self) -> None:
@@ -26,9 +24,7 @@ class IndexCodebaseSchemaTests(unittest.TestCase):
 
     def test_exclude_dirs_description_lists_real_defaults(self) -> None:
         """Test exclude dirs description lists real defaults function."""
-        props = self.mcp._tool_manager.get_tool("index_codebase").parameters[
-            "properties"
-        ]
+        props = self.mcp._tool_manager.get_tool("code_intel").parameters["properties"]
         description = props["exclude_dirs"]["description"]
         self.assertIn("in addition to the default exclusions", description)
         for name in code_index.DEFAULT_EXCLUDES:
@@ -36,7 +32,7 @@ class IndexCodebaseSchemaTests(unittest.TestCase):
 
     def test_exclude_dirs_remains_optional_string_list(self) -> None:
         """Test exclude dirs remains optional string list function."""
-        schema = self.mcp._tool_manager.get_tool("index_codebase").parameters
+        schema = self.mcp._tool_manager.get_tool("code_intel").parameters
         self.assertNotIn("exclude_dirs", schema.get("required", []))
         any_of = schema["properties"]["exclude_dirs"]["anyOf"]
         self.assertIn({"type": "array", "items": {"type": "string"}}, any_of)
@@ -83,9 +79,10 @@ class CapabilityNotesTests(unittest.TestCase):
         """Test notes mention key behavior function."""
         system_info._MCP = None
         tools = system_info.get_capabilities()["tools"]
-        self.assertIn("syntactic", tools["code_navigator"]["note"])
-        self.assertIn("code_index.sqlite3", tools["index_codebase"]["note"])
+        self.assertIn("action=index", tools["code_intel"]["note"])
         self.assertIn("auto-index", tools["code_intel"]["note"])
+        self.assertNotIn("index_codebase", tools)
+        self.assertNotIn("code_navigator", tools)
         self.assertIn("unknown_tool", tools["get_tool_details"]["note"])
 
 

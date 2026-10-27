@@ -15,7 +15,7 @@ from lib.core import (
     diagnostics,
     find_files,
     git_manage,
-    orchestrator_tasks,
+    orchestrator,
     read_files,
     run_tests,
     skills,
@@ -86,12 +86,12 @@ class AuditRegressionTests(unittest.TestCase):
         state_dir.mkdir(exist_ok=True)
         tasks = state_dir / "tasks.md"
         tasks.write_text("- [ ] [status: non_started] task\n")
-        complete = orchestrator_tasks.orchestrator_update_task_status(
-            "complete", line_number=1
+        complete = orchestrator.orchestrator(
+            action="update_task_status", status="complete", line_number=1
         )
         self.assertIn("- [x] [status: complete]", tasks.read_text())
-        incomplete = orchestrator_tasks.orchestrator_update_task_status(
-            "failed", line_number=1
+        incomplete = orchestrator.orchestrator(
+            action="update_task_status", status="failed", line_number=1
         )
         self.assertIn("- [ ] [status: failed]", tasks.read_text())
         self.assertTrue(complete["updated"] and incomplete["updated"])
@@ -107,7 +107,6 @@ class AuditRegressionTests(unittest.TestCase):
                 _tools={
                     "get_capabilities": object(),
                     "get_tool_details": object(),
-                    "index_codebase": object(),
                     "code_intel": object(),
                     "skills_manage": object(),
                 }
@@ -120,7 +119,6 @@ class AuditRegressionTests(unittest.TestCase):
                 "code_intel",
                 "get_capabilities",
                 "get_tool_details",
-                "index_codebase",
                 "skills_manage",
             },
         )
@@ -316,7 +314,7 @@ class AuditRegressionTests(unittest.TestCase):
         """Test empty code index returns indexing hint without score function."""
         result = code_index.code_navigator("search_code", query="Widget")
         self.assertEqual(result["results"], [])
-        self.assertIn("run index_codebase", result["hint"])
+        self.assertIn("run code_intel(action='index')", result["hint"])
 
     def test_git_status_does_not_label_untracked_as_staged(self) -> None:
         """Test git status does not label untracked as staged function."""

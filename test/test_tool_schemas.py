@@ -10,21 +10,19 @@ from pydantic import BaseModel, TypeAdapter
 
 from lib import support
 from lib.core import (
-    build_project,
     apply_edits,
-    create_file,
+    build_project,
     code_search,
+    create_file,
     diagnostics,
     find_files,
-    html_syntax_check,
     git_manage,
+    orchestrator,
     read_files,
     run_tests,
     skills,
     system_info,
     terminal_exec,
-    orchestrator_bootstrap,
-    orchestrator_tasks,
     web_search_tool,
 )
 from lib.extras import (
@@ -73,7 +71,6 @@ class ToolSchemaTests(unittest.TestCase):
         for module in (
             apply_edits,
             create_file,
-            html_syntax_check,
             code_search,
             diagnostics,
             find_files,
@@ -84,8 +81,7 @@ class ToolSchemaTests(unittest.TestCase):
             skills,
             system_info,
             terminal_exec,
-            orchestrator_bootstrap,
-            orchestrator_tasks,
+            orchestrator,
             code_format_lint,
             web_fetch,
             web_search_tool,
@@ -95,7 +91,7 @@ class ToolSchemaTests(unittest.TestCase):
 
     def test_every_tool_and_argument_has_a_description(self) -> None:
         """Test every tool and argument has a description function."""
-        self.assertEqual(len(self.mcp.tools), 19)
+        self.assertEqual(len(self.mcp.tools), 18)
         for name, function in self.mcp.tools.items():
             with self.subTest(tool=name):
                 self.assertTrue(self.mcp.descriptions[name].strip())
@@ -174,14 +170,14 @@ class ToolSchemaTests(unittest.TestCase):
     def test_subagent_and_orchestrator_descriptions_encourage_delegation(self) -> None:
         """Test subagent and orchestrator descriptions encourage delegation function."""
         subagent_desc = self.mcp.descriptions["subagent_manage"].lower()
-        bootstrap_desc = self.mcp.descriptions["orchestrator_bootstrap"].lower()
+        orchestrator_desc = self.mcp.descriptions["orchestrator"].lower()
         # The description must not promise delegation unconditionally: it has to
         # explain that subagent_manage(action='run') can return status unavailable.
         self.assertIn("delegate", subagent_desc)
         self.assertIn("unavailable", subagent_desc)
         self.assertIn("do the work yourself", subagent_desc)
-        self.assertIn("orchestrator-first", bootstrap_desc)
-        self.assertIn("subagent", bootstrap_desc)
+        self.assertIn("bootstrap", orchestrator_desc)
+        self.assertIn("update_task_status", orchestrator_desc)
 
     def test_apply_edits_schema_documents_group_expansion(self) -> None:
         """Test apply edits schema documents group expansion function."""
@@ -329,7 +325,6 @@ class ToolSchemaTests(unittest.TestCase):
         for module in (
             apply_edits,
             create_file,
-            html_syntax_check,
             code_search,
             diagnostics,
             find_files,
@@ -340,8 +335,7 @@ class ToolSchemaTests(unittest.TestCase):
             skills,
             system_info,
             terminal_exec,
-            orchestrator_bootstrap,
-            orchestrator_tasks,
+            orchestrator,
             web_fetch,
             web_search_tool,
             subagent_tools,

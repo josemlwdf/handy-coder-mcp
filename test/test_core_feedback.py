@@ -533,6 +533,26 @@ class CoreFeedbackTests(unittest.TestCase):
 
         self.assertIn("__pycache__/cached.py", result["files"])
 
+    def test_find_files_excludes_dot_directories_by_default(self) -> None:
+        """Test find files excludes dot directories by default function."""
+        (self.root / ".config").mkdir()
+        (self.root / ".config" / "settings.py").write_text("x", encoding="utf-8")
+
+        result = self.mcp.tools["find_files"]("*.py", include_generated=True)
+
+        self.assertNotIn(".config/settings.py", result["files"])
+
+    def test_find_files_includes_dot_directories_when_requested(self) -> None:
+        """Test find files includes dot directories when requested function."""
+        (self.root / ".config").mkdir()
+        (self.root / ".config" / "settings.py").write_text("x", encoding="utf-8")
+
+        result = self.mcp.tools["find_files"](
+            "*.py", include_generated=True, include_dot_dirs=True
+        )
+
+        self.assertIn(".config/settings.py", result["files"])
+
     def test_find_files_suppresses_outside_workspace_symlink_diagnostics_by_default(
         self,
     ) -> None:
