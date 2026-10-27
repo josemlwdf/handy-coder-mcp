@@ -22,18 +22,18 @@ Valid statuses: `non_started`, `interrupted`, `complete`, `failed`. Change them 
 ## Workflow
 
 1. **Bootstrap.** Call `orchestrator_bootstrap` with `user_task` and any relevant `context`. It deletes and recreates both workflow files. If an earlier plan or task list holds progress worth keeping, read it with `read_files` and carry the needed parts into `context` first.
-2. **Pick models.** If more than one model is available, read `get_capabilities` (`subagents.continue.models`) and choose a suitable model per delegated task. Record the model each `subagent_run` returns; report them in the final summary.
-3. **Assess scope.** Run a `generalist` subagent via `subagent_run` to assess scope, assumptions, risks and the relevant project areas. Save its output in `implementation-plan.md` under **Generalist Assessment**.
+2. **Pick models.** If more than one model is available, read `get_capabilities` (`subagents.continue.models`) and choose a suitable model per delegated task. Record the model each `subagent_manage(action='run', ...)` returns; report them in the final summary.
+3. **Assess scope.** Run a `generalist` subagent via `subagent_manage(action='run', ...)` to assess scope, assumptions, risks and the relevant project areas. Save its output in `implementation-plan.md` under **Generalist Assessment**.
    - Subagents cannot ask the user questions or invoke skills. If a material ambiguity must be resolved, use `grill-me` yourself, then pass the answer as `context`.
 4. **Break down the work.** Run a `planner` subagent with the task, the generalist assessment and the plan context. Ask for small, actionable subtasks with completion criteria, dependencies and bounded file ownership.
 5. **Review and record tasks.** Keep tasks independent: one distinct outcome and a distinct set of files each. State prerequisites explicitly, merge tasks that cannot be separated safely, and never assign the same file to concurrent tasks. Replace the bootstrap placeholders in `tasks.md` with the reviewed tasks using the `[ ] [status: non_started]` format.
-6. **Implement.** Spawn `coder` subagents with `subagent_run`. Run independent tasks concurrently; start dependent ones only after their prerequisites are `complete`. Each assignment must contain: the task, acceptance criteria, the files it owns, necessary context, and a reminder to report files changed and validation performed.
-7. **Handle each `subagent_run` status:**
+6. **Implement.** Spawn `coder` subagents with `subagent_manage(action='run', ...)`. Run independent tasks concurrently; start dependent ones only after their prerequisites are `complete`. Each assignment must contain: the task, acceptance criteria, the files it owns, necessary context, and a reminder to report files changed and validation performed.
+7. **Handle each `subagent_manage(action='run', ...)` status:**
    - `completed`: read and review the result.
-   - `running`: poll with `subagent_status`, then fetch output with `subagent_result` (use `offset` for long results).
-   - `delegated_to_host`: follow the returned instructions, then close the task with `subagent_complete` if required.
+   - `running`: poll with `subagent_manage(action='status', task_id=...)`, then fetch output with `subagent_manage(action='result', task_id=..., offset=...)` (use `offset` for long results).
+   - `delegated_to_host`: follow the returned instructions, then close the task with `subagent_manage(action='complete', ...)` if required.
    - `unavailable` (no subagent LLM configured): do not retry. Do the step yourself in this conversation and record the outcome in `tasks.md`.
-   - Stalled (no turns or tokens): do not poll repeatedly. Use `subagent_cancel` (`confirm=true`, with a reason), note it in the plan, and either retry once with a narrower task or do the work yourself.
+   - Stalled (no turns or tokens): do not poll repeatedly. Use `subagent_manage(action='cancel', confirm=true, reason=...)`, note it in the plan, and either retry once with a narrower task or do the work yourself.
 8. **Update the tracker.** After reviewing a result, call `orchestrator_update_task_status` with `complete`, `interrupted` or `failed`. Never mark a task `complete` before its changes have been inspected.
 9. **Integrate and validate.** Resolve cross-task conflicts, then run the validation listed in the plan (see below) and report the outcome.
 

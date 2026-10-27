@@ -30,7 +30,7 @@ _SAMPLING_CALLBACK: None = None
 _THREADS: dict[str, threading.Thread] = {}
 _CANCEL_EVENTS: dict[str, threading.Event] = {}
 # Cooperative frames (delegated_to_host) open only for an explicit
-# SUBAGENT_BACKEND=cooperative. When no backend resolves, subagent_run returns
+# SUBAGENT_BACKEND=cooperative. When no backend resolves, subagent_manage(action='run') returns
 # status "unavailable" and opens no frame and creates no task.
 _COOP_EXPLICIT: bool = False
 
@@ -757,7 +757,7 @@ def subagent_manage(
     task_id: Annotated[
         str | None,
         Field(
-            description="For actions status|result|complete|cancel: task identifier returned by subagent_run or subagent_manage(action='run')."
+            description="For actions status|result|complete|cancel: task identifier returned by subagent_manage(action='run')."
         ),
     ] = None,
     offset: Annotated[
