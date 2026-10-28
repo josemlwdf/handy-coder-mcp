@@ -145,6 +145,36 @@ def _normalize_schema_types(schema: dict) -> None:
     _ensure_schema_has_explicit_types(schema)
 
 
+def _inline_local_refs(schema: dict) -> None:
+    """Inline local ``#/$defs/...`` references for clients that do not dereference refs."""
+    definitions = schema.get("$defs")
+    if not isinstance(definitions, dict) or not definitions:
+        return
+
+    def inline(value: Any, seen: set[str]) -> Any:
+        """Inline refs recursively, leaving unresolved or cyclic refs untouched."""
+        if isinstance(value, dict):
+            ref = value.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/$defs/"):
+                key = ref.rsplit("/", 1)[-1]
+                target = definitions.get(key)
+                if isinstance(target, dict) and key not in seen:
+                    merged: dict = copy.deepcopy(target)
+                    for extra_key, extra_value in value.items():
+                        if extra_key != "$ref":
+                            merged[extra_key] = copy.deepcopy(extra_value)
+                    return inline(merged, seen | {key})
+            return {k: inline(v, seen) for k, v in value.items()}
+        if isinstance(value, list):
+            return [inline(item, seen) for item in value]
+        return value
+
+    inlined = inline(schema, set())
+    if isinstance(inlined, dict):
+        schema.clear()
+        schema.update(inlined)
+
+
 def _schema_has_unknown_argument_types(schema: Any) -> bool:
     """Return True when any argument property has no concrete type information."""
     if not isinstance(schema, dict):
@@ -289,6 +319,7 @@ def install(mcp: Any) -> None:
                 brief_schema = copy.deepcopy(full_schema)
                 _strip_descriptions(brief_schema)
                 _normalize_schema_types(brief_schema)
+                _inline_local_refs(brief_schema)
                 if hasattr(runtime_tool, "parameters"):
                     runtime_tool.parameters = brief_schema
                 elif hasattr(runtime_tool, "input_schema"):

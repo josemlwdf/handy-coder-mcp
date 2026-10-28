@@ -2,6 +2,7 @@
 
 import json
 import sys
+import shutil
 import configparser
 import tomllib
 from pathlib import Path
@@ -96,7 +97,7 @@ def _package_config(root) -> dict:
     return json.loads(package.read_text(encoding="utf-8"))
 
 
-def _package_runner_markers(package: dict) -> tuple[set[str], str]:
+def _package_runner_markers(package: dict) -> tuple[set[str], dict[str, str]]:
     """Package runner markers function."""
     configured = set()
     for section in ("dependencies", "devDependencies"):
@@ -104,12 +105,30 @@ def _package_runner_markers(package: dict) -> tuple[set[str], str]:
         if isinstance(dependencies, dict):
             configured.update(dependencies)
     scripts = package.get("scripts", {})
-    script_text = (
-        " ".join(str(command) for command in scripts.values())
-        if isinstance(scripts, dict)
-        else ""
-    )
-    return configured, script_text
+    return configured, scripts if isinstance(scripts, dict) else {}
+
+
+def _has_js_framework_config(root: Path, package: dict, framework: str) -> bool:
+    """Has js framework config function."""
+    if framework == "jest" and package.get("jest") is not None:
+        return True
+    if framework == "vitest" and package.get("vitest") is not None:
+        return True
+    config_prefix = "jest" if framework == "jest" else "vitest"
+    for extension in (".js", ".cjs", ".mjs", ".ts", ".mts", ".cts", ".json"):
+        if (root / f"{config_prefix}.config{extension}").is_file():
+            return True
+    return False
+
+
+def _has_js_test_script(scripts: dict[str, str], framework: str) -> bool:
+    """Has js test script function."""
+    for script_name, script_command in scripts.items():
+        if not script_name.startswith("test"):
+            continue
+        if framework in str(script_command):
+            return True
+    return False
 
 
 def _has_test_setup(root, framework: str) -> bool:
@@ -118,21 +137,74 @@ def _has_test_setup(root, framework: str) -> bool:
         return _has_python_test_setup(root)
     if framework in ("jest", "vitest"):
         package = _package_config(root)
-        configured, script_text = _package_runner_markers(package)
-        return framework in configured or framework in script_text
+        if not package:
+            return False
+        configured, scripts = _package_runner_markers(package)
+        return (
+            framework in configured
+            or _has_js_test_script(scripts, framework)
+            or _has_js_framework_config(root, package, framework)
+        )
     return False
 
 
 def _detect_framework(root) -> str | None:
     """Detect framework function."""
-    package = _package_config(root)
-    configured, script_text = _package_runner_markers(package)
-    if "vitest" in configured or "vitest" in script_text:
+    if _has_test_setup(root, "vitest"):
         return "vitest"
-    if "jest" in configured or "jest" in script_text:
+    if _has_test_setup(root, "jest"):
         return "jest"
     if _has_python_test_setup(root):
         return "pytest"
+    return None
+
+
+def _js_preflight_check(root: Path, framework: str) -> dict | None:
+    """Js preflight check function."""
+    package_path = root / "package.json"
+    if not package_path.is_file():
+        return {
+            "supported": False,
+            "error_code": "framework_not_configured",
+            "message": (
+                f"{framework} was selected, but package.json is missing. "
+                "Add a Node test setup (dependency, test script, or framework config) first."
+            ),
+            "framework": framework,
+        }
+    if shutil.which("npx") is None:
+        return {
+            **setup_required(
+                missing_requirements=["binary:npx"],
+                remediation_commands=[
+                    "Install Node.js so the `npx` command is available."
+                ],
+                documentation_url="docs/SETUP.md#test-execution-setup-run_tests-pytest",
+                message=f"The configured {framework} test runner could not be started.",
+                error_code="tool_not_installed",
+            ),
+            "framework": framework,
+        }
+    return None
+
+
+def _js_framework_failure(output: str, framework: str) -> dict | None:
+    """Js framework failure function."""
+    lowered = output.lower()
+    if (
+        "npm err! canceled" in lowered
+        or "could not determine executable to run" in lowered
+        or "missing script" in lowered
+    ):
+        return {
+            "supported": False,
+            "error_code": "framework_not_configured",
+            "message": (
+                f"{framework} is selected but appears not configured for this workspace. "
+                "Ensure package.json declares the framework (usually in devDependencies) "
+                "and includes a matching test script or config file."
+            ),
+        }
     return None
 
 
@@ -267,6 +339,7 @@ def run_tests(
     if not framework:
         return {
             "supported": False,
+            "error_code": "framework_not_configured",
             "message": "No Jest, Vitest, or pytest setup detected.",
             "detection_trace": detection_trace,
         }
@@ -296,15 +369,36 @@ def run_tests(
             }
     else:
         target: None = None
-    if target is None and not _has_test_setup(root, framework):
+    if (
+        framework == "pytest"
+        and target is None
+        and not _has_test_setup(root, framework)
+    ):
         return {
             "supported": False,
+            "error_code": "framework_not_configured",
             "message": (
                 f"No {framework} test setup detected in the workspace. "
                 "Provide filter_path to run a specific target, or add a recognized test configuration."
             ),
             "detection_trace": detection_trace,
+            "framework": framework,
         }
+    if framework in ("jest", "vitest"):
+        preflight = _js_preflight_check(root, framework)
+        if preflight:
+            return {**preflight, "detection_trace": detection_trace}
+        if not _has_test_setup(root, framework):
+            return {
+                "supported": False,
+                "error_code": "framework_not_configured",
+                "message": (
+                    f"{framework} is selected but no matching test setup was found. "
+                    "Add the framework dependency, a test script, or a framework config file."
+                ),
+                "framework": framework,
+                "detection_trace": detection_trace,
+            }
     preflight_notes: list[str] = []
     if framework == "pytest":
         preflight_notes = _pytest_preflight_notes(root, target)
@@ -371,6 +465,10 @@ def run_tests(
         parsed = _parse_js_test_output(combined_output)
         if parsed is not None:
             out["parsed"] = parsed
+        if result.get("exit_code") and parsed is None:
+            failure = _js_framework_failure(combined_output, framework)
+            if failure:
+                out.update(failure)
     return out
 
 

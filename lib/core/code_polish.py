@@ -118,16 +118,41 @@ def _resolve_polish_targets(
         return [], "not_a_file", f"Path is neither file nor directory: {path}"
 
     if specific_file:
-        target = base / specific_file
-        try:
-            resolved = inside(target, must_exist=True)
-        except FileNotFoundError:
-            return [], "not_found", f"Workspace path not found: {path}/{specific_file}"
-        except ValueError:
-            return [], "path_escape", path_escape_message(f"{path}/{specific_file}")
-        if not resolved.is_file():
-            return [], "not_a_file", f"Not a file: {path}/{specific_file}"
-        return [resolved], None, ""
+        candidates: list[Path | str] = [specific_file, base / specific_file]
+        resolved_candidates: list[Path] = []
+        path_escape_count: int = 0
+
+        for candidate in candidates:
+            try:
+                resolved = inside(candidate, must_exist=True)
+            except FileNotFoundError:
+                continue
+            except ValueError:
+                path_escape_count += 1
+                continue
+            if resolved not in resolved_candidates:
+                resolved_candidates.append(resolved)
+
+        for resolved in resolved_candidates:
+            try:
+                resolved.relative_to(base)
+            except ValueError:
+                continue
+            if not resolved.is_file():
+                return [], "not_a_file", f"Not a file: {specific_file}"
+            return [resolved], None, ""
+
+        if resolved_candidates:
+            return (
+                [],
+                "outside_directory",
+                f"specific_file must be inside directory path: {path}",
+            )
+
+        if path_escape_count > 0:
+            return [], "path_escape", path_escape_message(specific_file)
+
+        return [], "not_found", f"Workspace path not found: {specific_file}"
 
     if not all_files:
         return (
@@ -296,7 +321,7 @@ def code_polish(
     specific_file: Annotated[
         str | None,
         Field(
-            description="When path is a directory, optional workspace-relative file path under that directory to polish.",
+            description="When path is a directory, optional file to polish (either relative to that directory or a workspace-relative path that resolves inside it)."
         ),
     ] = None,
     all_files: Annotated[

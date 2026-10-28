@@ -60,6 +60,52 @@ class CodePolishTests(unittest.TestCase):
         self.assertIn("diff_hint", result)
         self.assertIn("+value = 1", result["files"][0]["diff"])
 
+    def test_specific_file_accepts_workspace_relative_path_under_directory(
+        self,
+    ) -> None:
+        """Accept workspace-relative specific_file when it resolves under path."""
+        target = self.root / "fixtures" / "py-app" / "tests" / "test_smoke.py"
+        target.parent.mkdir(parents=True)
+        target.write_text("value=1\n", encoding="utf-8")
+
+        workspace_relative: str = "fixtures/py-app/tests/test_smoke.py"
+
+        def fake_formatter(paths, *, fix, language, summary) -> dict:
+            """Fake formatter function."""
+            self.assertEqual(paths, [workspace_relative])
+            self.assertTrue(fix)
+            self.assertEqual(language, "python")
+            self.assertEqual(summary, "test change")
+            target.write_text("value = 1\n", encoding="utf-8")
+            return {"ok": True, "tools_run": ["ruff-format"], "tools_skipped": []}
+
+        with patch(
+            "lib.extras.code_format_lint.code_format_lint", side_effect=fake_formatter
+        ):
+            result = code_polish.code_polish(
+                path="fixtures/py-app",
+                specific_file=workspace_relative,
+                summary="test change",
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["selected_files"], [workspace_relative])
+        self.assertEqual(result["written_files"], [workspace_relative])
+
+    def test_specific_file_rejects_file_outside_selected_directory(self) -> None:
+        """Reject specific_file values that resolve outside directory path."""
+        app_dir = self.root / "src" / "app"
+        app_dir.mkdir(parents=True)
+        outside = self.root / "src" / "outside.py"
+        outside.write_text("value=1\n", encoding="utf-8")
+
+        result = code_polish.code_polish(
+            path="src/app", specific_file="src/outside.py", summary="test change"
+        )
+
+        self.assertEqual(result.get("error_code"), "outside_directory")
+        self.assertIn("src/app", result.get("message", ""))
+
     def test_all_files_walks_supported_files_under_directory(self) -> None:
         """Test all files walks supported files under directory function."""
         src = self.root / "src"

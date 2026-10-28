@@ -1,5 +1,6 @@
 """Module documentation."""
 
+import copy
 import subprocess
 import tempfile
 import unittest
@@ -234,6 +235,94 @@ class AuditRegressionTests(unittest.TestCase):
         self.assertIn("string", details["arguments"]["name"]["type"])
         self.assertIn("array", details["arguments"]["tags"]["type"])
         self.assertEqual(details["arguments"]["tags"]["items"]["type"], "string")
+
+    def test_runtime_tool_schema_inlines_apply_edits_nested_items(self) -> None:
+        """Published runtime schema should expose nested edits[] keys without requiring $ref resolution."""
+
+        class RuntimeTool:
+            """RuntimeTool class."""
+
+            def __init__(
+                self,
+                function,
+                description,
+                parameters: dict | None = None,
+            ) -> None:
+                """Init function."""
+                self.fn = function
+                self.description = description
+                self.parameters = copy.deepcopy(parameters or {"properties": {}})
+
+        class FakeMCP:
+            """FakeMCP class."""
+
+            def __init__(self) -> None:
+                """Init function."""
+                self._tool_manager = SimpleNamespace(_tools={})
+                self._schemas = {
+                    "apply_edits": {
+                        "type": "object",
+                        "properties": {
+                            "edits": {
+                                "type": "array",
+                                "items": {"$ref": "#/$defs/Edit"},
+                            },
+                        },
+                        "required": ["edits"],
+                        "$defs": {
+                            "Edit": {
+                                "type": "object",
+                                "properties": {
+                                    "path": {"type": "string"},
+                                    "pattern": {"type": "string"},
+                                    "replacement": {"type": "string"},
+                                },
+                                "required": ["path", "pattern", "replacement"],
+                            },
+                        },
+                    },
+                }
+
+            def tool(self, *, name=None, description=None):
+                """Tool function."""
+
+                def register(function):
+                    """Register function."""
+                    tool_name = name or function.__name__
+                    schema = self._schemas.get(tool_name)
+                    self._tool_manager._tools[tool_name] = RuntimeTool(
+                        function,
+                        description or "",
+                        parameters=schema,
+                    )
+
+                    def bound(*args, **kwargs):
+                        """Bound function."""
+                        return function(*args, **kwargs)
+
+                    bound.__name__ = tool_name
+                    return bound
+
+                return register
+
+        def apply_edits_stub(edits) -> dict:
+            """Apply edits stub function."""
+            return {"ok": True, "edits": edits}
+
+        mcp = FakeMCP()
+        tool_details.install(mcp)
+        mcp.tool(name="apply_edits", description="Apply edits")(apply_edits_stub)
+
+        schema = mcp._tool_manager._tools["apply_edits"].parameters
+        edit_items = schema["properties"]["edits"]["items"]
+        self.assertIn("properties", edit_items)
+        self.assertIn("path", edit_items["properties"])
+        self.assertIn("pattern", edit_items["properties"])
+        self.assertIn("replacement", edit_items["properties"])
+        self.assertEqual(
+            sorted(edit_items.get("required", [])),
+            ["path", "pattern", "replacement"],
+        )
 
     def test_get_tool_details_includes_skills_baseline_defaults_after_registration(
         self,

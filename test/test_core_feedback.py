@@ -233,6 +233,63 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(result["framework"], "pytest")
         run_process.assert_called_once()
 
+    def test_forced_jest_without_setup_returns_framework_not_configured(self) -> None:
+        """Forced jest with package.json but no jest markers should fail preflight clearly."""
+        (self.root / "package.json").write_text(
+            '{"name": "sample", "scripts": {"lint": "eslint ."}}',
+            encoding="utf-8",
+        )
+
+        with patch("lib.core.run_tests.run_process") as run_process:
+            result = self.mcp.tools["run_tests"](test_framework="jest")
+
+        self.assertFalse(result["supported"])
+        self.assertEqual(result["error_code"], "framework_not_configured")
+        self.assertIn("no matching test setup", result["message"])
+        run_process.assert_not_called()
+
+    def test_forced_jest_without_npx_returns_tool_not_installed(self) -> None:
+        """Forced jest should report missing npx before attempting execution."""
+        (self.root / "package.json").write_text(
+            '{"name": "sample", "devDependencies": {"jest": "^29.0.0"}}',
+            encoding="utf-8",
+        )
+
+        with (
+            patch("lib.core.run_tests.shutil.which", return_value=None),
+            patch("lib.core.run_tests.run_process") as run_process,
+        ):
+            result = self.mcp.tools["run_tests"](test_framework="jest")
+
+        self.assertFalse(result["supported"])
+        self.assertEqual(result["error_code"], "tool_not_installed")
+        self.assertIn("binary:npx", result["missing_requirements"])
+        run_process.assert_not_called()
+
+    def test_jest_npm_canceled_maps_to_framework_not_configured(self) -> None:
+        """npm canceled output should produce an actionable framework_not_configured response."""
+        (self.root / "package.json").write_text(
+            '{"name": "sample", "devDependencies": {"jest": "^29.0.0"}}',
+            encoding="utf-8",
+        )
+        process_result: dict = {
+            "stdout": "",
+            "stderr": "npm ERR! canceled",
+            "exit_code": 1,
+            "timed_out": False,
+            "duration_ms": 10,
+        }
+
+        with (
+            patch("lib.core.run_tests.shutil.which", return_value="/usr/bin/npx"),
+            patch("lib.core.run_tests.run_process", return_value=process_result),
+        ):
+            result = self.mcp.tools["run_tests"](test_framework="jest")
+
+        self.assertFalse(result["supported"])
+        self.assertEqual(result["error_code"], "framework_not_configured")
+        self.assertIn("appears not configured", result["message"])
+
     def test_git_unavailable_returns_normalized_error(self) -> None:
         """Test git unavailable returns normalized error function."""
         with patch("lib.core.git_manage.shutil.which", return_value=None):

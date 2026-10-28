@@ -9,7 +9,7 @@ from typing import get_args, get_type_hints
 
 from pydantic import BaseModel, TypeAdapter
 
-from lib import support
+from lib import support, tool_details
 from lib.core import (
     apply_edits,
     build_project,
@@ -206,6 +206,47 @@ class ToolSchemaTests(unittest.TestCase):
         )
         self.assertIn("expand_groups", schema.get("properties", {}))
         self.assertNotIn("expand_groups", schema.get("required", []))
+
+    def test_fastmcp_runtime_apply_edits_parameters_include_nested_edit_keys(
+        self,
+    ) -> None:
+        """Runtime apply_edits schema should expose edits item keys directly."""
+        try:
+            from mcp.server.fastmcp import FastMCP
+        except ModuleNotFoundError:
+            self.skipTest("FastMCP dependency is not installed")
+
+        server = FastMCP("schema-runtime-contract")
+        tool_details.install(server)
+        apply_edits.register(server)
+
+        registered = server._tool_manager._tools["apply_edits"]
+        schema = getattr(registered, "parameters", None) or getattr(
+            registered, "input_schema", {}
+        )
+        edits_schema = schema.get("properties", {}).get("edits", {})
+        self.assertEqual(edits_schema.get("type"), "array")
+        item_schema = edits_schema.get("items", {})
+        referenced_item_schema: dict = {}
+        if "properties" in item_schema:
+            referenced_item_schema = item_schema
+        else:
+            ref = item_schema.get("$ref")
+            self.assertEqual(ref, "#/$defs/Edit")
+            defs = schema.get("$defs", {}) or schema.get("definitions", {})
+            if isinstance(defs, dict):
+                resolved = defs.get("Edit", {})
+                if isinstance(resolved, dict):
+                    referenced_item_schema = resolved
+
+        if referenced_item_schema:
+            self.assertIn("properties", referenced_item_schema)
+            for key in ("path", "pattern", "replacement"):
+                self.assertIn(key, referenced_item_schema["properties"])
+            self.assertEqual(
+                sorted(referenced_item_schema.get("required", [])),
+                ["path", "pattern", "replacement"],
+            )
 
     def test_every_tool_argument_has_a_concrete_json_schema(self) -> None:
         """Test every tool argument has a concrete json schema function."""
