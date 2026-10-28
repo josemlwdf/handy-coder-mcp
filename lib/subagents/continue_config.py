@@ -1,3 +1,5 @@
+"""Module documentation."""
+
 from __future__ import annotations
 
 import json
@@ -19,7 +21,9 @@ LOCAL_PROVIDERS = frozenset({"ollama", "lmstudio", "llamafile", "llama.cpp"})
 # WSL: the Windows profile directories are mounted here. Tests override this.
 WSL_USERS_ROOT = Path("/mnt/c/Users")
 # Windows built-in profile folders that never hold a user's Continue config.
-WSL_SYSTEM_PROFILES = frozenset({"public", "default", "default user", "all users", "defaultapppool"})
+WSL_SYSTEM_PROFILES = frozenset(
+    {"public", "default", "default user", "all users", "defaultapppool"}
+)
 MAX_WSL_PROFILES = 32
 _SECRET_REF = re.compile(r"\$\{\{\s*secrets\.([A-Za-z0-9_]+)\s*\}\}")
 _FULL_SECRET_REF = re.compile(r"^\s*\$\{\{\s*secrets\.([A-Za-z0-9_]+)\s*\}\}\s*$")
@@ -27,6 +31,8 @@ _FULL_SECRET_REF = re.compile(r"^\s*\$\{\{\s*secrets\.([A-Za-z0-9_]+)\s*\}\}\s*$
 
 @dataclass(frozen=True)
 class ContinueModel:
+    """ContinueModel class."""
+
     name: str
     provider: str
     model: str
@@ -43,18 +49,25 @@ class ContinueModel:
 
 @dataclass(frozen=True)
 class ResolvedContinue:
+    """ResolvedContinue class."""
+
     model: ContinueModel
     config_path: str
 
 
 # ---------------------------------------------------------------- discovery
 
+
 def _current_user(env: Mapping[str, str]) -> str:
+    """Current user function."""
     return (env.get("USERNAME") or env.get("USER") or "").strip()
 
 
 def _safe_user_component(user: str) -> bool:
-    return bool(user) and user not in {".", ".."} and "/" not in user and "\\" not in user
+    """Safe user component function."""
+    return (
+        bool(user) and user not in {".", ".."} and "/" not in user and "\\" not in user
+    )
 
 
 def _wsl_continue_dirs(current_user: str) -> list[Path]:
@@ -111,7 +124,7 @@ def _candidates(
         try:
             home = Path.home()
         except (RuntimeError, KeyError):
-            home = None
+            home: None = None
     if home is not None:
         out.append((home / ".continue" / "config.yaml", True))
         out.append((home / ".continue" / "config.json", True))
@@ -145,13 +158,16 @@ def candidate_config_paths(
     env: Mapping[str, str] | None = None,
     home: Path | None = None,
 ) -> list[Path]:
+    """Candidate config paths function."""
     environ = os.environ if env is None else env
     return [path for path, _ in _candidates(workspace_root, environ, home)]
 
 
 # ------------------------------------------------------------------ parsing
 
+
 def load_config_file(path: str | Path) -> dict | None:
+    """Load config file function."""
     try:
         p = Path(path)
         st = p.stat()
@@ -171,6 +187,7 @@ def load_config_file(path: str | Path) -> dict | None:
 
 def _read_dotenv(path: Path) -> dict[str, str]:
     # NOTE: whether Continue itself reads a .env next to the config is UNVERIFIED.
+    """Read dotenv function."""
     try:
         if not path.is_file() or path.stat().st_size > MAX_ENV_BYTES:
             return {}
@@ -183,7 +200,7 @@ def _read_dotenv(path: Path) -> dict[str, str]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         if line.startswith("export "):
-            line = line[len("export "):].lstrip()
+            line = line[len("export ") :].lstrip()
         name, _, value = line.partition("=")
         name = name.strip()
         value = value.strip()
@@ -197,6 +214,7 @@ def _read_dotenv(path: Path) -> dict[str, str]:
 def _lookup_secret(
     name: str, config_dir: Path, environ: Mapping[str, str], allow_refs: bool
 ) -> str | None:
+    """Lookup secret function."""
     if not allow_refs:
         return None
     value = (environ.get(name) or "").strip()
@@ -222,13 +240,12 @@ def _expand(
 
 
 def _string_headers(entry: dict) -> dict[str, str]:
+    """String headers function."""
     options = entry.get("requestOptions")
     headers = options.get("headers") if isinstance(options, dict) else None
     if not isinstance(headers, dict):
         return {}
-    return {
-        str(k): v for k, v in headers.items() if isinstance(v, str) and v.strip()
-    }
+    return {str(k): v for k, v in headers.items() if isinstance(v, str) and v.strip()}
 
 
 def _resolve_api_key(
@@ -237,6 +254,7 @@ def _resolve_api_key(
     environ: Mapping[str, str],
     allow_secret_refs: bool = True,
 ) -> str | None:
+    """Resolve api key function."""
     raw_key = entry.get("apiKey")
     raw_key = raw_key.strip() if isinstance(raw_key, str) else ""
 
@@ -262,6 +280,7 @@ def _resolve_api_key(
 
 
 def _positive_int(value: Any) -> int | None:
+    """Positive int function."""
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         return None
     return value
@@ -273,6 +292,7 @@ def list_usable_models(
     environ: Mapping[str, str],
     allow_secret_refs: bool = True,
 ) -> list[ContinueModel]:
+    """List usable models function."""
     models = config.get("models")
     if not isinstance(models, list):
         return []
@@ -295,7 +315,7 @@ def list_usable_models(
             if "chat" not in roles:
                 continue
         else:
-            roles = ("chat",)
+            roles: tuple = ("chat",)
 
         key = _resolve_api_key(entry, config_dir, environ, allow_secret_refs)
         if key is None and provider not in LOCAL_PROVIDERS:
@@ -315,11 +335,15 @@ def list_usable_models(
                 name=name.strip() if isinstance(name, str) and name.strip() else model,
                 provider=provider,
                 model=model,
-                api_base=api_base.strip() if isinstance(api_base, str) and api_base.strip() else None,
+                api_base=api_base.strip()
+                if isinstance(api_base, str) and api_base.strip()
+                else None,
                 api_key=key,
                 roles=roles,
                 headers=headers,
-                max_tokens=_positive_int(options.get("maxTokens")) if isinstance(options, dict) else None,
+                max_tokens=_positive_int(options.get("maxTokens"))
+                if isinstance(options, dict)
+                else None,
             )
         )
     return usable
@@ -328,6 +352,7 @@ def list_usable_models(
 def select_model(
     models: list[ContinueModel], preferred: str | None
 ) -> ContinueModel | None:
+    """Select model function."""
     wanted = (preferred or "").strip().lower()
     if wanted:
         for item in models:
@@ -344,16 +369,18 @@ _PARSE_CACHE: dict[tuple[str, int, int], dict | None] = {}
 
 
 def clear_cache() -> None:
+    """Clear cache function."""
     with _CACHE_LOCK:
         _PARSE_CACHE.clear()
 
 
 def _load_cached(path: Path) -> dict | None:
+    """Load cached function."""
     try:
         st = path.stat()
     except OSError:
         return None
-    key = (str(path), st.st_mtime_ns, st.st_size)
+    key: tuple = (str(path), st.st_mtime_ns, st.st_size)
     with _CACHE_LOCK:
         if key in _PARSE_CACHE:
             return _PARSE_CACHE[key]
@@ -372,6 +399,7 @@ def resolve_continue_model(
     home: Path | None = None,
     accept: Callable[[ContinueModel], bool] | None = None,
 ) -> ResolvedContinue | None:
+    """Resolve continue model function."""
     env = os.environ if environ is None else environ
     preferred = env.get("SUBAGENT_CONTINUE_MODEL")
     for path, trusted in _candidates(workspace_root, env, home):
@@ -380,7 +408,7 @@ def resolve_continue_model(
             continue
         models = list_usable_models(config, path.parent, env, allow_secret_refs=trusted)
         if accept is not None:
-            models = [m for m in models if accept(m)]
+            models: list = [m for m in models if accept(m)]
         chosen = select_model(models, preferred)
         if chosen is not None:
             return ResolvedContinue(model=chosen, config_path=str(path))
@@ -405,7 +433,9 @@ def resolve_continue_models(
             continue
         models = list_usable_models(config, path.parent, env, allow_secret_refs=trusted)
         if accept is not None:
-            models = [model for model in models if accept(model)]
+            models: list = [model for model in models if accept(model)]
         if models:
-            return [ResolvedContinue(model=model, config_path=str(path)) for model in models]
+            return [
+                ResolvedContinue(model=model, config_path=str(path)) for model in models
+            ]
     return []

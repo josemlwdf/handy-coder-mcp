@@ -1,4 +1,5 @@
 """Shared validation for the one-line change summary required by file-writing tools."""
+
 from __future__ import annotations
 
 MAX_SUMMARY_CHARS = 200

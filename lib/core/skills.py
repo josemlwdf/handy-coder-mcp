@@ -119,9 +119,7 @@ def _validate_name(name: str | None) -> dict | None:
 def _validate_reference_name(reference: str | None) -> dict | None:
     """Validate reference name function."""
     if not reference:
-        return _error(
-            "missing_argument", "reference is required for this action"
-        )
+        return _error("missing_argument", "reference is required for this action")
     if not _NAME_RE.match(reference):
         return _error(
             "invalid_reference_name",

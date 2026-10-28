@@ -1,4 +1,5 @@
 """IDE detection and workspace root recovery from IDE settings and storage."""
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,11 @@ KNOWN_IDES: dict[str, dict] = {
     },
     "vscode-insiders": {
         "display_name": "Visual Studio Code Insiders",
-        "process_patterns": ("code-server-insiders", ".vscode-server-insiders", "code-insiders"),
+        "process_patterns": (
+            "code-server-insiders",
+            ".vscode-server-insiders",
+            "code-insiders",
+        ),
         "config_dirs": ("Code - Insiders",),
         "server_dirs": (".vscode-server-insiders",),
     },
@@ -48,9 +53,12 @@ def _is_vscode_process_dir(path: Path) -> bool:
     path_str = str(path).lower().replace("\\", "/")
     if (
         "microsoft vs code" in path_str
-        or "cursor" in path_str and ("resources" in path_str or "app" in path_str)
-        or "windsurf" in path_str and ("resources" in path_str or "app" in path_str)
-        or path.name.lower() in ("code", "code - insiders", "cursor", "windsurf", "codium")
+        or "cursor" in path_str
+        and ("resources" in path_str or "app" in path_str)
+        or "windsurf" in path_str
+        and ("resources" in path_str or "app" in path_str)
+        or path.name.lower()
+        in ("code", "code - insiders", "cursor", "windsurf", "codium")
     ):
         return True
     vscode_cwd = os.environ.get("VSCODE_CWD", "").strip()
@@ -78,10 +86,20 @@ def _is_disallowed_default_root(path: Path) -> bool:
         if len(parts) <= 3 and parts[0] == "/" and parts[1] == "mnt":
             return True
         # Windows user profile root in WSL e.g. /mnt/c/Users/<username>
-        if len(parts) == 5 and parts[0] == "/" and parts[1] == "mnt" and parts[3].lower() == "users":
+        if (
+            len(parts) == 5
+            and parts[0] == "/"
+            and parts[1] == "mnt"
+            and parts[3].lower() == "users"
+        ):
             return True
         # Windows user profile root on native Windows e.g. C:\Users\<username>
-        if len(parts) == 3 and parts[1].lower() == "users" and len(parts[0]) == 3 and parts[0][1] == ":":
+        if (
+            len(parts) == 3
+            and parts[1].lower() == "users"
+            and len(parts[0]) == 3
+            and parts[0][1] == ":"
+        ):
             return True
     except Exception:
         pass
@@ -119,7 +137,13 @@ def detect_ide() -> str | None:
             if not pid_dir.is_dir():
                 break
             try:
-                cmd = (pid_dir / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", errors="ignore").lower()
+                cmd = (
+                    (pid_dir / "cmdline")
+                    .read_bytes()
+                    .replace(b"\x00", b" ")
+                    .decode("utf-8", errors="ignore")
+                    .lower()
+                )
                 for ide_key, info in KNOWN_IDES.items():
                     for pattern in info["process_patterns"]:
                         if pattern in cmd:
@@ -127,7 +151,9 @@ def detect_ide() -> str | None:
             except (OSError, PermissionError):
                 pass
             try:
-                status = (pid_dir / "status").read_text(encoding="utf-8", errors="ignore")
+                status = (pid_dir / "status").read_text(
+                    encoding="utf-8", errors="ignore"
+                )
                 ppid_match = re.search(r"^PPid:\s+(\d+)", status, re.MULTILINE)
                 if not ppid_match:
                     break
@@ -149,7 +175,13 @@ def detect_ide() -> str | None:
                 if current_uid is not None:
                     if pid_entry.stat().st_uid != current_uid:
                         continue
-                cmd = (pid_entry / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", errors="ignore").lower()
+                cmd = (
+                    (pid_entry / "cmdline")
+                    .read_bytes()
+                    .replace(b"\x00", b" ")
+                    .decode("utf-8", errors="ignore")
+                    .lower()
+                )
                 for ide_key, info in KNOWN_IDES.items():
                     for pattern in info["process_patterns"]:
                         if pattern in cmd:
@@ -230,6 +262,7 @@ def find_ide_user_data_dirs(ide_name: str | None = None) -> list[Path]:
     seen: set[Path] = set()
 
     def _add_user_dir(p: Path) -> None:
+        """Add user dir function."""
         try:
             resolved = p.resolve()
             if resolved.is_dir() and resolved not in seen:
@@ -247,7 +280,12 @@ def find_ide_user_data_dirs(ide_name: str | None = None) -> list[Path]:
             if drive_users.is_dir():
                 try:
                     for u in drive_users.iterdir():
-                        if u.is_dir() and u.name.lower() not in ("public", "default", "default user", "all users"):
+                        if u.is_dir() and u.name.lower() not in (
+                            "public",
+                            "default",
+                            "default user",
+                            "all users",
+                        ):
                             for cdir in info["config_dirs"]:
                                 _add_user_dir(u / "AppData" / "Roaming" / cdir / "User")
                 except OSError:
@@ -300,12 +338,16 @@ def recover_workspace_roots(ide_name: str | None = None) -> list[Path]:
                 # 3. backupWorkspaces
                 backup = data.get("backupWorkspaces", {})
                 for folder_entry in backup.get("folders", []):
-                    if isinstance(folder_entry, dict) and (uri := folder_entry.get("folderUri")):
+                    if isinstance(folder_entry, dict) and (
+                        uri := folder_entry.get("folderUri")
+                    ):
                         if p := uri_to_path(uri):
                             if p.is_dir() and not _is_vscode_process_dir(p):
                                 candidates[p] = None
                 for ws_entry in backup.get("workspaces", []):
-                    if isinstance(ws_entry, dict) and (uri := ws_entry.get("workspaceUri")):
+                    if isinstance(ws_entry, dict) and (
+                        uri := ws_entry.get("workspaceUri")
+                    ):
                         if p := uri_to_path(uri):
                             if p.is_dir() and not _is_vscode_process_dir(p):
                                 candidates[p] = None
@@ -329,21 +371,23 @@ def recover_workspace_roots(ide_name: str | None = None) -> list[Path]:
                         continue
 
                     # Check for active lockfile
-                    has_live_lock = False
+                    has_live_lock: bool = False
                     for lock_name in ("vscode.lock", "cursor.lock", "windsurf.lock"):
                         lock_file = item / lock_name
                         if lock_file.is_file():
                             try:
-                                lock_data = json.loads(lock_file.read_text(encoding="utf-8"))
+                                lock_data = json.loads(
+                                    lock_file.read_text(encoding="utf-8")
+                                )
                                 pid = lock_data.get("pid")
                                 if pid and isinstance(pid, int):
                                     os.kill(pid, 0)
-                                    has_live_lock = True
+                                    has_live_lock: bool = True
                                     break
                             except Exception:
                                 pass
 
-                    mtime = 0.0
+                    mtime: float = 0.0
                     try:
                         mtime = ws_json.stat().st_mtime
                     except OSError:
@@ -386,7 +430,7 @@ def detect_working_dir(
     """
     # 1. Explicit candidate parameter
     if candidate and (candidate.startswith("${") or not candidate.strip()):
-        candidate = None
+        candidate: None = None
 
     if candidate:
         p = Path(candidate).expanduser()
@@ -430,7 +474,9 @@ def detect_working_dir(
     recovered_roots = recover_workspace_roots(ide)
 
     if recovered_roots:
-        valid_roots = [p for p in recovered_roots if not _is_disallowed_default_root(p)]
+        valid_roots: list = [
+            p for p in recovered_roots if not _is_disallowed_default_root(p)
+        ]
         if len(valid_roots) == 1:
             return str(valid_roots[0])
         # Multiple storage candidates have no reliable relationship to this

@@ -103,13 +103,18 @@ def _function_assignments(
     declarations: set[str] = set()
 
     class ScopeDeclarations(ast.NodeVisitor):
+        """ScopeDeclarations class."""
+
         def visit_Global(self, declaration: ast.Global) -> None:
+            """Visit Global function."""
             declarations.update(declaration.names)
 
         def visit_Nonlocal(self, declaration: ast.Nonlocal) -> None:
+            """Visit Nonlocal function."""
             declarations.update(declaration.names)
 
         def visit_FunctionDef(self, child: ast.FunctionDef) -> None:
+            """Visit FunctionDef function."""
             if child is node:
                 for statement in child.body:
                     self.visit(statement)
@@ -117,9 +122,11 @@ def _function_assignments(
         visit_AsyncFunctionDef = visit_FunctionDef
 
         def visit_Lambda(self, child: ast.Lambda) -> None:
+            """Visit Lambda function."""
             return
 
         def visit_ClassDef(self, child: ast.ClassDef) -> None:
+            """Visit ClassDef function."""
             return
 
     ScopeDeclarations().visit(node)
@@ -127,7 +134,10 @@ def _function_assignments(
     assignments: list[ast.Assign] = []
 
     class LocalAssignments(ast.NodeVisitor):
+        """LocalAssignments class."""
+
         def visit_Assign(self, assignment: ast.Assign) -> None:
+            """Visit Assign function."""
             if (
                 len(assignment.targets) == 1
                 and isinstance(assignment.targets[0], ast.Name)
@@ -137,14 +147,17 @@ def _function_assignments(
             self.generic_visit(assignment)
 
         def visit_FunctionDef(self, child: ast.FunctionDef) -> None:
+            """Visit FunctionDef function."""
             return
 
         visit_AsyncFunctionDef = visit_FunctionDef
 
         def visit_Lambda(self, child: ast.Lambda) -> None:
+            """Visit Lambda function."""
             return
 
         def visit_ClassDef(self, child: ast.ClassDef) -> None:
+            """Visit ClassDef function."""
             return
 
     visitor = LocalAssignments()

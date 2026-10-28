@@ -1,4 +1,5 @@
 """Shared workspace, MCP, and subprocess support."""
+
 from __future__ import annotations
 import fnmatch
 import os
@@ -18,11 +19,25 @@ MAX_READ_BYTES = 2 * 1024 * 1024
 MAX_OUTPUT_BYTES = 1024 * 1024
 DEFAULT_TIMEOUT_MS = 30_000
 # Generated/build/cache directories skipped by default in workspace scans.
-GENERATED_DIRS = frozenset({
-    "node_modules", "__pycache__", "dist", "build", ".venv", "venv",
-    ".mypy_cache", ".ruff_cache", ".pytest_cache", "coverage", ".next",
-    "target", "out", ".tox", "htmlcov",
-})
+GENERATED_DIRS = frozenset(
+    {
+        "node_modules",
+        "__pycache__",
+        "dist",
+        "build",
+        ".venv",
+        "venv",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        "coverage",
+        ".next",
+        "target",
+        "out",
+        ".tox",
+        "htmlcov",
+    }
+)
 # Maximum seconds a tool handler subprocess is allowed to run.
 # This constant documents the intended deadline for future worker-subprocess
 # isolation; see lib/_worker.py for the run_in_worker implementation.
@@ -30,7 +45,14 @@ WORKER_DEADLINE_SECONDS = 30.0
 HANDY_CODER_STATE_DIRNAME = ".handy-coder"
 
 
-def setup_required(*, missing_requirements: list[str], remediation_commands: list[str], documentation_url: str, message: str, error_code: str = "setup_required") -> dict:
+def setup_required(
+    *,
+    missing_requirements: list[str],
+    remediation_commands: list[str],
+    documentation_url: str,
+    message: str,
+    error_code: str = "setup_required",
+) -> dict:
     """Return the shared, machine-readable response for an unavailable optional tool."""
     return {
         "supported": False,
@@ -70,6 +92,7 @@ def configure(root: str, shell: str | None = None) -> None:
 def _warn_high_risk_root(root: Path) -> None:
     """Emit a startup warning when the workspace is a home dir or drive root."""
     import sys
+
     # Check for drive/filesystem root (e.g. / or C:\)
     if root == root.parent:
         print(
@@ -89,6 +112,7 @@ def _warn_high_risk_root(root: Path) -> None:
             )
     except RuntimeError:
         pass
+
 
 PATH_ESCAPE_MESSAGE = "Path escapes authorized workspace root"
 
@@ -112,6 +136,7 @@ def inside(path: str | Path, *, must_exist: bool = False) -> Path:
     except ValueError:
         raise ValueError(path_escape_message(path))
     return p
+
 
 def iter_workspace_files(
     *,
@@ -143,10 +168,12 @@ def iter_workspace_files(
                     sorted_entries.append(entry)
                 sorted_entries.sort(key=lambda entry: entry.name)
         except OSError as exc:
-            scan_errors.append({
-                "path": relative_directory or ".",
-                "message": exc.strerror or "Filesystem access failed",
-            })
+            scan_errors.append(
+                {
+                    "path": relative_directory or ".",
+                    "message": exc.strerror or "Filesystem access failed",
+                }
+            )
             continue
 
         if deadline is not None and time.monotonic() >= deadline:
@@ -166,23 +193,29 @@ def iter_workspace_files(
                     continue
                 if not entry.is_file(follow_symlinks=True):
                     continue
-                if max_file_size_bytes is not None and entry.is_file(follow_symlinks=False):
+                if max_file_size_bytes is not None and entry.is_file(
+                    follow_symlinks=False
+                ):
                     if entry.stat(follow_symlinks=False).st_size > max_file_size_bytes:
                         continue
                 try:
                     resolved = inside(entry.path, must_exist=True)
                 except ValueError:
                     if report_outside_workspace_errors:
-                        scan_errors.append({
-                            "path": relative_path,
-                            "message": "Skipped a file that resolves outside the authorized workspace",
-                        })
+                        scan_errors.append(
+                            {
+                                "path": relative_path,
+                                "message": "Skipped a file that resolves outside the authorized workspace",
+                            }
+                        )
                     continue
                 except OSError as exc:
-                    scan_errors.append({
-                        "path": relative_path,
-                        "message": exc.strerror or "Filesystem access failed",
-                    })
+                    scan_errors.append(
+                        {
+                            "path": relative_path,
+                            "message": exc.strerror or "Filesystem access failed",
+                        }
+                    )
                     continue
                 if path_glob and not fnmatch.fnmatch(relative_path, path_glob):
                     # When the pattern uses **, also accept files that match with
@@ -194,11 +227,14 @@ def iter_workspace_files(
                         continue
                 yield resolved, relative_path
             except OSError as exc:
-                scan_errors.append({
-                    "path": relative_path,
-                    "message": exc.strerror or "Filesystem access failed",
-                })
+                scan_errors.append(
+                    {
+                        "path": relative_path,
+                        "message": exc.strerror or "Filesystem access failed",
+                    }
+                )
         pending.extend(reversed(child_directories))
+
 
 def _glob_prefix(pattern: str | None) -> tuple[str, ...]:
     if not pattern:
@@ -214,18 +250,28 @@ def _glob_prefix(pattern: str | None) -> tuple[str, ...]:
         prefix.append(part)
     return tuple(prefix)
 
+
 def _may_match_glob_scope(path_parts: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
     if not prefix:
         return True
     path_parts = tuple(os.path.normcase(part) for part in path_parts)
     prefix = tuple(os.path.normcase(part) for part in prefix)
     if len(path_parts) <= len(prefix):
-        return prefix[:len(path_parts)] == path_parts
-    return path_parts[:len(prefix)] == prefix
+        return prefix[: len(path_parts)] == path_parts
+    return path_parts[: len(prefix)] == prefix
 
-def run_process(command: str | list[str], *, cwd: str | Path | None = None, timeout_ms: int = DEFAULT_TIMEOUT_MS,
-                shell: bool = False, max_output_bytes: int = MAX_OUTPUT_BYTES,
-                env: dict[str, str] | None = None, stdin: str | None = None, shell_executable: str | None = None) -> dict:
+
+def run_process(
+    command: str | list[str],
+    *,
+    cwd: str | Path | None = None,
+    timeout_ms: int = DEFAULT_TIMEOUT_MS,
+    shell: bool = False,
+    max_output_bytes: int = MAX_OUTPUT_BYTES,
+    env: dict[str, str] | None = None,
+    stdin: str | None = None,
+    shell_executable: str | None = None,
+) -> dict:
     # Resolve at call time: a `cwd=ROOT` default would freeze the import-time value.
     work = inside(ROOT if cwd is None else cwd, must_exist=True)
     if not work.is_dir():
@@ -243,26 +289,48 @@ def run_process(command: str | list[str], *, cwd: str | Path | None = None, time
         else:
             argv = [selected_shell, "-c", command]
         use_shell = False
-    captured={"stdout":bytearray(),"stderr":bytearray()}
-    truncated={"stdout":False,"stderr":False}
+    captured = {"stdout": bytearray(), "stderr": bytearray()}
+    truncated = {"stdout": False, "stderr": False}
     try:
-        p=subprocess.Popen(argv,cwd=work,shell=use_shell,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
-                           stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
-                           env={**os.environ,"CI":"true","DEBIAN_FRONTEND":"noninteractive", **(env or {})},
-                           start_new_session=(os.name!="nt"))
+        p = subprocess.Popen(
+            argv,
+            cwd=work,
+            shell=use_shell,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+            env={
+                **os.environ,
+                "CI": "true",
+                "DEBIAN_FRONTEND": "noninteractive",
+                **(env or {}),
+            },
+            start_new_session=(os.name != "nt"),
+        )
     except OSError as exc:
-        return {"stdout":"","stderr":f"Failed to start process: {exc}","exit_code":1,"timed_out":False,"duration_ms":round((time.monotonic()-start)*1000)}
-    def drain(stream,key):
+        return {
+            "stdout": "",
+            "stderr": f"Failed to start process: {exc}",
+            "exit_code": 1,
+            "timed_out": False,
+            "duration_ms": round((time.monotonic() - start) * 1000),
+        }
+
+    def drain(stream, key):
         while True:
-            chunk=stream.read(65536)
+            chunk = stream.read(65536)
             if not chunk:
                 break
-            room=max_output_bytes-len(captured[key])
-            if room>0:
+            room = max_output_bytes - len(captured[key])
+            if room > 0:
                 captured[key].extend(chunk[:room])
-            if len(chunk)>room:
-                truncated[key]=True
-    readers=[threading.Thread(target=drain,args=(p.stdout,"stdout"),daemon=True),threading.Thread(target=drain,args=(p.stderr,"stderr"),daemon=True)]
+            if len(chunk) > room:
+                truncated[key] = True
+
+    readers = [
+        threading.Thread(target=drain, args=(p.stdout, "stdout"), daemon=True),
+        threading.Thread(target=drain, args=(p.stderr, "stderr"), daemon=True),
+    ]
     for t in readers:
         t.start()
     if stdin is not None:
@@ -271,31 +339,42 @@ def run_process(command: str | list[str], *, cwd: str | Path | None = None, time
             p.stdin.close()
         except BrokenPipeError:
             pass
-    timed_out=False
+    timed_out = False
     try:
-        code=p.wait(timeout=timeout_ms/1000)
+        code = p.wait(timeout=timeout_ms / 1000)
     except subprocess.TimeoutExpired:
-        timed_out=True
+        timed_out = True
         try:
-            if os.name=="nt":
+            if os.name == "nt":
                 p.kill()
             else:
-                os.killpg(p.pid,signal.SIGKILL)
+                os.killpg(p.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        code=p.wait()
+        code = p.wait()
     for t in readers:
         t.join()
     p.stdout.close()
     p.stderr.close()
-    def decode(key): return bytes(captured[key]).decode("utf-8","replace")+("\n...[truncated]" if truncated[key] else "")
-    stderr_text=decode("stderr")
+
+    def decode(key):
+        return bytes(captured[key]).decode("utf-8", "replace") + (
+            "\n...[truncated]" if truncated[key] else ""
+        )
+
+    stderr_text = decode("stderr")
     timeout_reason = f"Process exceeded {timeout_ms}ms." if timed_out else None
     if timed_out:
-        stderr_text+=f"\n[TIMEOUT] Process exceeded {timeout_ms}ms."
-    return {"stdout":decode("stdout"), "stderr":stderr_text, "exit_code":124 if timed_out else code, "timed_out":timed_out,
-            "timeout_reason": timeout_reason,
-            "duration_ms":round((time.monotonic()-start)*1000)}
+        stderr_text += f"\n[TIMEOUT] Process exceeded {timeout_ms}ms."
+    return {
+        "stdout": decode("stdout"),
+        "stderr": stderr_text,
+        "exit_code": 124 if timed_out else code,
+        "timed_out": timed_out,
+        "timeout_reason": timeout_reason,
+        "duration_ms": round((time.monotonic() - start) * 1000),
+    }
+
 
 def validate_shell_command(command: str, cwd: Path) -> None:
     """Reject obvious shell path escapes, including redirection and nested commands."""
@@ -305,9 +384,15 @@ def validate_shell_command(command: str, cwd: Path) -> None:
         for m in re.finditer(r"\$\((.*?)\)|`([^`]+)`", command):
             validate_shell_command(m.group(1) or m.group(2), cwd)
     if _HOME_ESCAPE_RE.search(command) or re.search(r"~(?:/|\\|\b)", command):
-        raise ValueError("Command references a home-directory escape outside the authorized workspace")
+        raise ValueError(
+            "Command references a home-directory escape outside the authorized workspace"
+        )
     try:
-        lexer = shlex.shlex(_split_unquoted_newlines(command), posix=os.name != "nt", punctuation_chars=True)
+        lexer = shlex.shlex(
+            _split_unquoted_newlines(command),
+            posix=os.name != "nt",
+            punctuation_chars=True,
+        )
         lexer.whitespace_split = True
         lexer.commenters = ""
         tokens = list(lexer)
@@ -317,7 +402,11 @@ def validate_shell_command(command: str, cwd: Path) -> None:
     # Check only real shell redirection operators. Quoted text such as `>` is
     # emitted as a regular word by shlex and therefore cannot trigger this guard.
     for index, token in enumerate(tokens):
-        if token and all(ch in _SHELL_PUNCTUATION for ch in token) and (">" in token or "<" in token):
+        if (
+            token
+            and all(ch in _SHELL_PUNCTUATION for ch in token)
+            and (">" in token or "<" in token)
+        ):
             if token[-1] == "&" or token in ("<<", "<<<"):
                 continue
             target = tokens[index + 1] if index + 1 < len(tokens) else ""
@@ -326,9 +415,11 @@ def validate_shell_command(command: str, cwd: Path) -> None:
                     try:
                         inside(target if Path(target).is_absolute() else cwd / target)
                     except ValueError:
-                        raise ValueError(f"Redirection target escapes authorized workspace: {target}")
+                        raise ValueError(
+                            f"Redirection target escapes authorized workspace: {target}"
+                        )
 
-    at_command = True      # next word is a command name (start, or after ; && || | ( ))
+    at_command = True  # next word is a command name (start, or after ; && || | ( ))
     command_name = ""
     expect_target = False  # previous token was a redirection operator
     expect_script = False  # previous token was `sh -c` style flag
@@ -337,7 +428,9 @@ def validate_shell_command(command: str, cwd: Path) -> None:
 
     def _finish_command() -> None:
         if requires_directory_target and not saw_directory_target:
-            raise ValueError(f"'{command_name}' requires an explicit workspace-relative directory target")
+            raise ValueError(
+                f"'{command_name}' requires an explicit workspace-relative directory target"
+            )
 
     for token in tokens:
         if os.name == "nt":
@@ -348,7 +441,12 @@ def validate_shell_command(command: str, cwd: Path) -> None:
                 expect_target = token[-1] != "&" and token not in ("<<", "<<<")
             else:
                 _finish_command()
-                at_command, command_name, expect_target, expect_script = True, "", False, False
+                at_command, command_name, expect_target, expect_script = (
+                    True,
+                    "",
+                    False,
+                    False,
+                )
                 requires_directory_target, saw_directory_target = False, False
             continue
         if expect_target:
@@ -364,12 +462,17 @@ def validate_shell_command(command: str, cwd: Path) -> None:
                 _check_shell_token(token, cwd)
                 continue
             at_command = False
-            command_name = re.sub(r"\.exe$", "", Path(token.replace("\\", "/")).name.lower())
+            command_name = re.sub(
+                r"\.exe$", "", Path(token.replace("\\", "/")).name.lower()
+            )
             requires_directory_target = command_name in _DIR_CHANGE_COMMANDS
             saw_directory_target = False
             _check_shell_token(token, cwd, command_position=True)
             continue
-        if command_name in _SHELL_INTERPRETERS and (re.fullmatch(r"-[A-Za-z]*c", token) or token.lower() in ("-command", "/c", "/k")):
+        if command_name in _SHELL_INTERPRETERS and (
+            re.fullmatch(r"-[A-Za-z]*c", token)
+            or token.lower() in ("-command", "/c", "/k")
+        ):
             expect_script = True
             continue
         if command_name == "eval":
@@ -381,7 +484,9 @@ def validate_shell_command(command: str, cwd: Path) -> None:
             raise ValueError("Root path '/' is outside the authorized workspace")
         if requires_directory_target:
             if token in ("-", "--") or token.startswith("-"):
-                raise ValueError(f"'{command_name} {token}' is not allowed outside a fully isolated shell")
+                raise ValueError(
+                    f"'{command_name} {token}' is not allowed outside a fully isolated shell"
+                )
             saw_directory_target = True
         _check_shell_token(token, cwd)
 
@@ -389,13 +494,20 @@ def validate_shell_command(command: str, cwd: Path) -> None:
 
 
 _SHELL_PUNCTUATION = frozenset("();<>|&")
-_SHELL_INTERPRETERS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "cmd"})
+_SHELL_INTERPRETERS = frozenset(
+    {"sh", "bash", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "cmd"}
+)
 _LITERAL_ARG_COMMANDS = frozenset({"echo", "printf"})
 _DIR_CHANGE_COMMANDS = frozenset({"cd", "pushd", "popd"})
 _ROOT_PATH_COMMANDS = frozenset({"cd", "pushd", "popd", "ls", "find", "cat"})
 _SAFE_DEVICES = frozenset({"/dev/null", "/dev/stdout", "/dev/stderr", "NUL"})
-_HOME_ESCAPE_RE = re.compile(r"(?:\$(?:HOME|USERPROFILE)\b|%USERPROFILE%|%HOME%|\$\{(?:HOME|USERPROFILE)(?::-[^}]*)?\})", re.I)
-_PWD_PATTERN_RE = re.compile(r"\$(?:PWD|OLDPWD)\b|\$\{(?:PWD|OLDPWD)(?::-[^}]*)?\}", re.I)
+_HOME_ESCAPE_RE = re.compile(
+    r"(?:\$(?:HOME|USERPROFILE)\b|%USERPROFILE%|%HOME%|\$\{(?:HOME|USERPROFILE)(?::-[^}]*)?\})",
+    re.I,
+)
+_PWD_PATTERN_RE = re.compile(
+    r"\$(?:PWD|OLDPWD)\b|\$\{(?:PWD|OLDPWD)(?::-[^}]*)?\}", re.I
+)
 _PWD_RE = re.compile(r"\$(?:PWD)\b|\$\{PWD(?::-[^}]*)?\}", re.I)
 _OLDPWD_RE = re.compile(r"\$(?:OLDPWD)\b|\$\{OLDPWD(?::-[^}]*)?\}", re.I)
 _PARENT_SEGMENT_RE = re.compile(r"(?:^|[\\/])\.\.(?:[\\/]|$)")
@@ -405,10 +517,13 @@ def _reject_unsafe_pwd_expansion(candidate: str) -> None:
     if not _PWD_PATTERN_RE.search(candidate):
         return
     if _OLDPWD_RE.search(candidate):
-        raise ValueError("OLDPWD references may resolve outside the authorized workspace")
+        raise ValueError(
+            "OLDPWD references may resolve outside the authorized workspace"
+        )
     if _PWD_RE.search(candidate) and _PARENT_SEGMENT_RE.search(candidate):
-        raise ValueError("PWD parent traversal may resolve outside the authorized workspace")
-
+        raise ValueError(
+            "PWD parent traversal may resolve outside the authorized workspace"
+        )
 
 
 def _split_unquoted_newlines(command: str) -> str:
@@ -441,7 +556,9 @@ def _split_unquoted_newlines(command: str) -> str:
     return "".join(out)
 
 
-def _check_shell_token(token: str, cwd: Path, *, command_position: bool = False) -> None:
+def _check_shell_token(
+    token: str, cwd: Path, *, command_position: bool = False
+) -> None:
     """Reject a shell word (or its value after `=`) that points outside the workspace.
 
     Explicit path arguments (./x, ../x, /x, C:\\x) get the full symlink-resolving check.
@@ -457,8 +574,11 @@ def _check_shell_token(token: str, cwd: Path, *, command_position: bool = False)
         _reject_unsafe_pwd_expansion(candidate)
         if candidate == "/":
             continue  # a lone "/" is often division; command-specific checks handle path commands
-        explicit = (candidate == ".." or candidate.startswith(("./", "../", "/", "~", "\\\\"))
-                    or re.match(r"[A-Za-z]:[\\/]", candidate))
+        explicit = (
+            candidate == ".."
+            or candidate.startswith(("./", "../", "/", "~", "\\\\"))
+            or re.match(r"[A-Za-z]:[\\/]", candidate)
+        )
         if not (explicit or "/" in candidate or "\\" in candidate):
             continue
         if candidate.startswith("~"):
@@ -470,10 +590,13 @@ def _check_shell_token(token: str, cwd: Path, *, command_position: bool = False)
             else:
                 Path(os.path.normpath(str(target))).relative_to(ROOT)
         except ValueError:
-            raise ValueError(f"Command token '{candidate}' looks like a path outside the authorized workspace. If this is not a path (e.g. a division operator), rewrite the command to avoid ambiguity.")
+            raise ValueError(
+                f"Command token '{candidate}' looks like a path outside the authorized workspace. If this is not a path (e.g. a division operator), rewrite the command to avoid ambiguity."
+            )
+
 
 def describe(text: str, *, include_working_directory: bool = False) -> str:
-    working_directory = f" Working directory: {WORKING_DIRECTORY}." if include_working_directory else ""
-    return (
-        f"{text}{working_directory} Use relative paths."
+    working_directory = (
+        f" Working directory: {WORKING_DIRECTORY}." if include_working_directory else ""
     )
+    return f"{text}{working_directory} Use relative paths."

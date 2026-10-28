@@ -1,4 +1,5 @@
 """Worker subprocess supervisor for bounded tool-handler execution."""
+
 from __future__ import annotations
 import multiprocessing
 import os
@@ -10,19 +11,24 @@ _SEMAPHORE = threading.Semaphore(8)
 _DEFAULT_DEADLINE = 30.0  # seconds
 
 
-def _worker_target(fn, args, kwargs, result_conn):
+def _worker_target(fn, args, kwargs, result_conn) -> None:
     """Run inside the worker process; send result or exception back."""
     import traceback
+
     try:
         result = fn(*args, **kwargs)
         result_conn.send(("ok", result))
     except Exception as exc:
-        result_conn.send(("error", f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"))
+        result_conn.send(
+            ("error", f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+        )
     finally:
         result_conn.close()
 
 
-def run_in_worker(fn, args=(), kwargs=None, deadline: float = _DEFAULT_DEADLINE) -> dict:
+def run_in_worker(
+    fn, args: tuple = (), kwargs: None = None, deadline: float = _DEFAULT_DEADLINE
+) -> dict:
     """
     Run fn(*args, **kwargs) in a subprocess with a hard deadline.
     Returns the fn's return value dict, or a structured error dict.
@@ -38,17 +44,17 @@ def run_in_worker(fn, args=(), kwargs=None, deadline: float = _DEFAULT_DEADLINE)
             daemon=True,
         )
         # Start in new session so we can killpg on timeout
-        if hasattr(proc, '_target'):
+        if hasattr(proc, "_target"):
             pass  # multiprocessing handles this
         proc.start()
         child_conn.close()
 
-        timed_out = False
+        timed_out: bool = False
         try:
             if parent_conn.poll(deadline):
                 status, payload = parent_conn.recv()
             else:
-                timed_out = True
+                timed_out: bool = True
                 status, payload = "timeout", None
         except EOFError:
             status, payload = "crash", "Worker closed connection unexpectedly"

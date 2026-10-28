@@ -1,4 +1,5 @@
 """Syntax checker module."""
+
 from __future__ import annotations
 
 from .utils.syntax_checker import (
@@ -20,4 +21,3 @@ __all__ = [
     "check_python",
     "check_html",
 ]
-

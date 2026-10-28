@@ -1,4 +1,5 @@
 """HTML formatting helpers used by workspace write tools."""
+
 from __future__ import annotations
 
 

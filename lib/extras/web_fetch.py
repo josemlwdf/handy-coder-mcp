@@ -1,4 +1,5 @@
 """Bounded public-web fetch and optional configured search API."""
+
 from __future__ import annotations
 
 import ipaddress
@@ -20,11 +21,23 @@ TIMEOUT_SECONDS = 12
 
 
 def _public_http_url(url: str) -> str:
+    """Public http url function."""
     parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
-        raise ValueError("Only public HTTP(S) URLs without embedded credentials are supported")
+    if (
+        parsed.scheme not in ("http", "https")
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+    ):
+        raise ValueError(
+            "Only public HTTP(S) URLs without embedded credentials are supported"
+        )
     try:
-        addresses = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+        addresses = socket.getaddrinfo(
+            parsed.hostname,
+            parsed.port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
     except OSError as exc:
         raise ValueError(f"Could not resolve URL host: {parsed.hostname}") from exc
     if not addresses:
@@ -32,12 +45,17 @@ def _public_http_url(url: str) -> str:
     for address in addresses:
         ip = ipaddress.ip_address(address[4][0])
         if not ip.is_global:
-            raise ValueError("Requests to local, private, or reserved network addresses are not allowed")
+            raise ValueError(
+                "Requests to local, private, or reserved network addresses are not allowed"
+            )
     return url
 
 
 class _SafeRedirect(HTTPRedirectHandler):
+    """SafeRedirect class."""
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        """Redirect request function."""
         _public_http_url(urljoin(req.full_url, newurl))
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -49,21 +67,24 @@ class _TextExtractor(HTMLParser):
     in prose without touching the content of code blocks.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Init function."""
         super().__init__(convert_charrefs=True)
         self.hidden = 0
         self.segments: list[tuple[str, list[str]]] = []
         self.title = []
         self.in_title = False
-        self._pre_depth = 0   # inside <pre>: preserve whitespace, emit one fence
+        self._pre_depth = 0  # inside <pre>: preserve whitespace, emit one fence
 
     def _add(self, kind: str, text: str) -> None:
+        """Add function."""
         if self.segments and self.segments[-1][0] == kind:
             self.segments[-1][1].append(text)
         else:
             self.segments.append((kind, [text]))
 
-    def handle_starttag(self, tag, attrs):
+    def handle_starttag(self, tag, attrs) -> None:
+        """Handle starttag function."""
         tag_l = tag.lower()
         if tag_l in ("script", "style", "noscript", "svg"):
             self.hidden += 1
@@ -84,7 +105,8 @@ class _TextExtractor(HTMLParser):
         if tag_l in ("p", "br", "div", "li", "h1", "h2", "h3", "tr"):
             self._add("text", "\n")
 
-    def handle_endtag(self, tag):
+    def handle_endtag(self, tag) -> None:
+        """Handle endtag function."""
         tag_l = tag.lower()
         if tag_l in ("script", "style", "noscript", "svg") and self.hidden:
             self.hidden -= 1
@@ -104,7 +126,8 @@ class _TextExtractor(HTMLParser):
         if tag_l in ("p", "div", "li", "h1", "h2", "h3", "tr"):
             self._add("text", "\n")
 
-    def handle_data(self, data):
+    def handle_data(self, data) -> None:
+        """Handle data function."""
         if self.in_title:
             self.title.append(data)
         if self.hidden:
@@ -116,7 +139,8 @@ class _TextExtractor(HTMLParser):
             self._add("text", re.sub(r"\s+", " ", data).replace("\u00b6", ""))
 
     def text(self) -> str:
-        out = ""
+        """Text function."""
+        out: str = ""
         for kind, pieces in self.segments:
             chunk = "".join(pieces)
             if kind == "code":
@@ -137,7 +161,14 @@ class _TextExtractor(HTMLParser):
 def _request(url: str) -> tuple[bytes, str, str, int, bool]:
     """Returns (body, final_url, content_type, http_status, truncated)."""
     _public_http_url(url)
-    request = Request(url, headers={"User-Agent": "HandyCoderMCP/2.0", "Accept": "text/html,application/json,text/plain", "Accept-Encoding": "gzip"})
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "HandyCoderMCP/2.0",
+            "Accept": "text/html,application/json,text/plain",
+            "Accept-Encoding": "gzip",
+        },
+    )
     opener = build_opener(_SafeRedirect())
     try:
         with opener.open(request, timeout=TIMEOUT_SECONDS) as response:
@@ -148,20 +179,23 @@ def _request(url: str) -> tuple[bytes, str, str, int, bool]:
                 compressed_truncated = len(raw) > MAX_RESPONSE_BYTES
                 decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
                 raw = decoder.decompress(raw, MAX_RESPONSE_BYTES + 1)
-                raw = raw[:MAX_RESPONSE_BYTES + 1]
+                raw = raw[: MAX_RESPONSE_BYTES + 1]
             else:
-                compressed_truncated = False
+                compressed_truncated: bool = False
             truncated = len(raw) > MAX_RESPONSE_BYTES
             truncated = truncated or compressed_truncated
             body = raw[:MAX_RESPONSE_BYTES]
             return body, response.geturl(), content_type, http_status, truncated
     except HTTPError as exc:
-        raise RuntimeError(f"Web request failed with HTTP {exc.code}: {exc.reason}") from exc
+        raise RuntimeError(
+            f"Web request failed with HTTP {exc.code}: {exc.reason}"
+        ) from exc
     except URLError as exc:
         raise RuntimeError(f"Web request failed: {exc.reason}") from exc
 
 
 def _fetch(url: str, offset: int = 0) -> dict:
+    """Fetch function."""
     body, final_url, content_type, http_status, truncated = _request(url)
     decoded = body.decode("utf-8", "replace")
     if content_type in ("text/html", "application/xhtml+xml"):
@@ -170,17 +204,26 @@ def _fetch(url: str, offset: int = 0) -> dict:
         raw_text = parser.text()
         title = " ".join(" ".join(parser.title).split())
     else:
-        if not content_type.startswith("text/") and content_type not in ("application/json", "application/xml"):
+        if not content_type.startswith("text/") and content_type not in (
+            "application/json",
+            "application/xml",
+        ):
             raise ValueError(f"Unsupported non-text web response: {content_type}")
         raw_text = decoded
-        title = ""
+        title: str = ""
     total_length = len(raw_text)
     if offset > total_length:
-        return {"supported": False, "error_code": "invalid_range",
-                "message": f"offset {offset} exceeds extracted text length {total_length}.",
-                "url": final_url, "final_url": final_url, "total_length": total_length,
-                "offset": offset, "http_status": http_status}
-    content = raw_text[offset:offset + 20000]
+        return {
+            "supported": False,
+            "error_code": "invalid_range",
+            "message": f"offset {offset} exceeds extracted text length {total_length}.",
+            "url": final_url,
+            "final_url": final_url,
+            "total_length": total_length,
+            "offset": offset,
+            "http_status": http_status,
+        }
+    content = raw_text[offset : offset + 20000]
     has_more = (offset + 20000) < total_length
     next_offset = offset + 20000 if has_more else None
     return {
@@ -198,24 +241,44 @@ def _fetch(url: str, offset: int = 0) -> dict:
 
 
 def web_fetch_docs(
-    url: Annotated[str, Field(description="Public HTTP(S) URL to fetch as text; private, local, and reserved network targets are blocked.")],
-    offset: Annotated[int, Field(ge=0, description="Character offset into the extracted text to start reading from; use to page through content beyond the initial 20 000-character window.")] = 0,
+    url: Annotated[
+        str,
+        Field(
+            description="Public HTTP(S) URL to fetch as text; private, local, and reserved network targets are blocked."
+        ),
+    ],
+    offset: Annotated[
+        int,
+        Field(
+            ge=0,
+            description="Character offset into the extracted text to start reading from; use to page through content beyond the initial 20 000-character window.",
+        ),
+    ] = 0,
 ) -> dict:
+    """Web fetch docs function."""
     try:
         return _fetch(url, offset=offset)
     except ValueError as exc:
-        code = "ssrf_blocked" if any(term in str(exc).lower() for term in ("private", "local", "reserved")) else "invalid_url"
+        code = (
+            "ssrf_blocked"
+            if any(
+                term in str(exc).lower() for term in ("private", "local", "reserved")
+            )
+            else "invalid_url"
+        )
         return {"supported": False, "error_code": code, "message": str(exc), "url": url}
 
 
 def register(mcp):
-    return mcp.tool(description=describe(
-        "Fetch public HTTP(S) text; private targets are blocked. "
-        "Response includes http_status, final_url, total_length, and truncated flag. "
-        "Use offset to page through content beyond the initial 20 000-character window; "
-        "next_offset in the response is the value to pass on the next call (null when no more content). "
-        "HTML <pre> blocks are preserved as fenced Markdown code blocks and inline <code> as `backticks`; "
-        "whitespace outside code is collapsed. "
-        "When to use: Read external documentation from a known URL."
-    ))(web_fetch_docs)
-
+    """Register function."""
+    return mcp.tool(
+        description=describe(
+            "Fetch public HTTP(S) text; private targets are blocked. "
+            "Response includes http_status, final_url, total_length, and truncated flag. "
+            "Use offset to page through content beyond the initial 20 000-character window; "
+            "next_offset in the response is the value to pass on the next call (null when no more content). "
+            "HTML <pre> blocks are preserved as fenced Markdown code blocks and inline <code> as `backticks`; "
+            "whitespace outside code is collapsed. "
+            "When to use: Read external documentation from a known URL."
+        )
+    )(web_fetch_docs)

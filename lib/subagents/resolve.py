@@ -1,3 +1,5 @@
+"""Module documentation."""
+
 from __future__ import annotations
 
 import json
@@ -13,6 +15,7 @@ EXISTING_LLM_ENV = (
 
 
 def ollama_up(timeout: float = 0.4) -> bool:
+    """Ollama up function."""
     req = Request("http://127.0.0.1:11434/api/tags", method="GET")
     try:
         with urlopen(req, timeout=timeout) as resp:  # nosec - localhost only
@@ -25,26 +28,31 @@ def ollama_up(timeout: float = 0.4) -> bool:
         return False
 
 
-_CONTINUE_OFF_VALUES = frozenset({'0', 'false', 'no', 'off'})
+_CONTINUE_OFF_VALUES = frozenset({"0", "false", "no", "off"})
 
 
 def _continue_enabled() -> bool:
     # Default-on: auto mode consults the user's Continue config unless
     # SUBAGENT_CONTINUE is explicitly set to 0/false/no/off.
-    return os.environ.get('SUBAGENT_CONTINUE', '').strip().lower() not in _CONTINUE_OFF_VALUES
+    """Continue enabled function."""
+    return (
+        os.environ.get("SUBAGENT_CONTINUE", "").strip().lower()
+        not in _CONTINUE_OFF_VALUES
+    )
 
 
 def resolve_continue():
     # Return the usable Continue model (a ResolvedContinue) or None. Never raises.
     # Models whose provider the loop cannot call are skipped. The result holds the
     # API key, so callers must not log or return it.
+    """Resolve continue function."""
     try:
         from .. import support
         from . import continue_config
         from .loop import continue_provider_supported
 
         return continue_config.resolve_continue_model(
-            getattr(support, 'ROOT', None),
+            getattr(support, "ROOT", None),
             accept=lambda m: continue_provider_supported(m.provider),
         )
     except Exception:  # noqa: BLE001 - any failure means no continue backend
@@ -59,7 +67,7 @@ def resolve_continue_models():
         from .loop import continue_provider_supported
 
         return continue_config.resolve_continue_models(
-            getattr(support, 'ROOT', None),
+            getattr(support, "ROOT", None),
             accept=lambda model: continue_provider_supported(model.provider),
         )
     except Exception:  # noqa: BLE001
@@ -67,8 +75,9 @@ def resolve_continue_models():
 
 
 def _continue_backend() -> str:
+    """Continue backend function."""
     resolved = resolve_continue()
-    return f'continue:{resolved.model.provider}' if resolved else 'cooperative'
+    return f"continue:{resolved.model.provider}" if resolved else "cooperative"
 
 
 def resolve_backend(client_capabilities: dict | None = None) -> str:
@@ -91,7 +100,11 @@ def resolve_backend(client_capabilities: dict | None = None) -> str:
         return "cooperative"
 
     if mode in {"local"}:
-        return "local:ollama" if os.environ.get("SUBAGENT_LOCAL") == "1" and ollama_up() else "cooperative"
+        return (
+            "local:ollama"
+            if os.environ.get("SUBAGENT_LOCAL") == "1" and ollama_up()
+            else "cooperative"
+        )
 
     if mode in {"continue"}:
         # Choosing this mode explicitly is the opt-in; SUBAGENT_CONTINUE=1 is not needed.
@@ -108,7 +121,7 @@ def resolve_backend(client_capabilities: dict | None = None) -> str:
             return f"direct:{provider}"
     if _continue_enabled():
         found = _continue_backend()
-        if found != 'cooperative':
+        if found != "cooperative":
             return found
     if os.environ.get("SUBAGENT_LOCAL") == "1" and ollama_up():
         return "local:ollama"
