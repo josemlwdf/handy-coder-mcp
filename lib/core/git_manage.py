@@ -12,7 +12,6 @@ from pydantic import Field
 
 from ..support import inside, run_process, describe, path_escape_message
 
-
 _REPOSITORIES: tuple[str, ...] | None = None
 _DISCOVERY_ERRORS: tuple[dict[str, str], ...] = ()
 _DISCOVERY_ROOT: Path | None = None
@@ -62,6 +61,10 @@ _GENERIC_COMMIT_SUBJECTS: set = {
     "commit",
 }
 _DISALLOWED_COMMIT_WORD = re.compile(r"\bcommit\b", re.IGNORECASE)
+
+_LOG_REGEX_FLAG: str = "--path-regex"
+_LOG_MAX_CANDIDATES_FLAG: str = "--max-candidates"
+_LOG_PER_FILE_DIFFS_FLAG: str = "--per-file-diffs"
 
 
 def discover_repositories() -> tuple[tuple[str, ...], tuple[dict[str, str], ...]]:
@@ -310,6 +313,74 @@ def _commit_message_hint_for(message: str) -> str | None:
     return None
 
 
+def _parse_positive_int(option: str, value: str) -> int:
+    """Parse and validate a positive integer option value."""
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"{option} requires an integer value") from exc
+    if parsed < 1:
+        raise ValueError(f"{option} must be >= 1")
+    return parsed
+
+
+def _parse_log_regex_options(
+    args: list[str],
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Extract custom regex-search options from log args."""
+    cleaned: list[str] = []
+    options: dict[str, Any] = {
+        "path_regex": None,
+        "max_candidates": None,
+        "per_file_diffs": 3,
+    }
+    index: int = 0
+    while index < len(args):
+        current = args[index]
+        if current == _LOG_REGEX_FLAG:
+            if index + 1 >= len(args):
+                raise ValueError(f"{_LOG_REGEX_FLAG} requires a regex pattern")
+            options["path_regex"] = args[index + 1]
+            index += 2
+            continue
+        if current == _LOG_MAX_CANDIDATES_FLAG:
+            if index + 1 >= len(args):
+                raise ValueError(
+                    f"{_LOG_MAX_CANDIDATES_FLAG} requires an integer value"
+                )
+            options["max_candidates"] = _parse_positive_int(
+                _LOG_MAX_CANDIDATES_FLAG, args[index + 1]
+            )
+            index += 2
+            continue
+        if current == _LOG_PER_FILE_DIFFS_FLAG:
+            if index + 1 >= len(args):
+                raise ValueError(
+                    f"{_LOG_PER_FILE_DIFFS_FLAG} requires an integer value"
+                )
+            options["per_file_diffs"] = _parse_positive_int(
+                _LOG_PER_FILE_DIFFS_FLAG, args[index + 1]
+            )
+            index += 2
+            continue
+        cleaned.append(current)
+        index += 1
+
+    if options["path_regex"] is None:
+        if options["max_candidates"] is not None or options["per_file_diffs"] != 3:
+            raise ValueError(
+                f"{_LOG_MAX_CANDIDATES_FLAG} and {_LOG_PER_FILE_DIFFS_FLAG} require {_LOG_REGEX_FLAG}"
+            )
+        return None, args
+
+    try:
+        re.compile(options["path_regex"])
+    except re.error as exc:
+        raise ValueError(f"Invalid regex for {_LOG_REGEX_FLAG}: {exc}") from exc
+
+    return options, cleaned
+
+
 def git_manage(
     action: Annotated[
         Literal[
@@ -453,10 +524,7 @@ def git_manage(
         commit_message = args[message_index + 1].strip()
         if not commit_message:
             raise ValueError("commit message cannot be blank")
-        commit_subject = commit_message.splitlines()[0].strip()
-        if _DISALLOWED_COMMIT_WORD.search(
-            commit_message
-        ):
+        if _DISALLOWED_COMMIT_WORD.search(commit_message):
             raise ValueError(
                 "commit message cannot contain both 'chore' and 'commit'; use a meaningful message that summarizes staged changes"
             )

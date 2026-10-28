@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
-from .. import support
+from .. import project_logs, support
 from ..support import describe, inside
 from ..utils.change_summary import validate_summary
 from . import loop
@@ -24,8 +24,14 @@ from .roles import Role, get_role, role_names
 
 
 _AUTO_COMMIT_THRESHOLD: int = 5
+_PROGRESS_SUMMARY_THRESHOLD: int = 10
+_PROJECT_STATE_FILE: str = "state.json"
+_LEGACY_AUTO_COMMIT_STATE_FILE: str = "auto_commit_state.json"
 _CHANGE_SUMMARIES_LOCK = threading.Lock()
 _PENDING_CHANGE_SUMMARIES: list[dict[str, Any]] = []
+_PENDING_CHANGE_SUMMARIES_ROOT: str | None = None
+_SUCCESSFUL_WRITE_CALLS: int = 0
+_LAST_PROGRESS_SUMMARY_AT: int = 0
 
 _MANAGER = SubagentManager()
 _BACKEND: str = "cooperative"
@@ -66,13 +72,149 @@ def _changed_files(tool_name: str, result: Any, args: dict[str, Any]) -> list[st
             return []
         path = result.get("path")
         return [path] if isinstance(path, str) and path else []
-    if tool_name == "apply_edits":
-        if args.get("dry_run") or not isinstance(result.get("written_files"), list):
+    if tool_name in {"apply_edits", "code_polish"}:
+        if tool_name == "apply_edits" and args.get("dry_run"):
+            return []
+        if not isinstance(result.get("written_files"), list):
             return []
         return [
             path for path in result["written_files"] if isinstance(path, str) and path
         ]
     return []
+
+
+def _project_state_path() -> Path:
+    """Return the workspace-local path for shared project state."""
+    return support.ensure_handy_coder_state_dir() / _PROJECT_STATE_FILE
+
+
+def _legacy_auto_commit_state_path() -> Path:
+    """Return the legacy automatic-commit state path used before state.json."""
+    return support.ensure_handy_coder_state_dir() / _LEGACY_AUTO_COMMIT_STATE_FILE
+
+
+def _sanitize_pending_change_summaries(raw: Any) -> list[dict[str, Any]]:
+    """Normalize persisted pending change summaries into a safe canonical shape."""
+    if not isinstance(raw, list):
+        return []
+    sanitized: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        summary = item.get("summary")
+        paths = item.get("paths")
+        if (
+            not isinstance(summary, str)
+            or not summary.strip()
+            or not isinstance(paths, list)
+        ):
+            continue
+        clean_paths: list[str] = []
+        for path in paths:
+            if isinstance(path, str) and path:
+                clean_paths.append(path)
+        if not clean_paths:
+            continue
+        sanitized.append(
+            {"summary": summary.strip(), "paths": list(dict.fromkeys(clean_paths))}
+        )
+    return sanitized
+
+
+def _load_project_state_from_disk() -> dict[str, Any]:
+    """Load shared project state from workspace storage."""
+    path = _project_state_path()
+    try:
+        if not path.is_file():
+            return {}
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _save_project_state_to_disk(state: dict[str, Any]) -> None:
+    """Persist shared project state to workspace storage."""
+    path = _project_state_path()
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    tmp_path.replace(path)
+
+
+def _load_pending_change_summaries_from_disk() -> list[dict[str, Any]]:
+    """Load pending automatic-commit summaries from shared project state."""
+    payload = _load_project_state_from_disk()
+    subagents = payload.get("subagents")
+    if isinstance(subagents, dict):
+        loaded = _sanitize_pending_change_summaries(
+            subagents.get("pending_change_summaries")
+        )
+        if loaded:
+            return loaded
+
+    legacy_path = _legacy_auto_commit_state_path()
+    try:
+        if not legacy_path.is_file():
+            return []
+        legacy_payload = json.loads(legacy_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(legacy_payload, dict):
+        return []
+    migrated = _sanitize_pending_change_summaries(
+        legacy_payload.get("pending_change_summaries")
+    )
+    if migrated:
+        _save_pending_change_summaries_to_disk(migrated)
+    return migrated
+
+
+def _save_pending_change_summaries_to_disk(entries: list[dict[str, Any]]) -> None:
+    """Persist pending automatic-commit summaries into shared project state."""
+    payload = _load_project_state_from_disk()
+    subagents = payload.get("subagents")
+    if not isinstance(subagents, dict):
+        subagents: dict = {}
+    subagents["schema_version"] = 1
+    subagents["pending_change_summaries"] = entries
+    payload["subagents"] = subagents
+    _save_project_state_to_disk(payload)
+
+
+def _sync_pending_change_summaries_for_root() -> None:
+    """Ensure in-memory pending summaries match the currently configured workspace."""
+    global _PENDING_CHANGE_SUMMARIES
+    global _PENDING_CHANGE_SUMMARIES_ROOT
+    global _SUCCESSFUL_WRITE_CALLS
+    global _LAST_PROGRESS_SUMMARY_AT
+    current_root = str(Path(support.ROOT).resolve())
+    if _PENDING_CHANGE_SUMMARIES_ROOT == current_root:
+        return
+    _PENDING_CHANGE_SUMMARIES = _load_pending_change_summaries_from_disk()
+    _PENDING_CHANGE_SUMMARIES_ROOT = current_root
+    _SUCCESSFUL_WRITE_CALLS = 0
+    _LAST_PROGRESS_SUMMARY_AT = 0
+
+
+def _set_pending_change_summaries(entries: list[dict[str, Any]]) -> None:
+    """Set pending automatic-commit summaries in memory and on disk."""
+    global _PENDING_CHANGE_SUMMARIES
+    _PENDING_CHANGE_SUMMARIES = _sanitize_pending_change_summaries(entries)
+    _save_pending_change_summaries_to_disk(_PENDING_CHANGE_SUMMARIES)
+
+
+def _clear_pending_change_summaries_for_tests() -> None:
+    """Reset pending automatic-commit summaries for tests."""
+    global _SUCCESSFUL_WRITE_CALLS
+    global _LAST_PROGRESS_SUMMARY_AT
+    with _CHANGE_SUMMARIES_LOCK:
+        _sync_pending_change_summaries_for_root()
+        _set_pending_change_summaries([])
+        _SUCCESSFUL_WRITE_CALLS = 0
+        _LAST_PROGRESS_SUMMARY_AT = 0
 
 
 def _commit_task(batch: list[dict[str, Any]]) -> dict[str, Any]:
@@ -289,16 +431,46 @@ def _record_file_change(
         return None
 
     entry: dict = {"summary": summary.strip(), "paths": list(dict.fromkeys(paths))}
-    batch: None = None
+    batch: list[dict[str, Any]] | None = None
     with _CHANGE_SUMMARIES_LOCK:
+        _sync_pending_change_summaries_for_root()
         _PENDING_CHANGE_SUMMARIES.append(entry)
         if len(_PENDING_CHANGE_SUMMARIES) >= _AUTO_COMMIT_THRESHOLD:
             batch = _PENDING_CHANGE_SUMMARIES[:_AUTO_COMMIT_THRESHOLD]
             del _PENDING_CHANGE_SUMMARIES[:_AUTO_COMMIT_THRESHOLD]
+        _save_pending_change_summaries_to_disk(_PENDING_CHANGE_SUMMARIES)
     if batch is None:
         return None
 
     return _commit_task(batch)
+
+
+def _progress_summary_hint(
+    tool_name: str, result: Any, args: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Return a reminder payload every ten successful file write calls."""
+    if not isinstance(args, dict):
+        return None
+    if not _changed_files(tool_name, result, args):
+        return None
+
+    with _CHANGE_SUMMARIES_LOCK:
+        _sync_pending_change_summaries_for_root()
+        global _SUCCESSFUL_WRITE_CALLS
+        global _LAST_PROGRESS_SUMMARY_AT
+        _SUCCESSFUL_WRITE_CALLS += 1
+        since_last = _SUCCESSFUL_WRITE_CALLS - _LAST_PROGRESS_SUMMARY_AT
+        if since_last < _PROGRESS_SUMMARY_THRESHOLD:
+            return None
+        _LAST_PROGRESS_SUMMARY_AT = _SUCCESSFUL_WRITE_CALLS
+        return {
+            "since_last_summary": since_last,
+            "total_successful_write_calls": _SUCCESSFUL_WRITE_CALLS,
+            "message": (
+                "Progress reminder: provide a short user update summarizing what changed "
+                "since the last summary and the next planned actions."
+            ),
+        }
 
 
 def _available_roles_text() -> str:
@@ -381,6 +553,16 @@ def _loop_runner(
     except loop.SubagentCancelled:
         pass  # task state was already set to cancelled by subagent_cancel
     except Exception as exc:  # noqa: BLE001
+        project_logs.log_internal_event(
+            "error",
+            "subagent_loop_failure",
+            {
+                "task_id": task_id,
+                "role": role_obj.name,
+                "backend": _MANAGER.get_task(task_id).backend,
+                "error": loop._redact(exc, secrets),
+            },
+        )
         _MANAGER.fail_task(task_id, loop._redact(exc, secrets))
     finally:
         _THREADS.pop(task_id, None)
@@ -1163,8 +1345,10 @@ def after_tool_call(
     if tool_name.startswith("subagent_") or tool_name == "subagent_manage":
         return result
     automatic_commit: None = None
-    if tool_name in {"create_file", "apply_edits"}:
+    progress_hint: None = None
+    if tool_name in {"create_file", "apply_edits", "code_polish"}:
         automatic_commit = _record_file_change(tool_name, result, args)
+        progress_hint = _progress_summary_hint(tool_name, result, args)
     frame = _MANAGER.open_frame()
     if (
         tool_name == "git_manage"
@@ -1188,13 +1372,17 @@ def after_tool_call(
         }
         return out
     reminder = _MANAGER.reminder()
-    if not reminder and automatic_commit is None:
+    if not reminder and automatic_commit is None and progress_hint is None:
         return result
     if not isinstance(result, dict):
         return result
     out = dict(result)
     if automatic_commit is not None:
         out["automatic_commit"] = automatic_commit
+    if progress_hint is not None:
+        out["progress_summary_hint"] = progress_hint
+        if isinstance(out.get("message"), str):
+            out["message"] = out["message"].rstrip() + "\n" + progress_hint["message"]
     if reminder:
         out["subagent_reminder"] = reminder
         if isinstance(out.get("message"), str):

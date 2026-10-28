@@ -109,3 +109,5 @@ Run the test suite from the repository root:
 ```
 
 [![M8ven Score](https://m8ven.ai/badge/mcp/josemlwdf-handy-coder-mcp-3gwvmw?v=1d901f8cb0cc2cb278d13d9c50718027)](https://m8ven.ai/mcp/josemlwdf-handy-coder-mcp-3gwvmw?s=readme)
+
+[![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/josemlwdf/handy-coder-mcp)

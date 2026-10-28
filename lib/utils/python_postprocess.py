@@ -96,6 +96,63 @@ def _signature_colon(
     return None
 
 
+def _function_assignments(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[ast.Assign]:
+    """Return simple assignments to function-local names."""
+    declarations: set[str] = set()
+
+    class ScopeDeclarations(ast.NodeVisitor):
+        def visit_Global(self, declaration: ast.Global) -> None:
+            declarations.update(declaration.names)
+
+        def visit_Nonlocal(self, declaration: ast.Nonlocal) -> None:
+            declarations.update(declaration.names)
+
+        def visit_FunctionDef(self, child: ast.FunctionDef) -> None:
+            if child is node:
+                for statement in child.body:
+                    self.visit(statement)
+
+        visit_AsyncFunctionDef = visit_FunctionDef
+
+        def visit_Lambda(self, child: ast.Lambda) -> None:
+            return
+
+        def visit_ClassDef(self, child: ast.ClassDef) -> None:
+            return
+
+    ScopeDeclarations().visit(node)
+
+    assignments: list[ast.Assign] = []
+
+    class LocalAssignments(ast.NodeVisitor):
+        def visit_Assign(self, assignment: ast.Assign) -> None:
+            if (
+                len(assignment.targets) == 1
+                and isinstance(assignment.targets[0], ast.Name)
+                and assignment.targets[0].id not in declarations
+            ):
+                assignments.append(assignment)
+            self.generic_visit(assignment)
+
+        def visit_FunctionDef(self, child: ast.FunctionDef) -> None:
+            return
+
+        visit_AsyncFunctionDef = visit_FunctionDef
+
+        def visit_Lambda(self, child: ast.Lambda) -> None:
+            return
+
+        def visit_ClassDef(self, child: ast.ClassDef) -> None:
+            return
+
+    visitor = LocalAssignments()
+    for statement in node.body:
+        visitor.visit(statement)
+    return assignments
+
+
 def process_python_file(path: str | Path) -> dict:
     """Normalize line endings and add safe, obvious docs and annotations."""
     file_path = Path(path)
@@ -184,15 +241,13 @@ def process_python_file(path: str | Path) -> dict:
                 else:
                     report["uncertain"].append(f"return:{node.name}")
 
-    # Annotate simple, unannotated local assignments only when the RHS is a literal.
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Assign)
-            and len(node.targets) == 1
-            and isinstance(node.targets[0], ast.Name)
-        ):
-            target = node.targets[0]
-            inferred = _literal_type(node.value)
+    # Infer literal assignments only for local names in function bodies.
+    for function in nodes:
+        if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for assignment in _function_assignments(function):
+            target = assignment.targets[0]
+            inferred = _literal_type(assignment.value)
             if inferred:
                 pos = offsets[target.lineno - 1] + target.col_offset + len(target.id)
                 edits.append((pos, f": {inferred}"))
@@ -202,6 +257,14 @@ def process_python_file(path: str | Path) -> dict:
 
     for pos, value in sorted(edits, reverse=True):
         text = text[:pos] + value + text[pos:]
+    try:
+        ast.parse(text)
+    except SyntaxError as exc:
+        report.update(
+            ok=False,
+            error=f"Generated Python syntax error at line {exc.lineno}: {exc.msg}",
+        )
+        return report
     if text.encode("utf-8") != before_bytes:
         file_path.write_text(text, encoding="utf-8", newline="")
     return report

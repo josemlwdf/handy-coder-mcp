@@ -24,8 +24,8 @@ def _brief(description: str) -> str:
 
 def _published_description(name: str, description: str) -> str:
     """Keep editing guidance visible in the regular tool listing."""
-    if name in {"create_file", "apply_edits"}:
-        start = description.find("Note: There is an automated background service (MCP)")
+    if name in {"create_file", "apply_edits", "code_polish"}:
+        start = description.find("Note: The code_polish tool is applied automatically")
         end_marker: str = (
             "Treat these automated changes as the baseline standard of the repository."
         )

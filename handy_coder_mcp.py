@@ -48,6 +48,7 @@ from lib.core import gowitness_screenshot, web_search_tool  # noqa: E402
 from lib.core import (  # noqa: E402
     apply_edits,
     build_project,
+    code_polish,
     code_search,
     create_file,
     diagnostics,
@@ -149,6 +150,7 @@ _DESTRUCTIVE_TOOL_HINTS = frozenset(
         "code_intel",
         "apply_edits",
         "create_file",
+        "code_polish",
         "git_manage",
         "orchestrator",
         "skills_manage",
@@ -249,6 +251,7 @@ def main() -> None:
         read_files,
         create_file,
         apply_edits,
+        code_polish,
         terminal_exec,
         code_search,
         find_files,

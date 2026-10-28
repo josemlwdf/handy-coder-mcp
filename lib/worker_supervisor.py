@@ -12,6 +12,7 @@ import threading
 import time
 from typing import Any, Callable
 
+from . import project_logs
 from .subagents import tools as subagent_tools
 
 _MP_CTX = multiprocessing.get_context("spawn")
@@ -201,24 +202,50 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
 
             scope_block = subagent_tools.before_tool_call(_tool_name, bound_args)
             if scope_block is not None:
-                return scope_block
-
-            if _tool_name in _NO_WORKER_TOOLS:
-                result = _target_fn(*args, **kwargs)
-            else:
-                deadline = DEFAULT_WORKER_DEADLINE
-                if _tool_name in {"terminal_exec", "build_project"}:
-                    timeout_ms = kwargs.get("timeout_ms")
-                    if timeout_ms is not None:
-                        try:
-                            ms = int(timeout_ms)
-                            deadline = max(30.0, (ms / 1000.0) + 5.0)
-                        except (ValueError, TypeError):
-                            pass
-                result = run_tool_in_worker(
-                    _target_fn, args, kwargs, deadline=deadline, mcp=mcp
+                project_logs.log_internal_event(
+                    "warning",
+                    "subagent_scope_violation",
+                    {
+                        "tool_name": _tool_name,
+                        "args": bound_args,
+                        "result": scope_block,
+                    },
                 )
-            return subagent_tools.after_tool_call(_tool_name, result, bound_args)
+                log_path = project_logs.log_tool_call(
+                    _tool_name, bound_args, scope_block
+                )
+                return project_logs.attach_tool_log_path(scope_block, log_path)
+
+            try:
+                if _tool_name in _NO_WORKER_TOOLS:
+                    result = _target_fn(*args, **kwargs)
+                else:
+                    deadline = DEFAULT_WORKER_DEADLINE
+                    if _tool_name in {"terminal_exec", "build_project"}:
+                        timeout_ms = kwargs.get("timeout_ms")
+                        if timeout_ms is not None:
+                            try:
+                                ms = int(timeout_ms)
+                                deadline = max(30.0, (ms / 1000.0) + 5.0)
+                            except (ValueError, TypeError):
+                                pass
+                    result = run_tool_in_worker(
+                        _target_fn, args, kwargs, deadline=deadline, mcp=mcp
+                    )
+                wrapped = subagent_tools.after_tool_call(_tool_name, result, bound_args)
+                log_path = project_logs.log_tool_call(_tool_name, bound_args, wrapped)
+                return project_logs.attach_tool_log_path(wrapped, log_path)
+            except Exception as exc:
+                project_logs.log_internal_event(
+                    "error",
+                    "tool_execution_exception",
+                    {
+                        "tool_name": _tool_name,
+                        "args": bound_args,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    },
+                )
+                raise
 
         supervised_wrapper.__signature__ = inspect.signature(original_fn)
         supervised_wrapper.__annotations__ = getattr(original_fn, "__annotations__", {})

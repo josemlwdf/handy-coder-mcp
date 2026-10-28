@@ -1,11 +1,19 @@
+"""Module documentation."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable
 
 
-_READ_ONLY_TOOLS = ("read_files", "search_text", "find_files", "subagent_status", "subagent_result")
-_WRITE_TOOLS = ("create_file", "apply_edits")
+_READ_ONLY_TOOLS = (
+    "read_files",
+    "search_text",
+    "find_files",
+    "subagent_status",
+    "subagent_result",
+)
+_WRITE_TOOLS = ("create_file", "apply_edits", "code_polish")
 
 
 Validator = Callable[[str], str | None]
@@ -13,6 +21,8 @@ Validator = Callable[[str], str | None]
 
 @dataclass(frozen=True)
 class Role:
+    """Role class."""
+
     name: str
     system_prompt: str
     allowed_tools: tuple[str, ...]
@@ -24,12 +34,14 @@ class Role:
 
 
 def _non_empty(result: str) -> str | None:
+    """Non empty function."""
     if not result.strip():
         return "result must not be empty"
     return None
 
 
 def _reviewer_result(result: str) -> str | None:
+    """Reviewer result function."""
     if not result.strip():
         return "result must not be empty"
     if "finding" not in result.lower() and "none" not in result.lower():
@@ -94,7 +106,8 @@ ROLES: dict[str, Role] = {
             "names, baselines, or requirements. If repository facts contradict an assumption, "
             "cite the evidence, pause the affected task, and report the conflict for the parent "
             "to resolve; do not decide how to resolve it. Keep reports concise and evidence-based. "
-            "Design tasks so an orchestrator can dispatch them one-by-one to coder subagents."
+            "Design tasks so an orchestrator can dispatch them one-by-one to coder subagents. "
+            "When touching large files, prefer refactors that keep individual files under roughly 1000 lines."
         ),
         allowed_tools=(
             *_READ_ONLY_TOOLS,
@@ -121,7 +134,8 @@ ROLES: dict[str, Role] = {
             "baselines, or requirements. If repository facts contradict an assumption, report "
             "the evidence and pause the conflicting portion for the parent to resolve; do not "
             "decide how to resolve it. Keep reports concise and evidence-based. Keep output "
-            "self-contained so the parent agent does not need to retain implementation detail."
+            "self-contained so the parent agent does not need to retain implementation detail. "
+            "When practical, refactor files before they exceed roughly 1000 lines."
         ),
         allowed_tools=(
             *_READ_ONLY_TOOLS,
@@ -169,8 +183,10 @@ ROLES: dict[str, Role] = {
 
 
 def get_role(name: str):
+    """Get role function."""
     return ROLES.get(name)
 
 
 def role_names() -> tuple[str, ...]:
+    """Role names function."""
     return tuple(ROLES.keys())

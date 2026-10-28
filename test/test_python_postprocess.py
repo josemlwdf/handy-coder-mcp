@@ -69,6 +69,65 @@ class PythonPostprocessTests(unittest.TestCase):
         )
         self.assertEqual(ast.get_docstring(outer_node), "Outer function.")
 
+    def test_assignment_annotations_are_limited_to_function_locals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "sample.py"
+            target.write_text(
+                "module_value = 1\n"
+                "class Example:\n"
+                "    class_value = 2\n"
+                "def update_global():\n"
+                "    global shared\n"
+                "    shared = 3\n"
+                "def update_nonlocal():\n"
+                "    value = 4\n"
+                "    def inner():\n"
+                "        nonlocal value\n"
+                "        value = 5\n"
+                "    inner()\n"
+                "def local():\n"
+                "    local_value = 6\n",
+                encoding="utf-8",
+            )
+
+            result = process_python_file(target)
+            updated = target.read_text(encoding="utf-8")
+
+        self.assertTrue(result["ok"])
+        self.assertIn("module_value = 1", updated)
+        self.assertIn("class_value = 2", updated)
+        self.assertIn("shared = 3", updated)
+        self.assertIn("value = 5", updated)
+        self.assertIn("local_value: int = 6", updated)
+        ast.parse(updated)
+
+    def test_git_manage_register_reset_assignments_remain_parseable(self) -> None:
+        from lib.core import git_manage
+
+        source = Path(git_manage.__file__).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        register = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "register"
+        )
+        reset_names = {
+            statement.targets[0].id
+            for statement in ast.walk(register)
+            if isinstance(statement, ast.Assign)
+            and isinstance(statement.targets[0], ast.Name)
+        }
+        self.assertTrue(
+            {"_REPOSITORIES", "_DISCOVERY_ERRORS", "_DISCOVERY_ROOT"}
+            <= reset_names
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "git_manage.py"
+            target.write_text(source, encoding="utf-8")
+            result = process_python_file(target)
+            ast.parse(target.read_text(encoding="utf-8"))
+        self.assertTrue(result["ok"], result["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

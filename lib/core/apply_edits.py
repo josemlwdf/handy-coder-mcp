@@ -5,12 +5,12 @@ import difflib
 import logging
 import re
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 from ..support import inside, describe, path_escape_message
-from ..utils.html_prettify import prettify_html
 from ..utils.change_summary import SUMMARY_DESCRIPTION, validate_summary
+from .code_polish import polish_paths
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -68,53 +68,6 @@ def _expand(match: re.Match, template: str, expand_groups: bool) -> str:
     # match.expand raises re.error for unknown group references or bad escapes.
     """Expand function."""
     return match.expand(template) if expand_groups else template
-
-
-def _format_written_file(path: Path, relative_path: str, summary: str) -> None:
-    """Format written file function."""
-    suffix = path.suffix.lower()
-    try:
-        if suffix in {".html", ".htm"}:
-            formatted, status = prettify_html(path.read_bytes().decode("utf-8"))
-            if not status.get("ok"):
-                _LOGGER.warning(
-                    "Automatic HTML formatting failed for %s: %s",
-                    relative_path,
-                    status.get("error", "unknown formatter error"),
-                )
-                return
-            path.write_bytes(formatted.encode("utf-8"))
-        elif suffix == ".py" or suffix in {
-            ".js",
-            ".jsx",
-            ".ts",
-            ".tsx",
-            ".mjs",
-            ".cjs",
-            ".json",
-            ".css",
-            ".scss",
-            ".md",
-        }:
-            from ..extras.code_format_lint import code_format_lint
-
-            language = "python" if suffix == ".py" else "auto"
-            status = code_format_lint(
-                [relative_path],
-                fix=True,
-                language=language,
-                summary=summary,
-            )
-            if not status.get("ok"):
-                _LOGGER.warning(
-                    "Automatic formatting failed for %s: %s",
-                    relative_path,
-                    status.get(
-                        "message", status.get("error", "formatter reported failure")
-                    ),
-                )
-    except Exception as exc:
-        _LOGGER.warning("Could not automatically format %s: %s", relative_path, exc)
 
 
 def apply_edits(
@@ -338,12 +291,12 @@ def apply_edits(
             }
         )
 
-    # Capture each file's raw agent edit before any automatic formatting.
+    # Capture each file's raw agent edit before any automatic polish.
     root = inside(".")
-    files: list = [
+    submitted_files: list[dict[str, str]] = [
         {
             "path": Path(resolved_key).relative_to(root).as_posix(),
-            "diff": "".join(
+            "submitted_diff": "".join(
                 difflib.unified_diff(
                     original_contents[resolved_key].splitlines(True),
                     new_text.splitlines(True),
@@ -373,36 +326,73 @@ def apply_edits(
                     pass
             raise RuntimeError(f"Write failed; all edits rolled back: {exc}") from exc
 
-        # Format only after every raw edit has been written and its diff captured.
-        for entry in files:
-            try:
-                path = inside(entry["path"], must_exist=True)
-                _format_written_file(path, entry["path"], summary)
-            except (OSError, ValueError) as exc:
-                _LOGGER.warning(
-                    "Could not resolve file for automatic formatting %s: %s",
-                    entry["path"],
-                    exc,
-                )
+        # Apply polish after raw edits are written.
+        polish_report = polish_paths(
+            [entry["path"] for entry in submitted_files],
+            summary,
+            apply_formatting=True,
+            apply_python_postprocess=False,
+            apply_line_endings=True,
+        )
+    else:
+        polish_report: dict = {
+            "ok": True,
+            "files": [],
+            "written_files": [],
+            "errors": [],
+        }
+
+    by_path: dict[str, dict[str, Any]] = {
+        item["path"]: item
+        for item in polish_report.get("files", [])
+        if isinstance(item, dict)
+    }
+    files: list[dict[str, Any]] = []
+    for submitted in submitted_files:
+        path = submitted["path"]
+        polished = by_path.get(path, {})
+        polished_diff = polished.get("diff") if isinstance(polished, dict) else None
+        final_diff = (
+            polished_diff
+            if isinstance(polished_diff, str) and polished_diff
+            else submitted["submitted_diff"]
+        )
+        changed_lines = (
+            polished.get("changed_lines") if isinstance(polished, dict) else None
+        )
+        if not isinstance(changed_lines, int):
+            changed_lines = sum(
+                1
+                for line in final_diff.splitlines()
+                if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
+            )
+        files.append(
+            {
+                "path": path,
+                "submitted_diff": submitted["submitted_diff"],
+                "diff": final_diff,
+                "changed_lines": changed_lines,
+                "transformations": polished.get("transformations", []),
+                "tool_outputs": polished.get("tool_outputs", []),
+            }
+        )
 
     from ..utils.syntax_checker import syntax_checker
 
     checked_files: list[tuple[str, dict]] = []
     for entry in files:
         file_path = entry["path"]
-        suffix = Path(file_path).suffix.lower()
-        if suffix in {".cs", ".c", ".h", ".js", ".mjs", ".cjs", ".py", ".html", ".htm"}:
-            try:
-                if dry_run:
-                    file_content = staged_contents.get(str(inside(file_path)))
-                else:
-                    file_content = inside(file_path).read_text(encoding="utf-8")
-                if file_content is not None:
-                    check = syntax_checker(file_path, file_content)
-                    entry["syntax_check"] = check
-                    checked_files.append((file_path, check))
-            except Exception as exc:
-                _LOGGER.warning("Syntax check failed for %s: %s", file_path, exc)
+        try:
+            if dry_run:
+                file_content = staged_contents.get(str(inside(file_path)))
+            else:
+                file_content = inside(file_path).read_text(encoding="utf-8")
+            if file_content is not None:
+                check = syntax_checker(file_path, file_content)
+                entry["syntax_check"] = check
+                checked_files.append((file_path, check))
+        except Exception as exc:
+            _LOGGER.warning("Syntax check failed for %s: %s", file_path, exc)
 
     written_files: list = [Path(key).relative_to(root).as_posix() for key in written]
     response: dict = {
@@ -410,6 +400,10 @@ def apply_edits(
         "files": files,
         "written_files": written_files,
         "dry_run": dry_run,
+        "code_polish_report": polish_report,
+        "diff_hint": polish_report.get(
+            "diff_hint", "Diffs include both LLM changes and code polish actions."
+        ),
     }
     if checked_files:
         if len(checked_files) == 1:
@@ -433,9 +427,13 @@ def apply_edits(
             else:
                 response["warning"] = warning_msg
     if max_replacements is not None and not replace_all:
-        response["warning"] = (
+        ignored_limit_warning: str = (
             "max_replacements was supplied but is ignored unless replace_all=true."
         )
+        if "warning" in response:
+            response["warning"] += " " + ignored_limit_warning
+        else:
+            response["warning"] = ignored_limit_warning
     if any(
         Path(path).suffix.lower() == ".py"
         and _adds_import(original_contents[path], new_text)
@@ -479,9 +477,9 @@ def register(mcp):
             "Error messages include the zero-based edit index ([edit N]) for easy identification. "
             "Edit failures return error_code (invalid_summary, invalid_regex, invalid_replacement, no_match, not_found, path_escape, not_a_file, binary_file, io_error, invalid_edit) "
             "with edit_index and message instead of raising; nothing is written. "
-            "Each edit result includes matches (count of replacements made) and its edit diff. Changed files are summarized in files with the exact original-to-edited diff before automatic formatting is applied to disk; formatter details are not included in the result. dry_run previews the exact edits without formatting or writing. written_files lists the workspace-relative paths of files actually written to disk (only files whose content changed; always empty on dry_run), while files contains raw per-file diffs. A dependency_hint is returned only when an edit adds a Python import. Modifying C#, C, JavaScript, Python, or HTML files automatically runs syntax checking to warn the agent of syntax errors in syntax_check and warning fields. "
+            "Each edit result includes matches (count of replacements made) and its edit diff. Changed files are summarized in files with submitted_diff (raw LLM edit) and diff (final on-disk content after automatic code_polish), plus changed_lines, transformations, and tool_outputs per file. dry_run previews exact edits without polish or writing. written_files lists workspace-relative paths written to disk (only files whose content changed; always empty on dry_run). code_polish_report includes the full polish run output, and diff_hint explicitly reminds that diffs include both LLM edits and code polish actions. A dependency_hint is returned only when an edit adds a Python import. Every modified file automatically runs syntax checking to warn the agent of syntax errors in syntax_check and warning fields (unsupported file types return ok with no findings). "
             "Returns unified diffs. "
-            "Note: This tool changes are subject to the same automatisation as `create_file` tool. Do not attempt to revert these changes, undo formatting diffs, or rebase the repo due to formatting updates. Treat these automated changes as the baseline standard of the repository. "
+            "Note: The code_polish tool is applied automatically after apply_edits writes files. Do not attempt to revert these changes, undo polish diffs, or rebase the repo due to polish updates. Treat these automated changes as the baseline standard of the repository. "
             "When to use: Make localized changes."
         )
     )(apply_edits)

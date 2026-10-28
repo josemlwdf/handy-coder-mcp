@@ -10,6 +10,7 @@ from pydantic import Field
 from .. import support
 from ..support import inside, describe, MAX_READ_BYTES
 from ..utils.change_summary import SUMMARY_DESCRIPTION, validate_summary
+from .code_polish import polish_paths
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -174,17 +175,43 @@ def create_file(
         )
 
     relative_path = str(p.relative_to(support.ROOT)).replace("\\", "/")
+
+    polish_report = polish_paths(
+        [relative_path],
+        summary,
+        apply_formatting=format_content,
+        apply_python_postprocess=post_process_python,
+        apply_line_endings=bool(format_content or post_process_python),
+    )
+    if not polish_report.get("ok"):
+        _LOGGER.warning(
+            "Automatic code polish reported issues for %s: %s",
+            relative_path,
+            polish_report.get("errors", []),
+        )
+
     try:
         original_text = original_bytes.decode("utf-8")
     except UnicodeDecodeError:
         original_text: None = None
+
+    final_text = p.read_text(encoding="utf-8")
     if original_text is None:
         diff = f"Binary file {relative_path} replaced with UTF-8 text.\n"
+        submitted_diff = diff
     else:
-        diff = "".join(
+        submitted_diff = "".join(
             difflib.unified_diff(
                 original_text.splitlines(keepends=True),
                 content.splitlines(keepends=True),
+                fromfile=relative_path if existed else "/dev/null",
+                tofile=relative_path,
+            )
+        )
+        diff = "".join(
+            difflib.unified_diff(
+                original_text.splitlines(keepends=True),
+                final_text.splitlines(keepends=True),
                 fromfile=relative_path if existed else "/dev/null",
                 tofile=relative_path,
             )
@@ -194,127 +221,39 @@ def create_file(
         "path": relative_path,
         "created": not existed,
         "overwritten": existed,
-        "bytes": len(encoded),
-        "lines": len(content.splitlines()),
         "diff": diff,
+        "submitted_diff": submitted_diff,
+        "code_polish_report": polish_report,
+        "diff_hint": polish_report.get(
+            "diff_hint", "Diffs include both LLM changes and code polish actions."
+        ),
     }
-    if p.suffix.lower() == ".py" and (post_process_python or format_content):
-        if post_process_python:
-            from ..utils.python_postprocess import process_python_file
 
-            try:
-                processing = process_python_file(p)
-                if not processing.get("ok"):
-                    _LOGGER.warning(
-                        "Automatic Python post-processing failed for %s: %s",
-                        relative_path,
-                        processing.get("error", "unknown post-processing error"),
-                    )
-            except Exception as exc:
-                _LOGGER.warning(
-                    "Automatic Python post-processing failed for %s: %s",
-                    relative_path,
-                    exc,
-                )
-        if format_content:
-            from ..extras.code_format_lint import code_format_lint
-
-            try:
-                formatting = code_format_lint(
-                    [relative_path], fix=True, language="python", summary=summary
-                )
-                if not formatting.get("ok"):
-                    _LOGGER.warning(
-                        "Automatic Python formatting failed for %s: %s",
-                        relative_path,
-                        formatting.get(
-                            "message",
-                            formatting.get("error", "unknown formatter error"),
-                        ),
-                    )
-            except Exception as exc:
-                _LOGGER.warning(
-                    "Automatic Python formatting failed for %s: %s", relative_path, exc
-                )
-    elif format_content and p.suffix.lower() in {
-        ".js",
-        ".jsx",
-        ".ts",
-        ".tsx",
-        ".mjs",
-        ".cjs",
-        ".json",
-        ".css",
-        ".scss",
-        ".md",
-    }:
-        from ..extras.code_format_lint import code_format_lint
-
-        try:
-            formatting = code_format_lint(
-                [relative_path], fix=True, language="auto", summary=summary
-            )
-            if not formatting.get("ok"):
-                _LOGGER.warning(
-                    "Automatic formatting failed for %s: %s",
-                    relative_path,
-                    formatting.get(
-                        "message", formatting.get("error", "formatter reported failure")
-                    ),
-                )
-        except Exception as exc:
-            _LOGGER.warning(
-                "Automatic formatting failed for %s: %s", relative_path, exc
-            )
     if p.suffix.lower() == ".py":
         result["dependency_hint"] = (
             "Review requirements.txt and add any new third-party dependencies introduced by this Python file."
         )
+
+    from ..utils.syntax_checker import syntax_checker
+
+    result["syntax_check"] = syntax_checker(p, final_text)
     if p.suffix.lower() in {".html", ".htm"}:
-        from . import html_syntax_check
-
-        if format_content:
-            from ..utils.html_prettify import prettify_html
-
-            final_text = p.read_bytes().decode("utf-8")
-            formatted_text, formatting = prettify_html(final_text)
-            if not formatting.get("ok"):
-                _LOGGER.warning(
-                    "Automatic HTML formatting failed for %s: %s",
-                    relative_path,
-                    formatting.get("error", "unknown formatter error"),
-                )
-            elif formatted_text != final_text:
-                try:
-                    p.write_text(formatted_text, encoding="utf-8")
-                except OSError as exc:
-                    _LOGGER.warning(
-                        "Could not save automatically formatted HTML for %s: %s",
-                        relative_path,
-                        exc,
-                    )
-        result["syntax_check"] = html_syntax_check.check_html(
-            p.read_bytes().decode("utf-8")
-        )
         result["guidance"] = (
             "For web projects, consider organizing HTML, JavaScript, and CSS under static/html, static/js, and static/css. These directories are not created automatically."
         )
-    elif p.suffix.lower() in {".cs", ".c", ".h", ".js", ".mjs", ".cjs", ".py"}:
-        from ..utils.syntax_checker import syntax_checker
+    if not result["syntax_check"].get("ok"):
+        findings = result["syntax_check"].get("findings", [])
+        msgs: list[str] = [
+            f"line {f.get('line', '?')}: {f.get('message', 'syntax error')}"
+            for f in findings
+        ]
+        result["warning"] = (
+            f"Syntax error(s) detected in {relative_path}: " + "; ".join(msgs)
+        )
 
-        result["syntax_check"] = syntax_checker(p, p.read_bytes().decode("utf-8"))
-        if not result["syntax_check"].get("ok"):
-            findings = result["syntax_check"].get("findings", [])
-            msgs: list = [
-                f"line {f.get('line', '?')}: {f.get('message', 'syntax error')}"
-                for f in findings
-            ]
-            result["warning"] = (
-                f"Syntax error(s) detected in {relative_path}: " + "; ".join(msgs)
-            )
-    final_content = p.read_bytes()
+    final_content = final_text.encode("utf-8")
     result["bytes"] = len(final_content)
-    result["lines"] = len(final_content.decode("utf-8").splitlines())
+    result["lines"] = len(final_text.splitlines())
     return result
 
 
@@ -328,10 +267,10 @@ def register(mcp):
             "Optional permissions sets POSIX mode bits; backup=true saves the prior file as a sibling .bak before overwrite. "
             "Failures return error_code (invalid_summary, already_exists, path_escape, not_a_file, not_a_directory, parent_missing, file_too_large, io_error) "
             "with a message instead of raising; nothing is written. "
-            "Response includes the workspace-relative path, created, overwritten, bytes and lines, plus a diff of the submitted content before optional formatting or Python post-processing (unified for text files). Counts describe final on-disk content. Submitted content is preserved by default; format_content=true opts into available formatting for supported Python, JavaScript, or HTML files, and post_process_python=true opts into Python source processing. Formatting runs after the diff is captured and its output is not sent back to the agent; formatter failures are logged. Python file responses remind the agent to update requirements.txt if the file introduces third-party dependencies. "
-            "HTML, C#, C, JavaScript, and Python files receive an automatic syntax check of their final saved content and HTML suggests organizing web content under static/html, static/js, and static/css; these directories are not created automatically. "
+            "Response includes the workspace-relative path, created, overwritten, bytes and lines, submitted_diff (LLM-authored text change), and diff (final on-disk change after automatic polish). When automatic polish runs, code_polish_report contains per-file tool outputs and transformation details, and diff_hint explicitly states that diffs include both LLM changes and code polish actions. Submitted content is preserved by default; format_content=true opts into available formatting for supported Python, JavaScript, or HTML files, and post_process_python=true opts into Python source processing. Python file responses remind the agent to update requirements.txt if the file introduces third-party dependencies. "
+            "All created or overwritten files receive an automatic syntax check of their final saved content (unsupported file types return ok with no findings), and HTML suggests organizing web content under static/html, static/js, and static/css; these directories are not created automatically. "
             "An open subagent frame is released with subagent_manage(action='complete', ...) or subagent_manage(action='cancel', confirm=true). "
-            "Note: There is an automated background service (MCP) that applies automatic updates when files are created or edited: standardizes line endings to Unix LF, inserts missing module/class/function docstrings, infers Python parameter, return, and variable type annotations from literals, applies code formatting and lint fixes (Ruff or Black for Python; ESLint and jsbeautifier for JS/TS/CSS/JSON/Markdown), prettifies HTML via BeautifulSoup while validating syntax, creates missing parent directories (with optional .bak backups on overwrite), attaches dependency hints when new Python imports are introduced, and automatically batches and commits verified file changes to Git via a background committer subagent every 5 changes. Do not attempt to revert these changes, undo formatting diffs, or rebase the repo due to formatting updates. Treat these automated changes as the baseline standard of the repository. "
+            "Note: The code_polish tool is applied automatically when create_file writes files (based on format_content/post_process_python options). Do not attempt to revert these changes, undo formatting diffs, or rebase the repo due to polish updates. Treat these automated changes as the baseline standard of the repository. "
             "When to use: Add a new file; use apply_edits to modify existing files."
         )
     )(create_file)

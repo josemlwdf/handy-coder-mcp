@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 from ..core import (
     apply_edits,
+    code_polish,
     code_search,
     create_file,
     diagnostics,
@@ -20,6 +21,7 @@ from ..core import (
     read_files,
     run_tests,
 )
+from .. import project_logs
 from ..core import git_manage
 from .roles import Role
 
@@ -55,6 +57,7 @@ _ALLOWED_TOOLS: dict[str, ToolFn] = {
     "find_files": find_files.find_files,
     "create_file": create_file.create_file,
     "apply_edits": apply_edits.apply_edits,
+    "code_polish": code_polish.code_polish,
     "code_get_diagnostics": diagnostics.code_get_diagnostics,
     "run_tests": run_tests.run_tests,
     "git_manage": git_manage.git_manage,
@@ -70,6 +73,7 @@ _TOOL_ARGUMENTS: dict = {
     "find_files": '{"glob_pattern": "**/*.py", "exclude_pattern"?: "...", "include_generated"?: false, "include_dot_dirs"?: false, "file_type"?: ".py", "min_size"?: 0, "max_size"?: 10000, "sort_by"?: "path|size|modified", "include_metadata"?: false, "include_diagnostics"?: false}',
     "create_file": '{"path": "workspace-relative path", "summary": "one-line summary of the change", "content"?: "full file content", "overwrite"?: false, "create_parents"?: true, "permissions"?: 420, "backup"?: false, "format_content"?: false, "post_process_python"?: false}',
     "apply_edits": '{"edits": [{"path": "...", "pattern": "Python regex", "replacement": "text", "position"?: {"line": 1, "col": 1}}], "summary": "one-line summary of the change", "replace_all"?: false, "max_replacements"?: 1, "case_insensitive"?: false, "dry_run"?: false, "expand_groups"?: false}',
+    "code_polish": '{"path": "file-or-dir", "summary": "one-line summary of the change", "specific_file"?: "relative path under dir", "all_files"?: false}',
     "code_get_diagnostics": '{"path"?: "...", "check"?: "ruff", "timeout_ms"?: 30000}',
     "run_tests": '{"test_framework"?: "jest|pytest|vitest", "filter_path"?: "test/test_file.py", "fail_fast"?: false, "parallel"?: 1, "coverage"?: false, "verbose"?: false}',
     "git_manage": 'Use workspace-relative repo_path. Examples: {"action":"add","args":["task-owned.txt"],"repo_path":"."} stages that path; {"action":"add","args":["all"],"repo_path":"."} stages every change. For commits, use a specific message accurately describing every matched change group in the staged diff. Example: {"action":"commit","args":["-m","message"],"repo_path":"."}. For status use {"action":"status","repo_path":"."}.',
@@ -538,6 +542,18 @@ def run_loop(
 
     for turn in range(1, role.max_turns + 1):
         _check_cancel(cancel_event)
+        project_logs.log_subagent_loop_event(
+            "request",
+            {
+                "backend": backend,
+                "role": role.name,
+                "turn": turn,
+                "task": task,
+                "context": context,
+                "deliverable": deliverable,
+                "history": history,
+            },
+        )
         assistant_text = complete_once(
             backend,
             role,
@@ -549,6 +565,15 @@ def run_loop(
             continue_model=continue_model,
         )
         _check_cancel(cancel_event)
+        project_logs.log_subagent_loop_event(
+            "response",
+            {
+                "backend": backend,
+                "role": role.name,
+                "turn": turn,
+                "response": assistant_text,
+            },
+        )
         token_estimate += max(1, len(assistant_text) // 4)
         history.append({"role": "assistant", "content": assistant_text})
         if on_progress is not None:
@@ -578,13 +603,24 @@ def run_loop(
                 tool_result: Any = {"error": "tool not available in loop backends"}
             else:
                 tool_result = _call_tool(tool_fn, call["args"], tool_name=tool_name)
-                if tool_name in {"create_file", "apply_edits"}:
+                if tool_name in {"create_file", "apply_edits", "code_polish"}:
                     from . import tools as subagent_tools
 
                     tool_result = subagent_tools.after_tool_call(
                         tool_name, tool_result, call["args"]
                     )
 
+            project_logs.log_subagent_loop_event(
+                "tool_result",
+                {
+                    "backend": backend,
+                    "role": role.name,
+                    "turn": turn,
+                    "tool_name": tool_name,
+                    "args": call["args"],
+                    "result": tool_result,
+                },
+            )
             history.append(
                 {
                     "role": "user",

@@ -178,6 +178,14 @@ def _resolve_shellcheck_binary(base: Path) -> str | None:
     return None
 
 
+def _ruff_fix_hint() -> str:
+    """Return guidance for fixing Ruff findings automatically."""
+    return (
+        "Ruff reported findings. Patch the reported files with apply_edits (or create_file if needed), "
+        "then rerun code_get_diagnostics(check='ruff') and repeat until ok=true."
+    )
+
+
 def code_get_diagnostics(
     path: Annotated[
         str | None,
@@ -552,7 +560,7 @@ def code_get_diagnostics(
             continue
 
         ok = res["exit_code"] == 0
-        return {
+        response: dict = {
             "supported": True,
             "check": name,
             "ok": ok,
@@ -560,6 +568,9 @@ def code_get_diagnostics(
             **_history(),
             **res,
         }
+        if name == "ruff" and not ok:
+            response["hint"] = _ruff_fix_hint()
+        return response
 
     return {"supported": False, "message": "No diagnostic tool could be run."}
 
@@ -572,7 +583,7 @@ def register(mcp):
             "Detection order: package.json scripts (typecheck > check > lint), "
             "pyproject.toml tools (ruff > mypy), Makefile targets (check > lint > typecheck > validate), "
             "then additional syntax/parse checks (tsc_no_emit, html_syntax_sweep, json_parse, yaml_parse, toml_parse, shell_syntax) when project files indicate they are relevant. "
-            "Returns the check name, ok (true when exit_code is 0), exit code, stdout, stderr, and duration. "
+            "Returns the check name, ok (true when exit_code is 0), exit code, stdout, stderr, and duration. Ruff failures include a remediation hint for iterative apply_edits patching. "
             "Returns error_code='tool_not_installed' when the configured tool binary cannot be started; "
             "falls back to the next available candidate automatically and lists skipped candidates in skipped. "
             "A malformed package.json or pyproject.toml is reported in config_errors; if no usable candidate remains, error_code='invalid_config'. "

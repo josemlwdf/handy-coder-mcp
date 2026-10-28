@@ -1,6 +1,7 @@
 """Module documentation."""
 
 import base64
+import json
 import os
 import tempfile
 import unittest
@@ -55,6 +56,7 @@ class SubagentToolTests(unittest.TestCase):
         subagent_tools._BACKEND = "cooperative"
         # Cooperative frames only open for an explicit SUBAGENT_BACKEND=cooperative.
         subagent_tools._COOP_EXPLICIT = True
+        subagent_tools._clear_pending_change_summaries_for_tests()
 
     def test_new_roles_are_available(self) -> None:
         """Test new roles are available function."""
@@ -408,10 +410,18 @@ class SubagentToolTests(unittest.TestCase):
             {"written_files": [], "dry_run": True},
             {"summary": "Preview only", "dry_run": True},
         )
+        subagent_tools.after_tool_call(
+            "code_polish",
+            {"written_files": ["created.txt"]},
+            {"summary": "Polish tracked file"},
+        )
 
         self.assertEqual(
             subagent_tools._PENDING_CHANGE_SUMMARIES,
-            [{"summary": "Create a tracked file", "paths": ["created.txt"]}],
+            [
+                {"summary": "Create a tracked file", "paths": ["created.txt"]},
+                {"summary": "Polish tracked file", "paths": ["created.txt"]},
+            ],
         )
 
     def test_five_successful_write_calls_dispatch_one_scoped_committer(self) -> None:
@@ -471,6 +481,91 @@ class SubagentToolTests(unittest.TestCase):
                 subagent_tools._PENDING_CHANGE_SUMMARIES,
                 [{"summary": "Later change", "paths": ["later.txt"]}],
             )
+
+    def test_pending_summaries_persist_across_module_reload(self) -> None:
+        """Test pending summaries persist across module reload function."""
+        for index in range(3):
+            subagent_tools.after_tool_call(
+                "create_file",
+                {
+                    "path": f"persist-{index}.txt",
+                    "created": True,
+                    "overwritten": False,
+                },
+                {"summary": f"Persisted change {index}"},
+            )
+
+        import importlib
+
+        reloaded_tools = importlib.reload(subagent_tools)
+        reloaded_tools._BACKEND = "cooperative"
+        reloaded_tools._COOP_EXPLICIT = True
+
+        with patch.object(
+            reloaded_tools,
+            "subagent_run",
+            return_value={"status": "running", "task_id": "persisted-commit"},
+        ) as run_committer:
+            reloaded_tools.after_tool_call(
+                "create_file",
+                {
+                    "path": "persist-3.txt",
+                    "created": True,
+                    "overwritten": False,
+                },
+                {"summary": "Persisted change 3"},
+            )
+            result = reloaded_tools.after_tool_call(
+                "create_file",
+                {
+                    "path": "persist-4.txt",
+                    "created": True,
+                    "overwritten": False,
+                },
+                {"summary": "Persisted change 4"},
+            )
+
+        self.assertEqual(
+            result["automatic_commit"],
+            {
+                "status": "running",
+                "task_id": "persisted-commit",
+            },
+        )
+        run_committer.assert_called_once()
+        self.assertEqual(reloaded_tools._PENDING_CHANGE_SUMMARIES, [])
+
+    def test_shared_state_json_preserves_other_tool_data(self) -> None:
+        """Test shared state json preserves other tool data function."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_root = str(support.ROOT)
+            support.configure(temp_dir)
+            state_path = support.ensure_handy_coder_state_dir() / "state.json"
+            state_path.write_text(
+                json.dumps({"other_tool": {"keep": True}}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            try:
+                subagent_tools._clear_pending_change_summaries_for_tests()
+                subagent_tools.after_tool_call(
+                    "create_file",
+                    {
+                        "path": "shared.txt",
+                        "created": True,
+                        "overwritten": False,
+                    },
+                    {"summary": "Shared state write"},
+                )
+                payload = json.loads(state_path.read_text(encoding="utf-8"))
+            finally:
+                support.configure(previous_root)
+                subagent_tools._clear_pending_change_summaries_for_tests()
+
+        self.assertEqual(payload["other_tool"], {"keep": True})
+        self.assertEqual(
+            payload["subagents"]["pending_change_summaries"],
+            [{"summary": "Shared state write", "paths": ["shared.txt"]}],
+        )
 
     def test_committer_dispatch_failure_is_reported_with_summaries(self) -> None:
         """Test committer dispatch failure is reported with summaries function."""

@@ -1183,6 +1183,8 @@ class CoreFeedbackTests(unittest.TestCase):
         with patch("lib.core.diagnostics.run_process", return_value=process_result):
             result = self.mcp.tools["code_get_diagnostics"]()
         self.assertFalse(result["ok"])
+        self.assertIn("hint", result)
+        self.assertIn("apply_edits", result["hint"])
 
     def test_diagnostics_falls_back_to_next_candidate_on_tool_not_installed(
         self,
