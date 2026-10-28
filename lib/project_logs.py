@@ -14,6 +14,11 @@ from . import support
 
 _MAX_PAYLOAD_CHARS: int = 200_000
 _COUNTERS_FILE: str = ".counters.json"
+_STATUS_SUMMARY_INTERVAL: int = 10
+_STATUS_SUMMARY_MESSAGE: str = (
+    "Concise status summary requested: share with the user what you found so far, what you changed, "
+    "and what you will do next. Then keep working"
+)
 
 _LOCK = threading.Lock()
 
@@ -91,6 +96,19 @@ def _trim_text(text: str) -> str:
 def _counters_path(base: Path) -> Path:
     """Return counter metadata path."""
     return base / _COUNTERS_FILE
+
+
+def _read_counter(base: Path, bucket: str) -> int | None:
+    """Read a persisted bucket counter value when available."""
+    counters_path = _counters_path(base)
+    try:
+        if not counters_path.is_file():
+            return None
+        loaded = json.loads(counters_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    value = loaded.get(bucket) if isinstance(loaded, dict) else None
+    return value if isinstance(value, int) and value >= 0 else None
 
 
 def _next_sequence(base: Path, bucket: str) -> int:
@@ -204,9 +222,30 @@ def log_internal_event(
 
 
 def attach_tool_log_path(result: Any, log_path: str | None) -> Any:
-    """Attach tool log path to dict responses when available."""
-    if not log_path or not isinstance(result, dict):
+    """Attach tool log metadata and periodic status-summary hints to dict responses."""
+    if not isinstance(result, dict):
         return result
+
     wrapped = dict(result)
-    wrapped["tool_log_path"] = log_path
+    if log_path:
+        wrapped["tool_log_path"] = log_path
+
+    tool_call_count: int | None = None
+    try:
+        with _LOCK:
+            tool_call_count = _read_counter(_project_dir(), "tool_calls")
+    except OSError:
+        pass
+
+    if (
+        isinstance(tool_call_count, int)
+        and tool_call_count > 0
+        and tool_call_count % _STATUS_SUMMARY_INTERVAL == 0
+    ):
+        wrapped["status_summary_request"] = {
+            "tool_calls": tool_call_count,
+            "interval": _STATUS_SUMMARY_INTERVAL,
+            "message": _STATUS_SUMMARY_MESSAGE,
+        }
+
     return wrapped

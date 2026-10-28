@@ -21,7 +21,7 @@ The `index_codebase` and `code_navigator` tools use the Tree-sitter C# parser an
 
 ## Web tools
 
-`web_search` uses DuckDuckGo Lite, and `web_fetch_docs` retrieves a known public HTTP(S) URL. Both need network access when called; web fetch blocks private, local, and reserved addresses. Use `web_search` to discover public pages and `web_fetch_docs` to read a known URL.
+`web_search` uses DuckDuckGo Lite and normalizes wrapper-style result URLs into direct destinations in the primary `link` field, stripping common tracking query parameters; when a provider wrapper is unwrapped, results may also include optional `provider_link`. `web_fetch_docs` retrieves a known public HTTP(S) URL. Both need network access when called; web fetch blocks private, local, and reserved addresses. Use `web_search` to discover public pages and `web_fetch_docs` to read a known URL.
 
 ## Web fetching (`web_fetch_docs`)
 

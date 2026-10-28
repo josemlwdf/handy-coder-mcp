@@ -17,6 +17,7 @@ def _search_text_impl(
     max_results: int,
     context_lines: int,
     include_generated: bool,
+    include_dot_dirs: bool,
     case_insensitive: bool = False,
     extensions: list[str] | None = None,
 ) -> dict:
@@ -48,6 +49,7 @@ def _search_text_impl(
         path_glob=path_glob,
         errors=errors,
         exclude_dirs=exclude_dirs,
+        include_dot_dirs=include_dot_dirs,
         deadline=deadline,
         max_file_size_bytes=MAX_READ_BYTES,
     ):
@@ -159,6 +161,12 @@ def search_text(
             description="When true, also search generated and build directories (node_modules, __pycache__, dist, build, .venv, etc.) that are skipped by default."
         ),
     ] = False,
+    include_dot_dirs: Annotated[
+        bool,
+        Field(
+            description="When true, include files inside dot-prefixed directories such as .git and .vscode."
+        ),
+    ] = False,
     case_insensitive: Annotated[
         bool, Field(description="Match text without regard to letter case.")
     ] = False,
@@ -177,6 +185,7 @@ def search_text(
         max_results,
         context_lines,
         include_generated,
+        include_dot_dirs,
         case_insensitive,
         extensions,
     )
@@ -189,6 +198,7 @@ def register(mcp):
         "Uses Python's re module (not ripgrep) — supports standard Python regex syntax. "
         "Returns matched lines and optional context lines. "
         "Generated/build directories (node_modules, __pycache__, dist, build, .venv, etc.) are skipped unless include_generated is true. "
+        "Dot-prefixed directories are skipped unless include_dot_dirs is true. "
         "total_matches_seen counts every match found; when truncated, omitted_count is how many were not returned "
         "(a lower bound if truncation_reason is time_limit). "
         "Uses a 15-second scan deadline and skips files larger than 2 MiB. "

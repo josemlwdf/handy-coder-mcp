@@ -74,6 +74,7 @@ def ensure_handy_coder_state_dir(root: Path | None = None) -> Path:
 
 
 def configure(root: str, shell: str | None = None) -> None:
+    """Configure function."""
     global ROOT, WORKING_DIRECTORY, SHELL
     ROOT = Path(root).expanduser().resolve(strict=True)
     if not ROOT.is_dir():
@@ -123,6 +124,7 @@ def path_escape_message(path: object) -> str:
 
 
 def inside(path: str | Path, *, must_exist: bool = False) -> Path:
+    """Inside function."""
     raw = Path(path).expanduser()
     candidate = raw if raw.is_absolute() else ROOT / raw
     normalized = Path(os.path.normpath(str(candidate)))
@@ -143,6 +145,7 @@ def iter_workspace_files(
     path_glob: str | None = None,
     errors: list[dict[str, str]] | None = None,
     exclude_dirs: frozenset[str] = frozenset(),
+    include_dot_dirs: bool = True,
     deadline: float | None = None,
     max_file_size_bytes: int | None = None,
     report_outside_workspace_errors: bool = True,
@@ -151,7 +154,7 @@ def iter_workspace_files(
     root = inside(".")
     scan_errors = errors if errors is not None else []
     prefix = _glob_prefix(path_glob)
-    pending = [root]
+    pending: list = [root]
 
     while pending:
         if deadline is not None and time.monotonic() >= deadline:
@@ -161,7 +164,7 @@ def iter_workspace_files(
         directory_parts = directory.relative_to(root).parts
         try:
             with os.scandir(directory) as entries:
-                sorted_entries = []
+                sorted_entries: list = []
                 for entry in entries:
                     if deadline is not None and time.monotonic() >= deadline:
                         return
@@ -178,16 +181,20 @@ def iter_workspace_files(
 
         if deadline is not None and time.monotonic() >= deadline:
             return
-        child_directories = []
+        child_directories: list = []
         for entry in sorted_entries:
             if deadline is not None and time.monotonic() >= deadline:
                 return
             relative_path = (Path(relative_directory) / entry.name).as_posix()
             try:
                 if entry.is_dir(follow_symlinks=False):
-                    if entry.name == ".git" or entry.name in exclude_dirs:
+                    if (
+                        entry.name == ".git"
+                        or entry.name in exclude_dirs
+                        or (entry.name.startswith(".") and not include_dot_dirs)
+                    ):
                         continue
-                    child_parts = (*directory_parts, entry.name)
+                    child_parts: tuple = (*directory_parts, entry.name)
                     if _may_match_glob_scope(child_parts, prefix):
                         child_directories.append(Path(entry.path))
                     continue
@@ -237,9 +244,10 @@ def iter_workspace_files(
 
 
 def _glob_prefix(pattern: str | None) -> tuple[str, ...]:
+    """Glob prefix function."""
     if not pattern:
         return ()
-    prefix = []
+    prefix: list = []
     for part in pattern.replace("\\", "/").split("/"):
         if part in ("", "."):
             continue
@@ -252,6 +260,7 @@ def _glob_prefix(pattern: str | None) -> tuple[str, ...]:
 
 
 def _may_match_glob_scope(path_parts: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
+    """May match glob scope function."""
     if not prefix:
         return True
     path_parts = tuple(os.path.normcase(part) for part in path_parts)
@@ -273,6 +282,7 @@ def run_process(
     shell_executable: str | None = None,
 ) -> dict:
     # Resolve at call time: a `cwd=ROOT` default would freeze the import-time value.
+    """Run process function."""
     work = inside(ROOT if cwd is None else cwd, must_exist=True)
     if not work.is_dir():
         raise ValueError(f"Working directory is not a directory: {work}")
@@ -285,12 +295,12 @@ def run_process(
         validate_shell_command(command, work)
         selected_shell = shell_executable or SHELL
         if os.name == "nt":
-            argv = [selected_shell, "-Command", command]
+            argv: list = [selected_shell, "-Command", command]
         else:
-            argv = [selected_shell, "-c", command]
-        use_shell = False
-    captured = {"stdout": bytearray(), "stderr": bytearray()}
-    truncated = {"stdout": False, "stderr": False}
+            argv: list = [selected_shell, "-c", command]
+        use_shell: bool = False
+    captured: dict = {"stdout": bytearray(), "stderr": bytearray()}
+    truncated: dict = {"stdout": False, "stderr": False}
     try:
         p = subprocess.Popen(
             argv,
@@ -316,7 +326,8 @@ def run_process(
             "duration_ms": round((time.monotonic() - start) * 1000),
         }
 
-    def drain(stream, key):
+    def drain(stream, key) -> None:
+        """Drain function."""
         while True:
             chunk = stream.read(65536)
             if not chunk:
@@ -327,7 +338,7 @@ def run_process(
             if len(chunk) > room:
                 truncated[key] = True
 
-    readers = [
+    readers: list = [
         threading.Thread(target=drain, args=(p.stdout, "stdout"), daemon=True),
         threading.Thread(target=drain, args=(p.stderr, "stderr"), daemon=True),
     ]
@@ -339,11 +350,11 @@ def run_process(
             p.stdin.close()
         except BrokenPipeError:
             pass
-    timed_out = False
+    timed_out: bool = False
     try:
         code = p.wait(timeout=timeout_ms / 1000)
     except subprocess.TimeoutExpired:
-        timed_out = True
+        timed_out: bool = True
         try:
             if os.name == "nt":
                 p.kill()
@@ -358,6 +369,7 @@ def run_process(
     p.stderr.close()
 
     def decode(key):
+        """Decode function."""
         return bytes(captured[key]).decode("utf-8", "replace") + (
             "\n...[truncated]" if truncated[key] else ""
         )
@@ -419,14 +431,17 @@ def validate_shell_command(command: str, cwd: Path) -> None:
                             f"Redirection target escapes authorized workspace: {target}"
                         )
 
-    at_command = True  # next word is a command name (start, or after ; && || | ( ))
-    command_name = ""
-    expect_target = False  # previous token was a redirection operator
-    expect_script = False  # previous token was `sh -c` style flag
-    requires_directory_target = False
-    saw_directory_target = False
+    at_command: bool = (
+        True  # next word is a command name (start, or after ; && || | ( ))
+    )
+    command_name: str = ""
+    expect_target: bool = False  # previous token was a redirection operator
+    expect_script: bool = False  # previous token was `sh -c` style flag
+    requires_directory_target: bool = False
+    saw_directory_target: bool = False
 
     def _finish_command() -> None:
+        """Finish command function."""
         if requires_directory_target and not saw_directory_target:
             raise ValueError(
                 f"'{command_name}' requires an explicit workspace-relative directory target"
@@ -450,30 +465,30 @@ def validate_shell_command(command: str, cwd: Path) -> None:
                 requires_directory_target, saw_directory_target = False, False
             continue
         if expect_target:
-            expect_target = False
+            expect_target: bool = False
             _check_shell_token(token, cwd)
             continue
         if expect_script:
-            expect_script = False
+            expect_script: bool = False
             validate_shell_command(token, cwd)
             continue
         if at_command:
             if re.match(r"[A-Za-z_]\w*=", token):  # leading VAR=value assignment
                 _check_shell_token(token, cwd)
                 continue
-            at_command = False
+            at_command: bool = False
             command_name = re.sub(
                 r"\.exe$", "", Path(token.replace("\\", "/")).name.lower()
             )
             requires_directory_target = command_name in _DIR_CHANGE_COMMANDS
-            saw_directory_target = False
+            saw_directory_target: bool = False
             _check_shell_token(token, cwd, command_position=True)
             continue
         if command_name in _SHELL_INTERPRETERS and (
             re.fullmatch(r"-[A-Za-z]*c", token)
             or token.lower() in ("-command", "/c", "/k")
         ):
-            expect_script = True
+            expect_script: bool = True
             continue
         if command_name == "eval":
             validate_shell_command(token, cwd)
@@ -487,7 +502,7 @@ def validate_shell_command(command: str, cwd: Path) -> None:
                 raise ValueError(
                     f"'{command_name} {token}' is not allowed outside a fully isolated shell"
                 )
-            saw_directory_target = True
+            saw_directory_target: bool = True
         _check_shell_token(token, cwd)
 
     _finish_command()
@@ -514,6 +529,7 @@ _PARENT_SEGMENT_RE = re.compile(r"(?:^|[\\/])\.\.(?:[\\/]|$)")
 
 
 def _reject_unsafe_pwd_expansion(candidate: str) -> None:
+    """Reject unsafe pwd expansion function."""
     if not _PWD_PATTERN_RE.search(candidate):
         return
     if _OLDPWD_RE.search(candidate):
@@ -529,24 +545,24 @@ def _reject_unsafe_pwd_expansion(candidate: str) -> None:
 def _split_unquoted_newlines(command: str) -> str:
     """Turn unquoted newlines into `;` separators and drop backslash-newline continuations."""
     out: list[str] = []
-    quote = ""
-    escaped = False
+    quote: str = ""
+    escaped: bool = False
     posix = os.name != "nt"
     for ch in command:
         if escaped:
-            escaped = False
+            escaped: bool = False
             if ch in "\r\n":
                 out.pop()  # shell removes backslash-newline entirely
                 continue
             out.append(ch)
             continue
         if posix and ch == "\\" and quote != "'":
-            escaped = True
+            escaped: bool = True
             out.append(ch)
             continue
         if quote:
             if ch == quote:
-                quote = ""
+                quote: str = ""
         elif ch in "'\"":
             quote = ch
         elif ch in "\r\n":
@@ -565,7 +581,7 @@ def _check_shell_token(
     Command names and other path-like words get a lexical containment check only, so a
     workspace-relative launcher such as `.venv/bin/python` keeps working.
     """
-    candidates = [token]
+    candidates: list = [token]
     if "=" in token:
         candidates.append(token.split("=", 1)[1])
     for candidate in candidates:
@@ -596,6 +612,7 @@ def _check_shell_token(
 
 
 def describe(text: str, *, include_working_directory: bool = False) -> str:
+    """Describe function."""
     working_directory = (
         f" Working directory: {WORKING_DIRECTORY}." if include_working_directory else ""
     )

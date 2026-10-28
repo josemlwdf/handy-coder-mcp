@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
 """Web search tool using DuckDuckGo Lite HTML with robust attribute parsing."""
 
+import base64
 import html
 import json
 import re
 import ssl
 import sys
 import time
-from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.parse import (
+    parse_qs,
+    parse_qsl,
+    quote_plus,
+    unquote,
+    urlencode,
+    urlparse,
+    urlunparse,
+)
 from urllib.request import Request, urlopen
 from typing import Annotated
 
@@ -236,6 +245,136 @@ _AD_QUERY_KEYS = frozenset(
     }
 )
 
+_REDIRECT_QUERY_KEYS = (
+    "uddg",
+    "u3",
+    "u",
+    "url",
+    "target",
+    "dest",
+    "destination",
+)
+_TRACKING_QUERY_KEYS = frozenset(
+    {
+        "gclid",
+        "fbclid",
+        "msclkid",
+        "mc_cid",
+        "mc_eid",
+        "mkt_tok",
+        "spm",
+        "yclid",
+        "cmpid",
+        "igshid",
+        "vero_conv",
+        "vero_id",
+    }
+)
+_TRACKING_QUERY_PREFIXES = ("utm_", "ga_", "pk_", "rb_", "sc_")
+
+
+def _coerce_http_url(raw_value: str) -> str:
+    """Return an http(s) URL parsed from raw text, or empty string."""
+    value = html.unescape((raw_value or "").strip())
+    if not value:
+        return ""
+
+    if value.startswith("//"):
+        return f"https:{value}"
+
+    if value.startswith(("http://", "https://")):
+        return value
+
+    lower_value = value.lower()
+    if lower_value.startswith(("http%3a", "https%3a")):
+        decoded = unquote(value)
+        if decoded.startswith(("http://", "https://")):
+            return decoded
+
+    return ""
+
+
+def _extract_embedded_url(raw_value: str) -> str:
+    """Extract an embedded destination URL from redirect query values."""
+    direct = _coerce_http_url(raw_value)
+    if direct:
+        return direct
+
+    value = (raw_value or "").strip()
+    if value.startswith("a1") and len(value) > 2:
+        value = value[2:]
+
+    if len(value) < 8:
+        return ""
+
+    padded = value + ("=" * ((4 - (len(value) % 4)) % 4))
+    try:
+        decoded = base64.urlsafe_b64decode(padded).decode("utf-8", errors="ignore")
+    except Exception:
+        return ""
+
+    match = re.search(r"https?://[^\s\"'<>]+", decoded)
+    return match.group(0) if match else ""
+
+
+def _is_tracking_query_key(key: str) -> bool:
+    """Return whether a query key is likely tracking-specific."""
+    lowered = key.lower()
+    return lowered in _TRACKING_QUERY_KEYS or lowered.startswith(
+        _TRACKING_QUERY_PREFIXES
+    )
+
+
+def _strip_tracking_query_params(link: str) -> str:
+    """Drop common tracking query params while preserving destination URLs."""
+    parsed = urlparse(link)
+    if not parsed.query:
+        return link
+
+    query_items = parse_qsl(parsed.query, keep_blank_values=True)
+    filtered_items: list = [
+        (key, value) for key, value in query_items if not _is_tracking_query_key(key)
+    ]
+    if len(filtered_items) == len(query_items):
+        return link
+
+    clean_query = urlencode(filtered_items, doseq=True)
+    return urlunparse(parsed._replace(query=clean_query))
+
+
+def _unwrap_redirect_link(link: str) -> tuple[str, bool]:
+    """Unwrap known redirect-style URLs to their destination link when possible."""
+    parsed = urlparse(link)
+    query = parse_qs(parsed.query)
+    host = parsed.netloc.lower()
+    path = parsed.path.lower()
+    wrapper_like_host = any(
+        host.endswith(suffix)
+        for suffix in (
+            "duckduckgo.com",
+            "bing.com",
+            "google.com",
+            "yahoo.com",
+        )
+    )
+    wrapper_like_path = any(
+        token in path for token in ("/redirect", "/l", "/ck/", "/url")
+    )
+
+    for key in _REDIRECT_QUERY_KEYS:
+        values = query.get(key)
+        if not values:
+            continue
+        destination = _extract_embedded_url(values[0])
+        if not destination:
+            continue
+
+        destination_host = urlparse(destination).netloc.lower()
+        if wrapper_like_host or wrapper_like_path or destination_host != host:
+            return destination, True
+
+    return link, False
+
 
 def _clean_text(raw_html: str) -> str:
     """Clean text function."""
@@ -244,7 +383,7 @@ def _clean_text(raw_html: str) -> str:
 
 
 def _normalize_link(raw_link: str) -> tuple[str, bool, str]:
-    """Normalize a result link and preserve the provider URL when it differs."""
+    """Normalize a result link and preserve provider wrapper links when unwrapped."""
     link = html.unescape(raw_link.strip())
     if link.startswith("//"):
         link = f"https:{link}"
@@ -263,16 +402,23 @@ def _normalize_link(raw_link: str) -> tuple[str, bool, str]:
     provider_link = link
     query = parse_qs(parsed.query)
     ad_like = bool(_AD_QUERY_KEYS.intersection(query.keys()))
+    wrapper_unwrapped: bool = False
 
     if parsed.netloc.lower().endswith("duckduckgo.com"):
         if parsed.path in {"/l/", "/l", "/l.js"} and query.get("uddg"):
             link = unquote(query["uddg"][0])
+            wrapper_unwrapped: bool = True
         elif parsed.path == "/y.js":
             ad_like: bool = True
             for key in ("u3", "u", "uddg"):
                 if query.get(key):
                     link = unquote(query[key][0])
+                    wrapper_unwrapped: bool = True
                     break
+
+    link, generic_unwrapped = _unwrap_redirect_link(link)
+    wrapper_unwrapped = wrapper_unwrapped or generic_unwrapped
+    link = _strip_tracking_query_params(link)
 
     parsed_link = urlparse(link)
     if parsed_link.netloc.lower().endswith(
@@ -281,6 +427,9 @@ def _normalize_link(raw_link: str) -> tuple[str, bool, str]:
         "/duckduckgo-help-pages/company/ads-by-microsoft"
     ):
         ad_like: bool = True
+
+    if not wrapper_unwrapped:
+        provider_link = link
 
     return link, ad_like, provider_link
 

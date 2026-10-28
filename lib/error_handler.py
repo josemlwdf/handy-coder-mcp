@@ -23,12 +23,36 @@ _URL_NOTE = re.compile(
 _URL = re.compile(r"https?://errors\.pydantic\.dev\S*")
 
 
+_APPLY_EDITS_ALIAS_FIELDS = frozenset({"search", "replace", "old_str", "new_str"})
+
+
+def _should_add_apply_edits_alias_hint(
+    errors: list[dict], tool_name: str | None
+) -> bool:
+    """Return True when apply_edits alias keys likely caused validation failure."""
+    if tool_name != "apply_edits" or not errors:
+        return False
+
+    saw_alias_field: bool = False
+    missing_required: set[str] = set()
+    for item in errors:
+        loc = item.get("loc", ())
+        if not loc:
+            continue
+        key = str(loc[-1])
+        if key in _APPLY_EDITS_ALIAS_FIELDS:
+            saw_alias_field: bool = True
+        if item.get("type") == "missing" and key in {"pattern", "replacement"}:
+            missing_required.add(key)
+    return saw_alias_field and {"pattern", "replacement"}.issubset(missing_required)
+
+
 def _clean(value: Any) -> str:
     """Strip pydantic documentation links from free text."""
     return _URL.sub("", _URL_NOTE.sub("", str(value))).strip()
 
 
-def _validation_payload(exc: ValidationError) -> dict:
+def _validation_payload(exc: ValidationError, tool_name: str | None = None) -> dict:
     """Validation payload function."""
     try:
         errors = exc.errors(
@@ -47,6 +71,13 @@ def _validation_payload(exc: ValidationError) -> dict:
         payload["field"] = field
     if len(errors) > 1:
         payload["additional_errors"] = len(errors) - 1
+
+    if _should_add_apply_edits_alias_hint(errors, tool_name):
+        guidance: str = (
+            "Use pattern and replacement (not search/replace or old_str/new_str)."
+        )
+        payload["message"] = f"{payload['message']} {guidance}".strip()
+
     return payload
 
 
@@ -54,7 +85,7 @@ def error_payload(exc: BaseException, tool_name: str | None = None) -> dict:
     """Build a structured, pydantic-free error payload from a FastMCP ToolError."""
     cause = exc.__cause__
     if isinstance(cause, ValidationError):
-        payload = _validation_payload(cause)
+        payload = _validation_payload(cause, tool_name)
     elif isinstance(cause, ValueError):
         payload: dict = {
             "error_code": "invalid_argument",

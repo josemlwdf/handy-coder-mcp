@@ -106,7 +106,7 @@ class FakeServerTests(unittest.TestCase):
         result = self.run_continue(
             make_model("ollama", self.base, key=None, max_tokens=300)
         )
-        self.assertIn("openai ok", result[0])
+        self.assertIn("openai ok", result[0]["final"])
         path, headers, body = SEEN[-1]
         self.assertEqual(path, "/v1/chat/completions")
         self.assertEqual(body["max_tokens"], 300)
@@ -147,7 +147,7 @@ class FakeServerTests(unittest.TestCase):
                         continue_model=make_model("openai", self.base),
                     )
 
-                self.assertEqual(result[0], "file created")
+                self.assertEqual(result[0]["final"], "file created")
                 self.assertTrue((Path(temp_dir) / "loop-created.txt").is_file())
                 self.assertEqual(
                     subagent_tools._PENDING_CHANGE_SUMMARIES,
@@ -184,7 +184,7 @@ class FakeServerTests(unittest.TestCase):
             headers={"Authorization": "Bearer " + KEY, "X-Extra": "e1"},
         )
         result = self.run_continue(model)
-        self.assertIn("anthropic ok", result[0])
+        self.assertIn("anthropic ok", result[0]["final"])
         path, headers, body = SEEN[-1]
         self.assertEqual(path, "/v1/messages")
         self.assertEqual(headers["x-api-key"], KEY)
@@ -217,7 +217,7 @@ class FakeServerTests(unittest.TestCase):
                 result = self.run_continue(
                     make_model("openai", self.base), role=get_role(name)
                 )
-                self.assertIn("openai ok", result[0])
+                self.assertIn("openai ok", result[0]["final"])
                 self.assertEqual(len(SEEN), 1)
 
     def test_cancel_before_first_completion(self) -> bool:
@@ -513,7 +513,7 @@ class HelperTests(unittest.TestCase):
             return next(replies)
 
         result = loop.run_loop("sampling", role, "t", None, None, sampling_fn=sampling)
-        self.assertIn("continued", result[0])
+        self.assertIn("continued", result[0]["final"])
         self.assertIn("unknown_task_id", seen_messages[-1][-1]["content"])
 
     def test_tool_outside_allowlist_still_raises(self):

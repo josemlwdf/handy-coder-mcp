@@ -151,6 +151,8 @@ Unfiltered `run_tests` runs require a recognized test setup (for example, pytest
 
 `create_file` and `apply_edits` require a `summary` argument: a one-line, concise description of the change (single line, at most 200 characters). A missing, blank, or multi-line summary is rejected with `error_code: "invalid_summary"` and nothing is written.
 
+Every 10th logged tool call, dict tool responses include `status_summary_request` with a short reminder to provide a concise user update (what was found, what changed, what comes next).
+
 Committing is left entirely to the user or to an explicit request, and `git_manage` `action="commit"` remains available as an ordinary action. When commit is used, `git_manage` now includes guidance to use meaningful commit messages that accurately summarize staged changes.
 
 ### Skills
@@ -165,7 +167,7 @@ Names must be 1-64 characters of lowercase letters, digits and hyphens, which al
 
 ### Subagents
 
-Subagent delegation is exposed through a single tool, `subagent_manage`, without requiring any new credentials. Use `action` = `run|status|result|complete|cancel` with the fields for that action. `get_capabilities` reports each role's allowed tools, tool-call budget, and result format. Result pages include `offset`, `total_length`, and `next_offset`; cancellation requires `confirm: true`. Cooperative frames expire after five minutes. A successful `git_manage` commit by a committer closes its frame automatically; other delegated runs require explicit completion through `subagent_manage(action='complete', ...)`. Streaming and checkpoint/resume are unsupported.
+Subagent delegation is exposed through a single tool, `subagent_manage`, without requiring any new credentials. Use `action` = `run|status|result|complete|cancel` with the fields for that action. `get_capabilities` reports each role's allowed tools, tool-call budget, and result format. Result pages include `final_offset`, `final_total_length`, `final_next_offset`, and `trace`; cancellation requires `confirm: true`. Cooperative frames expire after five minutes. A successful `git_manage` commit by a committer closes its frame automatically; other delegated runs require explicit completion through `subagent_manage(action='complete', ...)`. Streaming and checkpoint/resume are unsupported.
 
 - `subagent_manage(action='run', role, task, ...)`: starts delegated work and returns `completed`, `running`, `delegated_to_host` (only with explicit `SUBAGENT_BACKEND=cooperative`), or `unavailable`.
 - `subagent_manage(action='status', task_id)`: checks current state and usage.
@@ -214,7 +216,7 @@ Only models with a chat role, a key (literal `apiKey`, an `Authorization` header
 `orchestrator` merges orchestration bootstrap and task-status tracking behind an action selector:
 
 - `action="bootstrap"` creates `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md` from a high-level request, deleting any existing copies of those files first (`overwrite` is deprecated and ignored).
-- `action="update_task_status"` atomically updates one `[status: ...]` task line (selected by `line_number` or `task_contains`) and supports both prefix (`- [ ] [status: ...] <task>`) and suffix (`- [ ] <task> [status: ...]`) marker placement. It sets checkbox to `[x]` for `complete` and `[ ]` otherwise.
+- `action="update_task_status"` atomically updates one Markdown task line (selected by `line_number` or `task_contains`). It accepts `- [ ] <task>` / `- [x] <task>` with zero or one `[status: ...]` marker; status markers may appear in prefix (`- [ ] [status: ...] <task>`) or suffix (`- [ ] <task> [status: ...]`) position. If no marker exists, it infers current status from checkbox and appends a suffix marker. It sets checkbox to `[x]` for `complete` and `[ ]` otherwise.
 
 ### Optional Tier 2 integrations
 

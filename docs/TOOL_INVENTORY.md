@@ -15,7 +15,7 @@ Descriptions in the MCP tool list are brief. Call `get_tool_details` with a regi
 - `run_tests`
 - `build_project` — detects and builds Python, Node, or .NET projects with structured diagnostics.
 - `git_manage` — successful `init` creates `test/` and `tmp/` and maintains `.gitignore`; `add` updates `.gitignore` before staging and accepts specific paths or `args: ["all"]` to stage every change.
-- `web_search` — searches the public web with DuckDuckGo Lite.
+- `web_search` — searches the public web with DuckDuckGo Lite and returns normalized destination URLs in the primary `link` field (unwrapping provider redirect wrappers and stripping common tracking query parameters). Results may include optional `provider_link` when a wrapper URL was normalized.
 - `capture_url_screenshot` — captures full-page screenshots for URLs via `gowitness` and stores artifacts in `tmp/screenshots/`.
 - `code_intel` — unified C# tool: `action='index'` incrementally indexes workspace C# files in `.handy-coder/code_index.sqlite3`; `action='navigate'` performs indexed search/symbol/reference navigation.
 - `get_capabilities`

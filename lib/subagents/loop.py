@@ -69,7 +69,7 @@ _ALLOWED_TOOLS: dict[str, ToolFn] = {
 
 _TOOL_ARGUMENTS: dict = {
     "read_files": '{"paths": ["workspace-relative path"], "line_ranges"?: [{"path": "...", "start_line": 1, "end_line": 20}], "start_line"?: 1, "end_line"?: 20, "encoding"?: "utf-8", "include_metadata"?: false}',
-    "search_text": '{"query": "text or regex", "is_regex"?: true, "path_glob"?: "...", "max_results"?: 100, "context_lines"?: 0, "include_generated"?: false, "case_insensitive"?: false, "extensions"?: [".py"]}',
+    "search_text": '{"query": "text or regex", "is_regex"?: true, "path_glob"?: "...", "max_results"?: 100, "context_lines"?: 0, "include_generated"?: false, "include_dot_dirs"?: false, "case_insensitive"?: false, "extensions"?: [".py"]}',
     "find_files": '{"glob_pattern": "**/*.py", "exclude_pattern"?: "...", "include_generated"?: false, "include_dot_dirs"?: false, "file_type"?: ".py", "min_size"?: 0, "max_size"?: 10000, "sort_by"?: "path|size|modified", "include_metadata"?: false, "include_diagnostics"?: false}',
     "create_file": '{"path": "workspace-relative path", "summary": "one-line summary of the change", "content"?: "full file content", "overwrite"?: false, "create_parents"?: true, "permissions"?: 420, "backup"?: false, "format_content"?: false, "post_process_python"?: false}',
     "apply_edits": '{"edits": [{"path": "...", "pattern": "Python regex", "replacement": "text", "position"?: {"line": 1, "col": 1}}], "summary": "one-line summary of the change", "replace_all"?: false, "max_replacements"?: 1, "case_insensitive"?: false, "dry_run"?: false, "expand_groups"?: false}',
@@ -534,11 +534,12 @@ def run_loop(
     continue_model: "ContinueModel | None" = None,
     cancel_event: Any = None,
     on_progress: Callable[[int, int], None] | None = None,
-) -> tuple[str, int, int]:
+) -> tuple[dict[str, Any], int, int]:
     """Run loop function."""
     history: list[dict[str, str]] = []
     tool_calls: int = 0
     token_estimate: int = 0
+    trace: list[dict[str, Any]] = []
 
     for turn in range(1, role.max_turns + 1):
         _check_cancel(cancel_event)
@@ -584,7 +585,7 @@ def run_loop(
             final = action["text"]
             if not final:
                 raise RuntimeError("final result must not be empty")
-            return final, turn, token_estimate
+            return {"final": final, "trace": trace}, turn, token_estimate
 
         calls = action["calls"]
         remaining_calls = role.max_tool_calls - tool_calls
@@ -621,6 +622,14 @@ def run_loop(
                     "result": tool_result,
                 },
             )
+            trace.append(
+                {
+                    "type": "tool_call",
+                    "tool": tool_name,
+                    "args": call["args"],
+                    "result": tool_result,
+                }
+            )
             history.append(
                 {
                     "role": "user",
@@ -631,6 +640,12 @@ def run_loop(
                 }
             )
         if skipped_calls:
+            trace.append(
+                {
+                    "type": "tool_call_budget_exhausted",
+                    "skipped_calls": skipped_calls,
+                }
+            )
             history.append(
                 {
                     "role": "user",

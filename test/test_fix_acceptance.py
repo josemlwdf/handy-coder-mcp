@@ -223,6 +223,30 @@ class InvalidCallsAreStructuredTests(unittest.TestCase):
                 self.assertTrue(result.get("message"), result)
                 self.assertNotIn("pydantic.dev", json.dumps(result))
 
+    def test_apply_edits_alias_fields_show_explicit_guidance(self) -> None:
+        """Alias keys should tell callers to use pattern/replacement names."""
+        (Path(self.temp.name) / "sample.txt").write_text("beta\n", encoding="utf-8")
+
+        result = _call(
+            self.mcp,
+            "apply_edits",
+            {
+                "edits": [
+                    {
+                        "path": "sample.txt",
+                        "search": "beta",
+                        "replace": "BETA",
+                    }
+                ],
+                "summary": "test change",
+            },
+        )
+
+        self.assertEqual(result.get("error_code"), "invalid_argument", result)
+        self.assertIn("Use pattern and replacement", result.get("message", ""), result)
+        self.assertIn("field", result)
+        self.assertTrue(str(result["field"]).endswith("pattern"), result)
+
 
 if __name__ == "__main__":
     unittest.main()

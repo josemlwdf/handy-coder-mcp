@@ -21,6 +21,10 @@ _TASK_LINE_RE = re.compile(
     r"^(?P<prefix>\s*[-*]\s*\[(?P<checkbox>\s*|[xX])\](?P<spacing>\s*))(?P<body>.*)$"
 )
 _STATUS_TAG_RE = re.compile(r"\[status:\s*(?P<status>[a-zA-Z0-9_-]+)\s*\]")
+_TASK_FORMAT_MESSAGE = (
+    "Selected line must be a Markdown task line like '- [ ] <task>' with zero or one status tag "
+    "('[status: ...]') in either prefix or suffix position."
+)
 
 
 def _now_utc() -> str:
@@ -222,8 +226,9 @@ def orchestrator_update_task_status(
         Field(
             ge=1,
             description=(
-                "Optional 1-based tasks.md line number to update. Target line must match "
-                "'- [ ] [status: ...] <task>' or '- [ ] <task> [status: ...]'. "
+                "Optional 1-based tasks.md line number to update. Target line must be a Markdown task "
+                "('- [ ] <task>') and may include a status tag in prefix or suffix position. "
+                "When no status tag is present, current status is inferred from checkbox ([x]=complete, [ ]=non_started). "
                 "Provide exactly one selector: line_number or task_contains."
             ),
         ),
@@ -232,8 +237,9 @@ def orchestrator_update_task_status(
         str | None,
         Field(
             description=(
-                "Optional text selector matched against tasks.md lines. Target line must match "
-                "'- [ ] [status: ...] <task>' or '- [ ] <task> [status: ...]'. "
+                "Optional text selector matched against tasks.md lines. Target line must be a Markdown task "
+                "('- [ ] <task>') and may include a status tag in prefix or suffix position. "
+                "When no status tag is present, current status is inferred from checkbox ([x]=complete, [ ]=non_started). "
                 "Provide exactly one selector: task_contains or line_number."
             ),
         ),
@@ -277,38 +283,50 @@ def orchestrator_update_task_status(
     if not task_match:
         return _error(
             "invalid_task_format",
-            "Selected line does not match expected task format '- [ ] [status: ...] <task>' or '- [ ] <task> [status: ...]'.",
+            _TASK_FORMAT_MESSAGE,
+            remediation=(
+                "Choose a line that starts with '- [ ]' (or '- [x]'), then retry. "
+                "Non-task lines cannot be updated."
+            ),
             line_number=target_index + 1,
             line=target_line,
         )
 
     body = task_match.group("body")
     status_matches = list(_STATUS_TAG_RE.finditer(body))
-    if len(status_matches) != 1:
+    if len(status_matches) > 1:
         return _error(
             "invalid_task_format",
-            "Selected line does not match expected task format '- [ ] [status: ...] <task>' or '- [ ] <task> [status: ...]'.",
+            "Selected task line has multiple [status: ...] markers; keep exactly one marker or none.",
+            remediation=(
+                "Remove extra status tags so the line has at most one [status: ...] marker, then retry."
+            ),
             line_number=target_index + 1,
             line=target_line,
         )
 
-    status_match = status_matches[0]
-    previous_status = status_match.group("status")
     is_checked = task_match.group("checkbox").strip().lower() == "x"
     should_be_checked = status == "complete"
-    if previous_status == status and is_checked == should_be_checked:
-        return {
-            "updated": False,
-            "line_number": target_index + 1,
-            "status": status,
-            "message": "Selected task already has the requested status.",
-        }
-
     checkbox = "x" if should_be_checked else " "
     prefix = task_match.group("prefix")
     new_prefix = re.sub(r"\[\s*[ xX]?\s*\]", f"[{checkbox}]", prefix, count=1)
-    start, end = status_match.span()
-    new_body = f"{body[:start]}[status: {status}]{body[end:]}"
+
+    if len(status_matches) == 1:
+        status_match = status_matches[0]
+        previous_status = status_match.group("status")
+        if previous_status == status and is_checked == should_be_checked:
+            return {
+                "updated": False,
+                "line_number": target_index + 1,
+                "status": status,
+                "message": "Selected task already has the requested status.",
+            }
+        start, end = status_match.span()
+        new_body = f"{body[:start]}[status: {status}]{body[end:]}"
+    else:
+        previous_status = "complete" if is_checked else "non_started"
+        separator = "" if (not body or body.endswith((" ", "\t"))) else " "
+        new_body = f"{body}{separator}[status: {status}]"
     lines[target_index] = f"{new_prefix}{new_body}"
     new_text = "\n".join(lines)
     if text.endswith("\n"):
@@ -335,7 +353,7 @@ def orchestrator(
         Field(
             description=(
                 "Orchestrator action to run: bootstrap creates `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md`; "
-                "update_task_status atomically updates one task status in `.handy-coder/tasks.md`."
+                "update_task_status atomically updates one task status in `.handy-coder/tasks.md`, accepting Markdown task lines with or without an existing [status: ...] tag."
             )
         ),
     ],
@@ -378,6 +396,8 @@ def orchestrator(
             ge=1,
             description=(
                 "For action='update_task_status': optional 1-based tasks.md line number selector. "
+                "Selected line must be a Markdown task ('- [ ] <task>'), with zero or one [status: ...] tag. "
+                "When tag is missing, current status is inferred from checkbox before update. "
                 "Provide exactly one selector: line_number or task_contains."
             ),
         ),
@@ -387,6 +407,8 @@ def orchestrator(
         Field(
             description=(
                 "For action='update_task_status': optional text selector matched against task lines. "
+                "Selected line must be a Markdown task ('- [ ] <task>'), with zero or one [status: ...] tag. "
+                "When tag is missing, current status is inferred from checkbox before update. "
                 "Provide exactly one selector: task_contains or line_number."
             )
         ),
@@ -437,6 +459,7 @@ def register(mcp):
             "Unified orchestrator tool with action='bootstrap' or action='update_task_status'. "
             "bootstrap creates `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md` from one high-level request, first deleting existing copies. "
             "update_task_status atomically updates one task line status (`non_started`, `interrupted`, `complete`, `failed`) in `.handy-coder/tasks.md` or another tracker file and keeps line formatting intact. "
+            "Accepted target format is any Markdown task line ('- [ ] <task>' or '- [x] <task>') with zero or one `[status: ...]` tag; if missing, the tag is appended and current status is inferred from checkbox. "
             "Use line_number or task_contains to select the task. Automatically sets checkbox to [x] when status is complete and [ ] otherwise. "
             "When to use: start and track orchestrated multi-step work through one tool surface."
         )

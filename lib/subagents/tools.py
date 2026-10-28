@@ -539,7 +539,7 @@ def _loop_runner(
                 continue_model.api_key or "",
                 *continue_model.headers.values(),
             ]
-        result, turns, tokens = loop.run_loop(
+        loop_output, turns, tokens = loop.run_loop(
             task_obj.backend,
             role_obj,
             task_obj.task,
@@ -552,10 +552,17 @@ def _loop_runner(
                 task_id, turns, tokens
             ),
         )
-        invalid = role_obj.validator(result)
+        final_text = loop_output["final"]
+        invalid = role_obj.validator(final_text)
         if invalid:
             raise ValueError(invalid)
-        _MANAGER.complete_task(task_id, result, turns=turns, tokens=tokens)
+        _MANAGER.complete_task(
+            task_id,
+            final_text,
+            trace=list(loop_output.get("trace", [])),
+            turns=turns,
+            tokens=tokens,
+        )
     except loop.SubagentCancelled:
         pass  # task state was already set to cancelled by subagent_cancel
     except Exception as exc:  # noqa: BLE001
@@ -597,7 +604,8 @@ def _terminal_payload(task_id: str) -> dict:
             "task_id": task_obj.task_id,
             "backend": task_obj.backend,
             **({"model": dict(task_obj.model)} if task_obj.model else {}),
-            "result": task_obj.result or "",
+            "final": task_obj.final or "",
+            "trace": list(task_obj.trace),
             "usage": {"turns": task_obj.turns_used, "tokens": task_obj.tokens_used},
         }
     if task_obj.state in {"failed", "cancelled"}:
@@ -820,7 +828,7 @@ def subagent_complete(
     if invalid:
         raise ValueError(f"Result validation failed: {invalid}")
 
-    done = _MANAGER.complete_task(task_id, result)
+    done = _MANAGER.complete_task(task_id, result, trace=[])
     digest = hashlib.sha1(result.encode("utf-8")).hexdigest()[:10]
     first_line = result.strip().splitlines()[0] if result.strip() else ""
     return {
@@ -1407,7 +1415,7 @@ def register(mcp):
         "subagent_manage(action='run') accepts an optional Continue model name or model identifier; explicit selection uses that model's direct API provider regardless of automatic backend precedence. get_capabilities lists safe model choices, and subagent responses/status include the chosen model summary when known. Report selected models when summarizing delegated work to the user. "
         "Loop backends let write-capable roles (planner, coder, committer) create and edit files within the workspace. Use subagents for broad searches, independent reviews and summaries of large inputs when available. "
         "When status is completed, consume result; when running, poll subagent_manage(action='status'); "
-        "when unavailable, do the work yourself in this conversation and do not retry; when delegated_to_host (explicit SUBAGENT_BACKEND=cooperative only, scoped role mode), follow instructions then call subagent_manage(action='complete'). Cooperative tasks expire after five minutes; successful git_manage commits by a committer close that frame automatically, while skipped or unsuccessful commits and other roles require explicit completion via subagent_manage(action='complete'). Streaming and checkpoint/resume are unsupported. Roles: generalist/explorer are read-only, reviewer adds diagnostics/tests, planner can also create/edit, coder can create/edit plus diagnostics/tests. Result pages include offset, total_length, and next_offset metadata. An open frame blocks tools outside its role allowlist; recover with subagent_manage(action='complete') or subagent_manage(action='cancel', confirm=true)."
+        "when unavailable, do the work yourself in this conversation and do not retry; when delegated_to_host (explicit SUBAGENT_BACKEND=cooperative only, scoped role mode), follow instructions then call subagent_manage(action='complete'). Cooperative tasks expire after five minutes; successful git_manage commits by a committer close that frame automatically, while skipped or unsuccessful commits and other roles require explicit completion via subagent_manage(action='complete'). Streaming and checkpoint/resume are unsupported. Roles: generalist/explorer are read-only, reviewer adds diagnostics/tests, planner can also create/edit, coder can create/edit plus diagnostics/tests. Result pages include final_offset, final_total_length, final_next_offset, and trace metadata. An open frame blocks tools outside its role allowlist; recover with subagent_manage(action='complete') or subagent_manage(action='cancel', confirm=true)."
     )
     mcp.tool(
         description=describe(

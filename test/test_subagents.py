@@ -328,7 +328,7 @@ class SubagentToolTests(unittest.TestCase):
         )
         self.assertEqual(result["state"], "done")
         page = self.mcp.tools["subagent_manage"](action="result", task_id=task_id)
-        self.assertIn("README", page["result"])
+        self.assertIn("README", page["final"])
 
     def test_subagent_manage_dispatches_full_lifecycle(self) -> None:
         """Test subagent manage dispatches full lifecycle function."""
@@ -347,7 +347,7 @@ class SubagentToolTests(unittest.TestCase):
         self.assertEqual(complete["state"], "done")
 
         page = self.mcp.tools["subagent_manage"](action="result", task_id=task_id)
-        self.assertIn("docs checked", page["result"])
+        self.assertIn("docs checked", page["final"])
 
     def test_subagent_manage_requires_action_specific_arguments(self) -> None:
         """Test subagent manage requires action specific arguments function."""
@@ -741,7 +741,9 @@ class SubagentToolTests(unittest.TestCase):
         subagent_tools._BACKEND = "direct:openai"
 
         with patch.object(
-            subagent_loop, "run_loop", return_value=("- finding: quick result", 1, 42)
+            subagent_loop,
+            "run_loop",
+            return_value=({"final": "- finding: quick result", "trace": []}, 1, 42),
         ):
             out = self.mcp.tools["subagent_manage"](
                 action="run", role="explorer", task="inspect quickly", wait=True
@@ -749,7 +751,8 @@ class SubagentToolTests(unittest.TestCase):
 
         self.assertEqual(out["status"], "completed")
         self.assertEqual(out["backend"], "direct:openai")
-        self.assertIn("finding", out["result"])
+        self.assertIn("finding", out["final"])
+        self.assertEqual(out["trace"], [])
         self.assertEqual(out["usage"]["turns"], 1)
 
     def test_explicit_continue_model_overrides_backend_and_is_reported(self) -> tuple:
@@ -765,7 +768,7 @@ class SubagentToolTests(unittest.TestCase):
             """Run loop function."""
             captured["backend"] = backend
             captured["model"] = kwargs["continue_model"]
-            return "- finding: quick result", 1, 42
+            return {"final": "- finding: quick result", "trace": []}, 1, 42
 
         with patch.object(
             subagent_tools, "resolve_continue_models", return_value=[selected]
@@ -813,7 +816,7 @@ class SubagentToolTests(unittest.TestCase):
             import time
 
             time.sleep(0.8)
-            return ("- finding: delayed", 1, 11)
+            return ({"final": "- finding: delayed", "trace": []}, 1, 11)
 
         with patch.dict(os.environ, {"SUBAGENT_WAIT_SECONDS": "0.05"}, clear=False):
             with patch.object(subagent_loop, "run_loop", side_effect=slow_run):
@@ -837,7 +840,7 @@ class SubagentToolTests(unittest.TestCase):
             import time
 
             time.sleep(0.6)
-            return ("- finding: delayed", 1, 11)
+            return ({"final": "- finding: delayed", "trace": []}, 1, 11)
 
         with patch.dict(os.environ, {"SUBAGENT_WAIT_SECONDS": "0.05"}, clear=False):
             with patch.object(subagent_loop, "run_loop", side_effect=slow_run):
@@ -959,7 +962,9 @@ class UnavailableBackendTests(unittest.TestCase):
         """Test write role runs on loop backend without opt in function."""
         subagent_tools._BACKEND = "direct:openai"
         with patch.object(
-            subagent_loop, "run_loop", return_value=("- implemented", 1, 10)
+            subagent_loop,
+            "run_loop",
+            return_value=({"final": "- implemented", "trace": []}, 1, 10),
         ):
             out = self.mcp.tools["subagent_manage"](
                 action="run", role="coder", task="implement", wait=True
@@ -988,7 +993,7 @@ class LoopBackendTests(unittest.TestCase):
             None,
             sampling_fn=sampling_fn,
         )
-        self.assertIn("finding", result)
+        self.assertIn("finding", result["final"])
         self.assertEqual(turns, 1)
         self.assertGreater(tokens, 0)
 
@@ -1013,7 +1018,7 @@ class LoopBackendTests(unittest.TestCase):
             None,
             sampling_fn=sampling_fn,
         )
-        self.assertIn("finding", result)
+        self.assertIn("finding", result["final"])
         self.assertEqual(turns, 2)
 
     def test_run_loop_rejects_disallowed_tool(self) -> str:

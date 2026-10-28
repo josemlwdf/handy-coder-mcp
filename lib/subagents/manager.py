@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from .roles import Role
@@ -27,7 +27,8 @@ class Task:
     state: TaskState
     created_at: float
     updated_at: float
-    result: str | None = None
+    final: str | None = None
+    trace: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
     turns_used: int = 0
     tokens_used: int = 0
@@ -165,7 +166,13 @@ class SubagentManager:
             self._stack.append(frame)
 
     def complete_task(
-        self, task_id: str, result: str, *, turns: int = 0, tokens: int = 0
+        self,
+        task_id: str,
+        final: str,
+        *,
+        trace: list[dict[str, Any]] | None = None,
+        turns: int = 0,
+        tokens: int = 0,
     ) -> Task:
         """Complete task function."""
         with self._lock:
@@ -173,7 +180,8 @@ class SubagentManager:
             task = self._tasks[task_id]
             if task.state in {"cancelled", "failed"}:
                 return task
-            task.result = result
+            task.final = final
+            task.trace = list(trace or [])
             task.state = "done"
             task.turns_used = turns
             task.tokens_used = tokens
@@ -220,7 +228,7 @@ class SubagentManager:
         with self._lock:
             self._sweep_locked()
             task = self.get_task(task_id)
-            text = task.result or ""
+            text = task.final or ""
             if offset < 0:
                 raise ValueError("offset must be >= 0")
             if offset > len(text):
@@ -234,10 +242,11 @@ class SubagentManager:
                 "backend": task.backend,
                 **({"model": dict(task.model)} if task.model else {}),
                 "state": task.state,
-                "offset": offset,
-                "result": page,
-                "total_length": len(text),
-                "next_offset": next_offset,
+                "final_offset": offset,
+                "final": page,
+                "final_total_length": len(text),
+                "final_next_offset": next_offset,
+                "trace": list(task.trace),
             }
 
     def open_frame(self) -> Frame | None:

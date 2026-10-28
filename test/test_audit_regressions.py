@@ -662,6 +662,39 @@ class AuditRegressionTests(unittest.TestCase):
             "https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdoc",
         )
 
+    def test_web_search_parse_results_unwraps_non_ddg_redirect_url(self) -> None:
+        """Test wrapper-style non-DDG links expose normalized destination URLs."""
+        page: str = """
+        <table>
+          <tr>
+            <td><a class='result-link' href='https://www.bing.com/ck/a?u=https%3A%2F%2Fexample.com%2Fdocs%2Fintro'>Bing Wrapper</a></td>
+            <td class='result-snippet'>Wrapped destination</td>
+          </tr>
+        </table>
+        """
+        results = web_search_tool.parse_results(page)
+        self.assertEqual(results[0]["title"], "Bing Wrapper")
+        self.assertEqual(results[0]["link"], "https://example.com/docs/intro")
+        self.assertEqual(
+            results[0]["provider_link"],
+            "https://www.bing.com/ck/a?u=https%3A%2F%2Fexample.com%2Fdocs%2Fintro",
+        )
+
+    def test_web_search_parse_results_strips_tracking_params_from_link(self) -> None:
+        """Test destination links drop common tracking query params in output URLs."""
+        page: str = """
+        <table>
+          <tr>
+            <td><a class='result-link' href='https://example.com/page?utm_source=newsletter&gclid=abc123&id=42'>Tracked</a></td>
+            <td class='result-snippet'>Tracking-heavy URL</td>
+          </tr>
+        </table>
+        """
+        results = web_search_tool.parse_results(page)
+        self.assertEqual(results[0]["title"], "Tracked")
+        self.assertEqual(results[0]["link"], "https://example.com/page?id=42")
+        self.assertNotIn("provider_link", results[0])
+
     def test_git_diff_is_returned_once_and_escaped_paths_are_structured(self) -> None:
         """Test git diff is returned once and escaped paths are structured function."""
         (self.root / ".git").mkdir()

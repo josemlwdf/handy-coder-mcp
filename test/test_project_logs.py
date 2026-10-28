@@ -92,6 +92,65 @@ class ProjectLogsTests(unittest.TestCase):
             finally:
                 support.configure(previous_root)
 
+    def test_attach_tool_log_path_adds_status_summary_request_every_tenth_call(
+        self,
+    ) -> None:
+        """Tool responses include a concise-status reminder every 10 tool calls."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_root = str(support.ROOT)
+            support.configure(temp_dir)
+            try:
+                ninth_result: dict | None = None
+                tenth_result: dict | None = None
+                nineteenth_result: dict | None = None
+                twentieth_result: dict | None = None
+                for call_number in range(1, 21):
+                    log_path = project_logs.log_tool_call(
+                        "example_tool",
+                        {"n": call_number},
+                        {"ok": True},
+                    )
+                    wrapped = project_logs.attach_tool_log_path({"ok": True}, log_path)
+                    if call_number == 9:
+                        ninth_result = wrapped
+                    if call_number == 10:
+                        tenth_result = wrapped
+                    if call_number == 19:
+                        nineteenth_result = wrapped
+                    if call_number == 20:
+                        twentieth_result = wrapped
+
+                assert ninth_result is not None
+                assert tenth_result is not None
+                assert nineteenth_result is not None
+                assert twentieth_result is not None
+
+                self.assertNotIn("status_summary_request", ninth_result)
+                self.assertIn("status_summary_request", tenth_result)
+                self.assertEqual(
+                    tenth_result["status_summary_request"]["tool_calls"], 10
+                )
+                self.assertEqual(tenth_result["status_summary_request"]["interval"], 10)
+                self.assertIn(
+                    "",
+                    tenth_result["status_summary_request"]["message"],
+                )
+
+                self.assertNotIn("status_summary_request", nineteenth_result)
+                self.assertIn("status_summary_request", twentieth_result)
+                self.assertEqual(
+                    twentieth_result["status_summary_request"]["tool_calls"], 20
+                )
+                self.assertEqual(
+                    twentieth_result["status_summary_request"]["interval"], 10
+                )
+                self.assertIn(
+                    "Concise status summary requested",
+                    twentieth_result["status_summary_request"]["message"],
+                )
+            finally:
+                support.configure(previous_root)
+
 
 if __name__ == "__main__":
     unittest.main()

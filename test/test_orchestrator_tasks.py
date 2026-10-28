@@ -100,7 +100,7 @@ class OrchestratorTaskStatusTests(unittest.TestCase):
             )
             self.assertEqual(result["error_code"], "invalid_task_format")
             self.assertIn(
-                "Selected line does not match expected task format", result["message"]
+                "Selected line must be a Markdown task line", result["message"]
             )
             self.assertEqual(tasks_file.read_text(encoding="utf-8"), tampered)
 
@@ -225,32 +225,74 @@ class OrchestratorTaskStatusTests(unittest.TestCase):
                 "- [x] Task A [status: complete]\n",
             )
 
-    def test_reject_line_with_multiple_or_missing_status_markers(self) -> None:
-        """Test reject line with multiple or missing status markers function."""
+    def test_missing_status_tag_is_inferred_and_appended(self) -> None:
+        """Test missing status tag is inferred and appended function."""
+        with tempfile.TemporaryDirectory() as tmp:
+            support.configure(tmp)
+            state_dir = Path(tmp) / ".handy-coder"
+            state_dir.mkdir(parents=True, exist_ok=True)
+            tasks_file = state_dir / "tasks.md"
+            tasks_file.write_text("- [ ] Task A without status\n", encoding="utf-8")
+
+            result = orchestrator.orchestrator(
+                action="update_task_status",
+                status="complete",
+                line_number=1,
+            )
+            self.assertTrue(result["updated"])
+            self.assertEqual(result["previous_status"], "non_started")
+            self.assertEqual(
+                result["line"], "- [x] Task A without status [status: complete]"
+            )
+            self.assertEqual(
+                tasks_file.read_text(encoding="utf-8"),
+                "- [x] Task A without status [status: complete]\n",
+            )
+
+    def test_plain_checked_task_to_non_complete_infers_previous_complete(self) -> None:
+        """Test plain checked task to non complete infers previous complete function."""
+        with tempfile.TemporaryDirectory() as tmp:
+            support.configure(tmp)
+            state_dir = Path(tmp) / ".handy-coder"
+            state_dir.mkdir(parents=True, exist_ok=True)
+            tasks_file = state_dir / "tasks.md"
+            tasks_file.write_text("- [x] Task A without status\n", encoding="utf-8")
+
+            result = orchestrator.orchestrator(
+                action="update_task_status",
+                status="interrupted",
+                line_number=1,
+            )
+            self.assertTrue(result["updated"])
+            self.assertEqual(result["previous_status"], "complete")
+            self.assertEqual(result["status"], "interrupted")
+            self.assertEqual(
+                result["line"], "- [ ] Task A without status [status: interrupted]"
+            )
+            self.assertEqual(
+                tasks_file.read_text(encoding="utf-8"),
+                "- [ ] Task A without status [status: interrupted]\n",
+            )
+
+    def test_reject_line_with_multiple_status_markers(self) -> None:
+        """Test reject line with multiple status markers function."""
         with tempfile.TemporaryDirectory() as tmp:
             support.configure(tmp)
             state_dir = Path(tmp) / ".handy-coder"
             state_dir.mkdir(parents=True, exist_ok=True)
             tasks_file = state_dir / "tasks.md"
             tasks_file.write_text(
-                "- [ ] Task A without status\n"
                 "- [ ] Task B [status: non_started] and [status: complete]\n",
                 encoding="utf-8",
             )
 
-            res_missing = orchestrator.orchestrator(
+            result = orchestrator.orchestrator(
                 action="update_task_status",
                 status="complete",
                 line_number=1,
             )
-            self.assertEqual(res_missing["error_code"], "invalid_task_format")
-
-            res_multiple = orchestrator.orchestrator(
-                action="update_task_status",
-                status="complete",
-                line_number=2,
-            )
-            self.assertEqual(res_multiple["error_code"], "invalid_task_format")
+            self.assertEqual(result["error_code"], "invalid_task_format")
+            self.assertIn("multiple [status: ...] markers", result["message"])
 
 
 if __name__ == "__main__":
