@@ -567,6 +567,49 @@ class SubagentToolTests(unittest.TestCase):
             [{"summary": "Shared state write", "paths": ["shared.txt"]}],
         )
 
+    def test_committer_launch_clears_pending_summaries_from_state_json(self) -> None:
+        """Test committer launch clears pending summaries from state json function."""
+        state_path = support.ensure_handy_coder_state_dir() / "state.json"
+        subagent_tools.after_tool_call(
+            "create_file",
+            {
+                "path": "pending-1.txt",
+                "created": True,
+                "overwritten": False,
+            },
+            {"summary": "Pending change 1"},
+        )
+        subagent_tools.after_tool_call(
+            "create_file",
+            {
+                "path": "pending-2.txt",
+                "created": True,
+                "overwritten": False,
+            },
+            {"summary": "Pending change 2"},
+        )
+
+        before = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(len(before["subagents"]["pending_change_summaries"]), 2)
+
+        result = self.mcp.tools["subagent_manage"](
+            action="run",
+            role="committer",
+            task="Commit the queued pending changes",
+            wait=False,
+        )
+
+        self.assertIn(result["status"], {"running", "delegated_to_host", "completed"})
+        after = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(after["subagents"]["pending_change_summaries"], [])
+        self.assertEqual(subagent_tools._PENDING_CHANGE_SUMMARIES, [])
+        if result["status"] == "delegated_to_host":
+            self.mcp.tools["subagent_manage"](
+                action="cancel",
+                task_id=result["task_id"],
+                confirm=True,
+            )
+
     def test_committer_dispatch_failure_is_reported_with_summaries(self) -> None:
         """Test committer dispatch failure is reported with summaries function."""
         with patch.object(

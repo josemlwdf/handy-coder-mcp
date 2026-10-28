@@ -2,6 +2,7 @@
 
 import inspect
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
 from typing import get_args, get_type_hints
@@ -315,6 +316,33 @@ class ToolSchemaTests(unittest.TestCase):
         """Test git guidance shows repo path selection function."""
         git_manage._set_inventory(("projects/api", "projects/web"), ())
         self.assertIn("repo_path='projects/api'", git_manage._tool_description())
+
+    def test_web_search_response_contract_always_includes_source(self) -> None:
+        """Top-level web_search response contract always includes source backend key."""
+        expected_top_level_keys: set = {"query", "source", "results", "result_count"}
+
+        for source in ("duckduckgo", "bing_fallback"):
+            with (
+                self.subTest(source=source),
+                patch.object(
+                    web_search_tool,
+                    "search_with_source",
+                    return_value=(
+                        [
+                            {
+                                "title": "Example",
+                                "snippet": "Snippet",
+                                "link": "https://example.com",
+                            }
+                        ],
+                        source,
+                    ),
+                ),
+            ):
+                response = web_search_tool.web_search("example query")
+
+            self.assertTrue(expected_top_level_keys.issubset(response.keys()))
+            self.assertEqual(response["source"], source)
 
     def test_every_registered_tool_has_all_boolean_annotation_hints(self) -> None:
         """Test every registered tool has all boolean annotation hints function."""

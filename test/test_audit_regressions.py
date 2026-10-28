@@ -490,6 +490,115 @@ class AuditRegressionTests(unittest.TestCase):
             results = web_search_tool.search("question")
         self.assertNotIn("_optimized_query", results[0])
 
+    def test_web_search_routes_to_bing_when_fallback_enabled(self) -> None:
+        """Test web search uses Bing fallback path when fallback is enabled."""
+        with patch.object(
+            web_search_tool,
+            "_search_bing",
+            return_value=[
+                {
+                    "title": "Bing title",
+                    "snippet": "Bing snippet",
+                    "link": "https://bing.example/result",
+                }
+            ],
+        ) as bing_search:
+            results = web_search_tool.search("question", fallback=True)
+
+        bing_search.assert_called_once_with("question")
+        self.assertEqual(results[0]["title"], "Bing title")
+
+    def test_web_search_auto_fallbacks_to_bing_when_ddg_errors(self) -> None:
+        """Test DDG error payload triggers automatic fallback to Bing."""
+        with (
+            patch.object(
+                web_search_tool,
+                "_search_duckduckgo",
+                return_value=[{"error": "Request failed"}],
+            ),
+            patch.object(
+                web_search_tool,
+                "_search_bing",
+                return_value=[
+                    {
+                        "title": "Bing title",
+                        "snippet": "Bing snippet",
+                        "link": "https://bing.example/result",
+                    }
+                ],
+            ) as bing_search,
+        ):
+            results = web_search_tool.search("question")
+
+        bing_search.assert_called_once_with("question")
+        self.assertEqual(results[0]["title"], "Bing title")
+
+    def test_web_search_auto_fallbacks_to_bing_when_ddg_returns_zero_results(
+        self,
+    ) -> None:
+        """Test empty DDG results trigger automatic fallback to Bing."""
+        with (
+            patch.object(web_search_tool, "_search_duckduckgo", return_value=[]),
+            patch.object(
+                web_search_tool,
+                "_search_bing",
+                return_value=[
+                    {
+                        "title": "Bing title",
+                        "snippet": "Bing snippet",
+                        "link": "https://bing.example/result",
+                    }
+                ],
+            ) as bing_search,
+        ):
+            results = web_search_tool.search("question")
+
+        bing_search.assert_called_once_with("question")
+        self.assertEqual(results[0]["title"], "Bing title")
+
+    def test_web_search_tool_accepts_fallback_argument(self) -> None:
+        """Test web_search MCP tool forwards fallback argument to Bing search."""
+        with patch.object(
+            web_search_tool,
+            "search_with_source",
+            return_value=(
+                [
+                    {
+                        "title": "Bing title",
+                        "snippet": "Bing snippet",
+                        "link": "https://bing.example/result",
+                    }
+                ],
+                "bing",
+            ),
+        ) as search_mock:
+            result = web_search_tool.web_search("question", fallback=True)
+
+        search_mock.assert_called_once_with("question", fallback=True)
+        self.assertEqual(result["source"], "bing")
+        self.assertEqual(result["result_count"], 1)
+        self.assertEqual(result["results"][0]["title"], "Bing title")
+
+    def test_web_search_reports_duckduckgo_source(self) -> None:
+        """Test web_search response includes source when DDG serves results."""
+        with patch.object(
+            web_search_tool,
+            "search_with_source",
+            return_value=(
+                [
+                    {
+                        "title": "DDG title",
+                        "snippet": "DDG snippet",
+                        "link": "https://ddg.example/result",
+                    }
+                ],
+                "duckduckgo",
+            ),
+        ):
+            result = web_search_tool.web_search("question")
+
+        self.assertEqual(result["source"], "duckduckgo")
+
     def test_web_search_parse_results_deprioritizes_ad_like_links(self) -> None:
         """Test ad-like DDG redirect rows are sorted behind organic links."""
         page: str = """

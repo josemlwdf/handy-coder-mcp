@@ -344,25 +344,57 @@ def parse_results(page: str) -> list:
     return output
 
 
-def search(query: str) -> list:
-    """Search function."""
+def _search_duckduckgo(query: str) -> list:
+    """Search DuckDuckGo Lite and return normalized result rows."""
     if not query.strip():
         return []
 
     optimized = optimize_query(query)
-    # Using the 'lite' endpoint specifically as requested
     url = f"https://lite.duckduckgo.com/lite/?q={quote_plus(optimized)}"
 
     try:
         page = _fetch(url)
-        # Check if we got hit by a bot detection page
         if "ddg-captcha" in page or "Action Forbidden" in page:
             return [{"error": "Rate limited or bot detection triggered by DuckDuckGo."}]
-
-        results = parse_results(page)
-        return results
+        return parse_results(page)
     except Exception as e:
         return [{"error": f"Request failed: {str(e)}"}]
+
+
+def _search_bing(query: str) -> list:
+    """Search using the local lib/extras/bing_search.py fallback implementation."""
+    if not query.strip():
+        return []
+
+    try:
+        from lib.extras.bing_search import fetch_bing_search_results
+
+        return fetch_bing_search_results(query)
+    except Exception as e:
+        return [{"error": f"Bing fallback failed: {str(e)}"}]
+
+
+def _has_error_result(results: list) -> bool:
+    """Return whether a result list contains an explicit error payload."""
+    return bool(results) and isinstance(results[0], dict) and "error" in results[0]
+
+
+def search_with_source(query: str, fallback: bool = False) -> tuple[list, str]:
+    """Search function that also returns which backend produced results."""
+    if fallback:
+        return _search_bing(query), "bing"
+
+    ddg_results = _search_duckduckgo(query)
+    if _has_error_result(ddg_results) or not ddg_results:
+        return _search_bing(query), "bing"
+
+    return ddg_results, "duckduckgo"
+
+
+def search(query: str, fallback: bool = False) -> list:
+    """Search function."""
+    results, _source = search_with_source(query, fallback=fallback)
+    return results
 
 
 def web_search(
@@ -373,17 +405,34 @@ def web_search(
             description="Search query for public web pages; results include titles, snippets, and links.",
         ),
     ],
+    fallback: Annotated[
+        bool,
+        Field(
+            default=False,
+            description=(
+                "When false (default), search with DuckDuckGo Lite and automatically "
+                "fallback to lib/extras/bing_search.py if DDG errors or returns zero results. "
+                "When true, force the local Bing fallback implementation."
+            ),
+        ),
+    ] = False,
 ) -> dict:
-    """Search the public web using DuckDuckGo Lite."""
-    results = search(query)
-    return {"query": query, "results": results, "result_count": len(results)}
+    """Search the public web with DuckDuckGo Lite or an optional Bing fallback."""
+    results, source = search_with_source(query, fallback=fallback)
+    return {
+        "query": query,
+        "source": source,
+        "results": results,
+        "result_count": len(results),
+    }
 
 
 def register(mcp):
     """Register function."""
     return mcp.tool(
         description=describe(
-            "Search the public web with DuckDuckGo Lite and return result titles, snippets, and links. "
+            "Search the public web and return result titles, snippets, and links. "
+            "By default uses DuckDuckGo Lite and auto-falls back to lib/extras/bing_search.py when DDG errors or returns no results; set fallback=true to force Bing. "
             "Use when current external information or a source URL is needed. "
             "For known URLs, use web_fetch_docs to read the page contents."
         )

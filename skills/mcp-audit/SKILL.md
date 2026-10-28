@@ -21,7 +21,7 @@ IMPORTANT: The handy-coder-mcp tools are already exposed to you for live testing
 
 ## Testing
 
-For each inventoried tool, review its name, schema, and description for clarity and consistency. Choose a realistic normal case and, where useful, a boundary or invalid-input case. Match inputs to the tool's actual schema; do not blindly reuse generic parameters.
+For each inventoried tool, review its name, schema, and description for clarity and consistency. Choose a realistic normal case and, where useful, a boundary or invalid-input case. Match inputs to the tool's actual schema; do not blindly reuse generic parameters. If the necessary files does not exists on the workspace to perform a test, create the stub of files in order to ensure no tool left untested.
 
 Execute the live tests immediately using the tools already exposed to you. Do not substitute source inspection, repository test suites, hypothetical reasoning, or mocked results for actual tool calls.
 

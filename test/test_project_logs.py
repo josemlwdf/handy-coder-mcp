@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
 import tempfile
-import time
 import unittest
 from pathlib import Path
 
@@ -42,26 +40,39 @@ class ProjectLogsTests(unittest.TestCase):
             finally:
                 support.configure(previous_root)
 
-    def test_cleanup_respects_settings_json_retention(self) -> None:
-        """Cleanup deletes stale logs according to settings.json retention_hours."""
+    def test_reset_logs_for_new_session_clears_all_buckets(self) -> None:
+        """Session reset clears tool, subagent, internal logs and counters."""
         with tempfile.TemporaryDirectory() as temp_dir:
             previous_root = str(support.ROOT)
             support.configure(temp_dir)
             try:
-                Path(temp_dir, "settings.json").write_text(
-                    json.dumps({"logs": {"retention_hours": 0.001}}),
-                    encoding="utf-8",
+                first_tool = project_logs.log_tool_call("one", {}, {"ok": True})
+                first_loop = project_logs.log_subagent_loop_event(
+                    "request", {"turn": 1}
                 )
-                dirs = project_logs._ensure_dirs()
-                old_file = dirs["tool_calls"] / "tool-call-old.json"
-                old_file.write_text("{}", encoding="utf-8")
-                stale = time.time() - 3600
-                os.utime(old_file, (stale, stale))
+                first_internal = project_logs.log_internal_event(
+                    "warning", "test", {"x": 1}
+                )
+                self.assertTrue(Path(support.ROOT, str(first_tool)).is_file())
+                self.assertTrue(Path(support.ROOT, str(first_loop)).is_file())
+                self.assertTrue(Path(support.ROOT, str(first_internal)).is_file())
 
-                project_logs._LAST_CLEANUP_AT = 0.0
-                project_logs.log_tool_call("fresh", {}, {"ok": True})
+                project_logs.reset_logs_for_new_session()
 
-                self.assertFalse(old_file.exists())
+                base = Path(support.ROOT) / ".handy-coder" / ".logs"
+                self.assertTrue((base / "tool_calls").is_dir())
+                self.assertTrue((base / "subagent_loops").is_dir())
+                self.assertTrue((base / "internal").is_dir())
+                self.assertFalse((base / ".counters.json").exists())
+                self.assertEqual(list((base / "tool_calls").glob("*.json")), [])
+                self.assertEqual(list((base / "subagent_loops").glob("*.json")), [])
+                self.assertEqual(list((base / "internal").glob("*.json")), [])
+
+                second_tool = project_logs.log_tool_call("two", {}, {"ok": True})
+                self.assertEqual(
+                    second_tool,
+                    ".handy-coder/.logs/tool_calls/tool-call-000001.json",
+                )
             finally:
                 support.configure(previous_root)
 

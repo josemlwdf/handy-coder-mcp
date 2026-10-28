@@ -42,7 +42,7 @@ def _load_fastmcp():
 
 # Imports below intentionally follow _load_fastmcp(); E402 is suppressed per line.
 from lib import error_handler  # noqa: E402
-from lib import support, tool_details, worker_supervisor  # noqa: E402
+from lib import project_logs, support, tool_details, worker_supervisor  # noqa: E402
 from lib.core import code_navigator  # noqa: E402
 from lib.core import gowitness_screenshot, web_search_tool  # noqa: E402
 from lib.core import (  # noqa: E402
@@ -237,6 +237,8 @@ def main() -> None:
                 file=sys.stderr,
             )
         return
+
+    project_logs.reset_logs_for_new_session()
 
     detected_ide = ide_detector.detect_ide()
     ide_info = f"; ide: {detected_ide}" if detected_ide else ""

@@ -86,7 +86,7 @@ def get_capabilities() -> dict:
         },
         "web_search": {
             "available": True,
-            "note": "searches the public web via DuckDuckGo Lite and returns titles, snippets, and links; requires outbound network access",
+            "note": "searches the public web via DuckDuckGo Lite by default, auto-falls back to lib/extras/bing_search.py on DDG error/zero results, and supports forcing fallback via fallback=true; requires outbound network access",
         },
         "capture_url_screenshot": {
             "available": screenshot_available,

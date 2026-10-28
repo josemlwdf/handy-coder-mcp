@@ -47,6 +47,7 @@ Valid statuses: `non_started`, `interrupted`, `complete`, `failed`. Change them 
 - **No commit overhead.** Work freely in the working tree. Do not create commits, stage files, or verify commits unless the user explicitly asks for it.
 - **Change summaries.** Every call to a tool that creates or modifies files (`create_file`, `apply_edits`) needs a one-line, concise `summary` argument. Tell subagents to include it, and write it to describe the file change, not the process.
 - **Tool failures.** If a tool fails or reports inconsistent availability, check `get_capabilities` and use a reliable alternative instead of retrying blindly.
+- **Subagent Tasks.** The `orchestrator` is in charge of send enough context and descriptive tasks to the subagents in order to ensure a high quality subagent response.
 
 ## Recommendations and automatic changes
 

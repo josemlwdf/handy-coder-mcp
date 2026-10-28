@@ -206,15 +206,21 @@ def _set_pending_change_summaries(entries: list[dict[str, Any]]) -> None:
     _save_pending_change_summaries_to_disk(_PENDING_CHANGE_SUMMARIES)
 
 
-def _clear_pending_change_summaries_for_tests() -> None:
-    """Reset pending automatic-commit summaries for tests."""
+def _clear_pending_change_summaries(*, reset_progress_counters: bool) -> None:
+    """Clear pending automatic-commit summaries in memory and shared state."""
     global _SUCCESSFUL_WRITE_CALLS
     global _LAST_PROGRESS_SUMMARY_AT
     with _CHANGE_SUMMARIES_LOCK:
         _sync_pending_change_summaries_for_root()
         _set_pending_change_summaries([])
-        _SUCCESSFUL_WRITE_CALLS = 0
-        _LAST_PROGRESS_SUMMARY_AT = 0
+        if reset_progress_counters:
+            _SUCCESSFUL_WRITE_CALLS = 0
+            _LAST_PROGRESS_SUMMARY_AT = 0
+
+
+def _clear_pending_change_summaries_for_tests() -> None:
+    """Reset pending automatic-commit summaries for tests."""
+    _clear_pending_change_summaries(reset_progress_counters=True)
 
 
 def _commit_task(batch: list[dict[str, Any]]) -> dict[str, Any]:
@@ -698,6 +704,8 @@ def subagent_run(
     task_obj = _MANAGER.create_task(
         role, task, selected_backend, context, deliverable, model_summary
     )
+    if role_obj.name == "committer":
+        _clear_pending_change_summaries(reset_progress_counters=False)
 
     if selected_backend == "cooperative":
         frame = _MANAGER.make_frame(task_obj.task_id, role_obj, task)

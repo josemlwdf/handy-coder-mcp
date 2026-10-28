@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -11,13 +12,10 @@ from typing import Any
 
 from . import support
 
-_DEFAULT_RETENTION_HOURS: float = 12.0
 _MAX_PAYLOAD_CHARS: int = 200_000
-_CLEANUP_INTERVAL_SECONDS: float = 300.0
 _COUNTERS_FILE: str = ".counters.json"
 
 _LOCK = threading.Lock()
-_LAST_CLEANUP_AT: float = 0.0
 
 
 _SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -27,36 +25,6 @@ _SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"token", re.IGNORECASE),
     re.compile(r"authorization", re.IGNORECASE),
 )
-
-
-def _settings_path() -> Path:
-    """Return the project settings file path."""
-    return Path(support.ROOT) / "settings.json"
-
-
-def _retention_hours() -> float:
-    """Resolve retention in hours from settings.json, defaulting to 12."""
-    path = _settings_path()
-    try:
-        if not path.is_file():
-            return _DEFAULT_RETENTION_HOURS
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return _DEFAULT_RETENTION_HOURS
-    if not isinstance(payload, dict):
-        return _DEFAULT_RETENTION_HOURS
-
-    direct = payload.get("log_retention_hours")
-    if isinstance(direct, (float, int)) and direct > 0:
-        return float(direct)
-
-    nested = payload.get("logs")
-    if isinstance(nested, dict):
-        nested_value = nested.get("retention_hours")
-        if isinstance(nested_value, (float, int)) and nested_value > 0:
-            return float(nested_value)
-
-    return _DEFAULT_RETENTION_HOURS
 
 
 def _project_dir() -> Path:
@@ -80,6 +48,18 @@ def _ensure_dirs() -> dict[str, Path]:
         "subagent_loops": subagent_loops,
         "internal": internal,
     }
+
+
+def reset_logs_for_new_session() -> None:
+    """Delete all workspace logs and recreate bucket directories for a new session."""
+    with _LOCK:
+        base = _project_dir()
+        try:
+            if base.exists():
+                shutil.rmtree(base)
+        except OSError:
+            return
+        _ensure_dirs()
 
 
 def _safe_payload(value: Any) -> Any:
@@ -150,36 +130,12 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     )
 
 
-def _cleanup_old_logs(base: Path, retention_hours: float) -> None:
-    """Delete log files older than retention threshold."""
-    cutoff = time.time() - max(0.1, retention_hours) * 3600.0
-    for path in base.rglob("*"):
-        if not path.is_file() or path.name == _COUNTERS_FILE:
-            continue
-        try:
-            if path.stat().st_mtime < cutoff:
-                path.unlink(missing_ok=True)
-        except OSError:
-            continue
-
-
-def _maybe_cleanup(base: Path) -> None:
-    """Run cleanup periodically."""
-    global _LAST_CLEANUP_AT
-    now = time.monotonic()
-    if now - _LAST_CLEANUP_AT < _CLEANUP_INTERVAL_SECONDS:
-        return
-    _LAST_CLEANUP_AT = now
-    _cleanup_old_logs(base, _retention_hours())
-
-
 def log_tool_call(tool_name: str, args: dict[str, Any], result: Any) -> str | None:
     """Persist one tool call record and return its workspace-relative path."""
     with _LOCK:
         try:
             dirs = _ensure_dirs()
             base = dirs["base"]
-            _maybe_cleanup(base)
             seq = _next_sequence(base, "tool_calls")
             destination = dirs["tool_calls"] / f"tool-call-{seq:06d}.json"
             _write_json(
@@ -204,7 +160,6 @@ def log_subagent_loop_event(event_type: str, payload: dict[str, Any]) -> str | N
         try:
             dirs = _ensure_dirs()
             base = dirs["base"]
-            _maybe_cleanup(base)
             seq = _next_sequence(base, "subagent_loops")
             destination = dirs["subagent_loops"] / f"subagent-loop-{seq:06d}.json"
             _write_json(
@@ -230,7 +185,6 @@ def log_internal_event(
         try:
             dirs = _ensure_dirs()
             base = dirs["base"]
-            _maybe_cleanup(base)
             seq = _next_sequence(base, "internal")
             destination = dirs["internal"] / f"internal-{seq:06d}.json"
             _write_json(
