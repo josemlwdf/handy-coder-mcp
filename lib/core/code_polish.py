@@ -69,12 +69,18 @@ def _normalize_line_endings(text: str) -> tuple[str, dict[str, Any]]:
     }
 
 
+def _prepare_diff_lines(text: str) -> list[str]:
+    """Return diff-safe lines, preserving endings and adding missing terminal newlines."""
+    lines = text.splitlines(keepends=True)
+    return [line if line.endswith(("\n", "\r")) else f"{line}\n" for line in lines]
+
+
 def _diff(before: str, after: str, rel_path: str) -> str:
     """Return unified diff for one file."""
     return "".join(
         difflib.unified_diff(
-            before.splitlines(True),
-            after.splitlines(True),
+            _prepare_diff_lines(before),
+            _prepare_diff_lines(after),
             fromfile=rel_path,
             tofile=rel_path,
         )

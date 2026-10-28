@@ -48,6 +48,7 @@ def get_capabilities() -> dict:
         "read_files": {"available": True, "note": "always enabled"},
         "create_file": {"available": True, "note": "always enabled"},
         "apply_edits": {"available": True, "note": "always enabled"},
+        "code_polish": {"available": True, "note": "always enabled"},
         "terminal_exec": {"available": True, "note": "always enabled"},
         "search_text": {
             "available": True,

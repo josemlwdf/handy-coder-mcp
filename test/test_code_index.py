@@ -32,6 +32,11 @@ class CodeIndexTests(unittest.TestCase):
         self.assertEqual(first["parsed"], 1)
         second = code_index.index_codebase()
         self.assertEqual(second["skipped"], 1)
+        self.assertEqual(len(second["skip_details"]), 1)
+        self.assertEqual(second["skip_details"][0]["path"], "A.cs")
+        self.assertEqual(second["skip_details"][0]["reason"], "unchanged_content")
+        self.assertIn("parser", second["capability_notes"])
+        self.assertEqual(second["parsed_zero_reason"], "all_scanned_files_unchanged")
         search = code_index.code_navigator(
             "search_code", query="ClampOutOfBoundsMovement"
         )

@@ -616,8 +616,13 @@ class AuditRegressionTests(unittest.TestCase):
         results = web_search_tool.parse_results(page)
         self.assertEqual(results[0]["title"], "Example Domain")
         self.assertEqual(results[0]["link"], "http://www.example.com/")
+        self.assertNotIn("provider_link", results[0])
         self.assertEqual(results[1]["title"], "Ad Result")
         self.assertEqual(results[1]["link"], "https://ads.example/landing")
+        self.assertEqual(
+            results[1]["provider_link"],
+            "https://duckduckgo.com/y.js?ad_domain=wix.com&u3=https%3A%2F%2Fads.example%2Flanding",
+        )
 
     def test_web_search_parse_results_keeps_snippet_with_matching_link(self) -> None:
         """Test snippet rows that follow link rows attach to the right result."""
@@ -636,6 +641,26 @@ class AuditRegressionTests(unittest.TestCase):
         self.assertEqual(results[1]["title"], "B title")
         self.assertEqual(results[1]["snippet"], "B snippet")
         self.assertEqual(results[1]["link"], "https://site-b.example/")
+
+    def test_web_search_parse_results_normalizes_scheme_relative_ddg_redirect(
+        self,
+    ) -> None:
+        """Test scheme-relative DDG redirect wrappers are unwrapped to destination URLs."""
+        page: str = """
+        <table>
+          <tr>
+            <td><a class='result-link' href='//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdoc'>Wrapped</a></td>
+            <td class='result-snippet'>Wrapped link snippet</td>
+          </tr>
+        </table>
+        """
+        results = web_search_tool.parse_results(page)
+        self.assertEqual(results[0]["title"], "Wrapped")
+        self.assertEqual(results[0]["link"], "https://example.com/doc")
+        self.assertEqual(
+            results[0]["provider_link"],
+            "https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdoc",
+        )
 
     def test_git_diff_is_returned_once_and_escaped_paths_are_structured(self) -> None:
         """Test git diff is returned once and escaped paths are structured function."""

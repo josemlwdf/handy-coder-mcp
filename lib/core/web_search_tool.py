@@ -243,18 +243,29 @@ def _clean_text(raw_html: str) -> str:
     return html.unescape(" ".join(text.split()))
 
 
-def _normalize_link(raw_link: str) -> tuple[str, bool]:
-    """Normalize link function."""
+def _normalize_link(raw_link: str) -> tuple[str, bool, str]:
+    """Normalize a result link and preserve the provider URL when it differs."""
     link = html.unescape(raw_link.strip())
-    if link.startswith("/"):
+    if link.startswith("//"):
+        link = f"https:{link}"
+    elif link.startswith("/"):
         link = f"https://duckduckgo.com{link}"
 
     parsed = urlparse(link)
+    if parsed.netloc.lower().endswith("duckduckgo.com") and parsed.path.startswith(
+        "//duckduckgo.com/"
+    ):
+        link = f"https://{parsed.path.lstrip('/')}"
+        if parsed.query:
+            link = f"{link}?{parsed.query}"
+        parsed = urlparse(link)
+
+    provider_link = link
     query = parse_qs(parsed.query)
     ad_like = bool(_AD_QUERY_KEYS.intersection(query.keys()))
 
     if parsed.netloc.lower().endswith("duckduckgo.com"):
-        if parsed.path in {"/l/", "/l.js"} and query.get("uddg"):
+        if parsed.path in {"/l/", "/l", "/l.js"} and query.get("uddg"):
             link = unquote(query["uddg"][0])
         elif parsed.path == "/y.js":
             ad_like: bool = True
@@ -271,7 +282,7 @@ def _normalize_link(raw_link: str) -> tuple[str, bool]:
     ):
         ad_like: bool = True
 
-    return link, ad_like
+    return link, ad_like, provider_link
 
 
 def parse_results(page: str) -> list:
@@ -307,7 +318,7 @@ def parse_results(page: str) -> list:
             continue
 
         title = _clean_text(link_match.group(0))
-        link, ad_like = _normalize_link(href_match.group(1))
+        link, ad_like, provider_link = _normalize_link(href_match.group(1))
 
         if title:
             parsed_results.append(
@@ -316,6 +327,7 @@ def parse_results(page: str) -> list:
                     "snippet": snippet,
                     "link": link,
                     "_ad_like": ad_like,
+                    "_provider_link": provider_link,
                 }
             )
 
@@ -334,13 +346,15 @@ def parse_results(page: str) -> list:
 
     output: list[dict] = []
     for result in deduped[:10]:
-        output.append(
-            {
-                "title": result["title"],
-                "snippet": result["snippet"],
-                "link": result["link"],
-            }
-        )
+        output_row: dict = {
+            "title": result["title"],
+            "snippet": result["snippet"],
+            "link": result["link"],
+        }
+        provider_link = result.get("_provider_link")
+        if provider_link and provider_link != result["link"]:
+            output_row["provider_link"] = provider_link
+        output.append(output_row)
     return output
 
 
@@ -402,7 +416,7 @@ def web_search(
         str,
         Field(
             min_length=1,
-            description="Search query for public web pages; results include titles, snippets, and links.",
+            description="Search query for public web pages; results include titles, snippets, normalized links, and optional provider_link values when wrappers are unwrapped.",
         ),
     ],
     fallback: Annotated[
@@ -432,6 +446,7 @@ def register(mcp):
     return mcp.tool(
         description=describe(
             "Search the public web and return result titles, snippets, and links. "
+            "When a provider wrapper URL is normalized to a final destination, results also include optional provider_link values with the original provider URL. "
             "By default uses DuckDuckGo Lite and auto-falls back to lib/extras/bing_search.py when DDG errors or returns no results; set fallback=true to force Bing. "
             "Use when current external information or a source URL is needed. "
             "For known URLs, use web_fetch_docs to read the page contents."

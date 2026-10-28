@@ -90,6 +90,14 @@ class CapabilityNotesTests(unittest.TestCase):
         self.assertNotIn("code_navigator", tools)
         self.assertIn("unknown_tool", tools["get_tool_details"]["note"])
 
+    def test_fallback_includes_code_polish(self) -> None:
+        """Test fallback includes code_polish with a specific note."""
+        system_info._MCP = None
+        tools = system_info.get_capabilities()["tools"]
+        self.assertIn("code_polish", tools)
+        self.assertTrue(tools["code_polish"]["available"])
+        self.assertEqual(tools["code_polish"]["note"], "always enabled")
+
 
 if __name__ == "__main__":
     unittest.main()

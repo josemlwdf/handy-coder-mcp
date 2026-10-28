@@ -70,6 +70,33 @@ def _expand(match: re.Match, template: str, expand_groups: bool) -> str:
     return match.expand(template) if expand_groups else template
 
 
+def _prepare_diff_lines(text: str) -> list[str]:
+    """Return diff-safe lines, preserving endings and adding missing terminal newlines."""
+    lines = text.splitlines(keepends=True)
+    return [line if line.endswith(("\n", "\r")) else f"{line}\n" for line in lines]
+
+
+def _unified_diff(before: str, after: str, path: str) -> str:
+    """Build unified diff with stable per-line separation, including EOF-no-newline cases."""
+    return "".join(
+        difflib.unified_diff(
+            _prepare_diff_lines(before),
+            _prepare_diff_lines(after),
+            fromfile=path,
+            tofile=path,
+        )
+    )
+
+
+def _changed_line_count(unified_diff_text: str) -> int:
+    """Count changed (+/-) lines excluding diff metadata headers."""
+    return sum(
+        1
+        for line in unified_diff_text.splitlines()
+        if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
+    )
+
+
 def apply_edits(
     edits: Annotated[
         list[Edit],
@@ -274,14 +301,7 @@ def apply_edits(
                 after = before[: match.start()] + new_text + before[match.end() :]
                 match_count: int = 1
 
-        diff = "".join(
-            difflib.unified_diff(
-                before.splitlines(True),
-                after.splitlines(True),
-                fromfile=name,
-                tofile=name,
-            )
-        )
+        diff = _unified_diff(before, after, name)
         staged_contents[resolved_key] = after
         results.append(
             {
@@ -296,13 +316,10 @@ def apply_edits(
     submitted_files: list[dict[str, str]] = [
         {
             "path": Path(resolved_key).relative_to(root).as_posix(),
-            "submitted_diff": "".join(
-                difflib.unified_diff(
-                    original_contents[resolved_key].splitlines(True),
-                    new_text.splitlines(True),
-                    fromfile=Path(resolved_key).relative_to(root).as_posix(),
-                    tofile=Path(resolved_key).relative_to(root).as_posix(),
-                )
+            "submitted_diff": _unified_diff(
+                original_contents[resolved_key],
+                new_text,
+                Path(resolved_key).relative_to(root).as_posix(),
             ),
         }
         for resolved_key, new_text in staged_contents.items()
@@ -352,20 +369,17 @@ def apply_edits(
         path = submitted["path"]
         polished = by_path.get(path, {})
         polished_diff = polished.get("diff") if isinstance(polished, dict) else None
+        using_polished_diff = isinstance(polished_diff, str) and bool(polished_diff)
         final_diff = (
-            polished_diff
-            if isinstance(polished_diff, str) and polished_diff
-            else submitted["submitted_diff"]
+            polished_diff if using_polished_diff else submitted["submitted_diff"]
         )
         changed_lines = (
-            polished.get("changed_lines") if isinstance(polished, dict) else None
+            polished.get("changed_lines")
+            if using_polished_diff and isinstance(polished, dict)
+            else None
         )
         if not isinstance(changed_lines, int):
-            changed_lines = sum(
-                1
-                for line in final_diff.splitlines()
-                if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
-            )
+            changed_lines = _changed_line_count(final_diff)
         files.append(
             {
                 "path": path,

@@ -302,6 +302,11 @@ def index_codebase(exclusions: None = None) -> dict:
         "removed": 0,
         "failed": 0,
         "errors": [],
+        "skip_details": [],
+        "capability_notes": {
+            "parser": "tree-sitter-c-sharp parser available",
+            "storage": "SQLite FTS5 available",
+        },
     }
     present = set()
     try:
@@ -320,6 +325,13 @@ def index_codebase(exclusions: None = None) -> dict:
                         (st.st_size, st.st_mtime, rel),
                     )
                     stats["skipped"] += 1
+                    stats["skip_details"].append(
+                        {
+                            "path": rel,
+                            "reason": "unchanged_content",
+                            "message": "File content hash unchanged; kept previously indexed symbols.",
+                        }
+                    )
                     continue
                 symbols, refs = _extract(data)
                 with con:
@@ -421,6 +433,13 @@ def index_codebase(exclusions: None = None) -> dict:
                 "INSERT OR REPLACE INTO metadata VALUES('last_indexed_at',?)",
                 (str(time.time()),),
             )
+        if (
+            stats["parsed"] == 0
+            and stats["scanned"] > 0
+            and stats["skipped"] == stats["scanned"]
+            and stats["failed"] == 0
+        ):
+            stats["parsed_zero_reason"] = "all_scanned_files_unchanged"
         return stats
     finally:
         con.close()

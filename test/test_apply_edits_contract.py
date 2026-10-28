@@ -283,6 +283,26 @@ class ApplyEditsContractTests(unittest.TestCase):
         self.assertIn("-before\n", result["files"][0]["diff"])
         self.assertIn("+after\n", result["files"][0]["diff"])
 
+    def test_non_newline_file_diff_is_line_separated_and_counts_changes(self) -> None:
+        """Test non newline file diff is line separated and counts changes function."""
+        target = self.root / "sandbox.txt"
+        target.write_text("hello", encoding="utf-8")
+
+        result = apply_edits.apply_edits(
+            [
+                apply_edits.Edit(
+                    path="sandbox.txt",
+                    pattern="hello",
+                    replacement="hello world",
+                )
+            ],
+            summary="test change",
+        )
+
+        self.assertEqual(target.read_text(encoding="utf-8"), "hello world")
+        self.assertIn("-hello\n+hello world\n", result["files"][0]["diff"])
+        self.assertEqual(result["files"][0]["changed_lines"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
