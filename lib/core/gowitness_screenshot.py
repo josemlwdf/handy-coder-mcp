@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 import shutil
+import socket
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -69,8 +71,27 @@ def _validate_url(url: str) -> str:
     parsed = urlparse(cleaned)
     if parsed.scheme.lower() not in {"http", "https"}:
         raise ValueError("url must use http or https")
-    if not parsed.netloc:
+    if not parsed.netloc or not parsed.hostname:
         raise ValueError("url must include a hostname")
+
+    try:
+        addresses = socket.getaddrinfo(
+            parsed.hostname,
+            parsed.port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except OSError as exc:
+        raise ValueError(f"Could not resolve URL host: {parsed.hostname}") from exc
+    if not addresses:
+        raise ValueError(f"URL host has no address: {parsed.hostname}")
+
+    for address in addresses:
+        ip = ipaddress.ip_address(address[4][0])
+        if not ip.is_global:
+            raise ValueError(
+                "Requests to local, private, or reserved network addresses are not allowed"
+            )
+
     return cleaned
 
 
@@ -110,7 +131,7 @@ def capture_url_screenshot(
         str,
         Field(
             min_length=1,
-            description="Target URL to screenshot. Must start with http:// or https://.",
+            description="Target URL to screenshot. Must be public http(s); local/private/reserved targets are blocked.",
         ),
     ],
     timeout_seconds: Annotated[
@@ -132,10 +153,16 @@ def capture_url_screenshot(
     try:
         normalized_url = _validate_url(url)
     except ValueError as exc:
+        message = str(exc)
+        error_code = (
+            "ssrf_blocked"
+            if any(term in message.lower() for term in ("private", "local", "reserved"))
+            else "invalid_url"
+        )
         return {
             "ok": False,
-            "error_code": "invalid_url",
-            "message": str(exc),
+            "error_code": error_code,
+            "message": message,
             "url": url,
         }
 
@@ -245,7 +272,7 @@ def register(mcp):
         description=describe(
             "Capture a full-page screenshot for a single URL using external gowitness. "
             "Stores artifacts only under tmp/screenshots/<run-id> and returns the image path. "
-            "Rejects non-http(s) URLs and reports structured errors for missing binary, timeouts, and failed captures. "
+            "Rejects non-http(s) and private/local/reserved targets (ssrf_blocked), and reports structured errors for missing binary, timeouts, and failed captures. "
             "Use when you need a rendered screenshot of a live webpage."
         )
     )(capture_url_screenshot)

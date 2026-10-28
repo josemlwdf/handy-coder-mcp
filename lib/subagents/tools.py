@@ -484,6 +484,19 @@ def _available_roles_text() -> str:
     return ", ".join(role_names())
 
 
+def _role_tooling_warning(role_obj: Role) -> str | None:
+    """Return a warning when any declared role tool lacks a runtime loop binding."""
+    health = loop.tool_binding_health(role_obj)
+    missing = health.get("missing", [])
+    if not missing:
+        return None
+    listed = ", ".join(sorted(missing))
+    return (
+        f"Role '{role_obj.name}' declares tool(s) without active loop bindings: {listed}. "
+        "Subagent output may be incomplete until these bindings are restored."
+    )
+
+
 def _instructions(
     role_name: str, task: str, context: str | None, deliverable: str | None
 ) -> str:
@@ -697,12 +710,14 @@ def subagent_run(
         raise ValueError(
             f"Unknown role '{role}'. Available roles: {_available_roles_text()}"
         )
+    tooling_warning = _role_tooling_warning(role_obj)
 
     if selected_backend == "cooperative" and not _COOP_EXPLICIT:
         return {
             "status": "unavailable",
             "backend": "cooperative",
             "message": "No subagent LLM available; continue the task yourself in this conversation.",
+            **({"tooling_warning": tooling_warning} if tooling_warning else {}),
         }
     model_summary = (
         selected_continue_model.model.safe_summary()
@@ -725,6 +740,7 @@ def subagent_run(
             **({"model": dict(task_obj.model)} if task_obj.model else {}),
             "instructions": _instructions(role, task, context, deliverable),
             "wait": bool(wait),
+            **({"tooling_warning": tooling_warning} if tooling_warning else {}),
         }
 
     _launch_loop(task_obj.task_id, role_obj, selected_continue_model)
@@ -732,7 +748,10 @@ def subagent_run(
         thread = _THREADS.get(task_obj.task_id)
         if thread is not None:
             thread.join(timeout=_wait_seconds())
-    return _terminal_payload(task_obj.task_id)
+    payload = _terminal_payload(task_obj.task_id)
+    if tooling_warning:
+        payload["tooling_warning"] = tooling_warning
+    return payload
 
 
 def subagent_status(

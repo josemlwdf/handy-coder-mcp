@@ -33,6 +33,19 @@ SamplingFn = Callable[[str, list[dict[str, str]], int], str]
 
 _IN_PROCESS_LOOP_TOOLS: set[str] = {"subagent_status", "subagent_result"}
 
+_TOOL_ACCESS_DENIAL_PHRASES: tuple[str, ...] = (
+    "don't have file-system tool access",
+    "dont have file-system tool access",
+    "do not have file-system tool access",
+    "don't have filesystem tool access",
+    "do not have filesystem tool access",
+    "don't have tool access",
+    "do not have tool access",
+    "can't access tools",
+    "cannot access tools",
+    "no tool access",
+)
+
 
 def _call_subagent_tool(name: str, args: dict[str, Any]) -> dict:
     """Call subagent tool function."""
@@ -177,6 +190,24 @@ def _redact(text: Any, secrets: Any = ()) -> str:
         if isinstance(secret, str) and len(secret) >= 4:
             out = out.replace(secret, "[redacted]")
     return out
+
+
+def tool_binding_health(role: Role) -> dict[str, list[str]]:
+    """Return available and missing tool bindings for a role in loop backends."""
+    available: list[str] = []
+    missing: list[str] = []
+    for tool_name in role.allowed_tools:
+        if tool_name in _ALLOWED_TOOLS:
+            available.append(tool_name)
+        else:
+            missing.append(tool_name)
+    return {"available": available, "missing": missing}
+
+
+def _looks_like_tool_access_denial(text: str) -> bool:
+    """Return whether a final response likely claims missing tool access."""
+    lowered = text.lower()
+    return any(phrase in lowered for phrase in _TOOL_ACCESS_DENIAL_PHRASES)
 
 
 def _post_json(
@@ -540,6 +571,7 @@ def run_loop(
     tool_calls: int = 0
     token_estimate: int = 0
     trace: list[dict[str, Any]] = []
+    tool_access_retry_count: int = 0
 
     for turn in range(1, role.max_turns + 1):
         _check_cancel(cancel_event)
@@ -585,6 +617,25 @@ def run_loop(
             final = action["text"]
             if not final:
                 raise RuntimeError("final result must not be empty")
+            if (
+                tool_access_retry_count == 0
+                and tool_calls == 0
+                and _looks_like_tool_access_denial(final)
+                and any(name in _ALLOWED_TOOLS for name in role.allowed_tools)
+            ):
+                tool_access_retry_count += 1
+                history.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Tool-access self-check: this subagent role does have tool access in this run. "
+                            f"Available tools for your role are: {', '.join(sorted(role.allowed_tools))}. "
+                            "Do not claim missing tool access. If the task needs workspace evidence, "
+                            "call an allowed tool now and then return the final result as JSON."
+                        ),
+                    }
+                )
+                continue
             return {"final": final, "trace": trace}, turn, token_estimate
 
         calls = action["calls"]

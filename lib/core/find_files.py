@@ -32,6 +32,24 @@ _DEFAULT_EXCLUDE_DIRS = frozenset(
 MAX_RESULTS: int = 5000
 
 
+def _normalize_glob_value(value: str) -> str:
+    """Normalize separators in glob-like inputs to POSIX-style slashes."""
+    return value.replace("\\", "/")
+
+
+def _glob_pattern_error(pattern: str, *, param_name: str) -> str | None:
+    """Return a message when a glob has an unclosed character class."""
+    start: int = 0
+    while True:
+        opening = pattern.find("[", start)
+        if opening == -1:
+            return None
+        closing = pattern.find("]", opening + 1)
+        if closing == -1:
+            return f"{param_name} contains an invalid glob pattern: unclosed '['"
+        start = closing + 1
+
+
 def _globstar_match(relative_path: str, pattern: str) -> bool:
     """Return True when a pattern containing ** also matches with zero intermediate directories.
 
@@ -107,6 +125,40 @@ def find_files(
     """Find files function."""
     if not glob_pattern:
         raise ValueError("glob_pattern cannot be empty")
+    normalized_glob_pattern = _normalize_glob_value(glob_pattern)
+    invalid_glob = _glob_pattern_error(
+        normalized_glob_pattern, param_name="glob_pattern"
+    )
+    if invalid_glob is not None:
+        return {
+            "files": [],
+            "errors": [
+                {
+                    "path": ".",
+                    "error_code": "invalid_glob",
+                    "message": invalid_glob,
+                }
+            ],
+            "incomplete": False,
+        }
+    normalized_exclude_pattern: str | None = None
+    if exclude_pattern is not None:
+        normalized_exclude_pattern = _normalize_glob_value(exclude_pattern)
+        invalid_exclude_glob = _glob_pattern_error(
+            normalized_exclude_pattern, param_name="exclude_pattern"
+        )
+        if invalid_exclude_glob is not None:
+            return {
+                "files": [],
+                "errors": [
+                    {
+                        "path": ".",
+                        "error_code": "invalid_glob",
+                        "message": invalid_exclude_glob,
+                    }
+                ],
+                "incomplete": False,
+            }
     if file_type not in (None, "file") and not (
         isinstance(file_type, str) and file_type.startswith(".") and len(file_type) > 1
     ):
@@ -116,7 +168,7 @@ def find_files(
     if min_size is not None and max_size is not None and min_size > max_size:
         raise ValueError("min_size cannot exceed max_size")
     errors: list = []
-    scoped_glob = glob_pattern if "/" in glob_pattern or "\\" in glob_pattern else None
+    scoped_glob = normalized_glob_pattern if "/" in normalized_glob_pattern else None
     found: list = []
     incomplete: bool = False
     start_time = time.monotonic()
@@ -138,7 +190,8 @@ def find_files(
                 }
             )
             break
-        parts = relative_path.replace("\\", "/").split("/")
+        normalized_relative_path = _normalize_glob_value(relative_path)
+        parts = normalized_relative_path.split("/")
         # Skip default-excluded dirs unless include_generated
         if not include_generated and any(
             part in _DEFAULT_EXCLUDE_DIRS for part in parts[:-1]
@@ -147,14 +200,16 @@ def find_files(
         # Skip dot-prefixed directories unless include_dot_dirs
         if not include_dot_dirs and any(part.startswith(".") for part in parts[:-1]):
             continue
-        name = relative_path.rsplit("/", 1)[-1]
+        name = normalized_relative_path.rsplit("/", 1)[-1]
         if not (
-            fnmatch.fnmatch(relative_path, glob_pattern)
-            or fnmatch.fnmatch(name, glob_pattern)
-            or _globstar_match(relative_path, glob_pattern)
+            fnmatch.fnmatch(normalized_relative_path, normalized_glob_pattern)
+            or fnmatch.fnmatch(name, normalized_glob_pattern)
+            or _globstar_match(normalized_relative_path, normalized_glob_pattern)
         ):
             continue
-        if exclude_pattern and fnmatch.fnmatch(relative_path, exclude_pattern):
+        if normalized_exclude_pattern and fnmatch.fnmatch(
+            normalized_relative_path, normalized_exclude_pattern
+        ):
             continue
         if file_type == "file" and not path.is_file():
             continue
@@ -172,8 +227,8 @@ def find_files(
             and stat.st_size > max_size
         ):
             continue
-        found.append(relative_path)
-        metadata[relative_path] = {
+        found.append(normalized_relative_path)
+        metadata[normalized_relative_path] = {
             "size_bytes": stat.st_size,
             "modified_time": stat.st_mtime,
         }

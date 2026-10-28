@@ -32,6 +32,27 @@ class GowitnessScreenshotTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error_code"], "invalid_url")
 
+    def test_localhost_is_blocked_with_ssrf_error(self) -> None:
+        """Reject loopback/private URL targets with ssrf_blocked before process execution."""
+        with patch.object(gowitness_screenshot, "run_process") as run_process_mock:
+            result = gowitness_screenshot.capture_url_screenshot("http://localhost:1")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "ssrf_blocked")
+        run_process_mock.assert_not_called()
+
+    def test_unresolvable_host_returns_invalid_url(self) -> None:
+        """Return invalid_url when hostname cannot be resolved."""
+        with patch.object(
+            gowitness_screenshot.socket,
+            "getaddrinfo",
+            side_effect=OSError("no host"),
+        ):
+            result = gowitness_screenshot.capture_url_screenshot(
+                "https://no-such-host.invalid"
+            )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "invalid_url")
+
     def test_missing_binary_returns_setup_required_payload(self) -> None:
         """Return setup_required when gowitness cannot be resolved."""
         with patch.object(

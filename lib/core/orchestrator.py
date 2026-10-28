@@ -174,7 +174,10 @@ def orchestrator_bootstrap(
     overwrite: Annotated[
         bool,
         Field(
-            description="Deprecated and ignored: existing `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md` files are always deleted and recreated."
+            description=(
+                "When false (default), bootstrap is non-destructive and fails if `.handy-coder/implementation-plan.md` "
+                "or `.handy-coder/tasks.md` already exists. When true, existing orchestrator files are replaced."
+            )
         ),
     ] = False,
 ) -> dict:
@@ -183,18 +186,31 @@ def orchestrator_bootstrap(
     plan_path = state_dir / "implementation-plan.md"
     tasks_path = state_dir / "tasks.md"
 
-    deleted_files: list = []
-    for path in (plan_path, tasks_path):
-        if path.exists():
-            path.unlink()
-            deleted_files.append(_relative(path))
+    existing_files: list = [
+        _relative(path) for path in (plan_path, tasks_path) if path.exists()
+    ]
+    if existing_files and not overwrite:
+        return _error(
+            "already_exists",
+            "Bootstrap files already exist. Re-run with overwrite=true to replace them.",
+            existing_files=existing_files,
+            action="bootstrap",
+        )
 
-    _write_text(plan_path, _plan_content(user_task, context), overwrite=False)
-    _write_text(tasks_path, _tasks_content(user_task), overwrite=False)
+    try:
+        _write_text(plan_path, _plan_content(user_task, context), overwrite=overwrite)
+        _write_text(tasks_path, _tasks_content(user_task), overwrite=overwrite)
+    except OSError as exc:
+        return _error(
+            "io_error",
+            f"{exc.strerror or 'Write failed'}: .handy-coder",
+            action="bootstrap",
+        )
 
     return {
-        "created": True,
-        "deleted_files": deleted_files,
+        "created": not existing_files,
+        "overwritten": bool(existing_files),
+        "deleted_files": [],
         "state_dir": _relative(state_dir),
         "implementation_plan": _relative(plan_path),
         "tasks_file": _relative(tasks_path),
@@ -378,7 +394,8 @@ def orchestrator(
         bool,
         Field(
             description=(
-                "For action='bootstrap': deprecated and ignored. Existing orchestrator files are always deleted and recreated."
+                "For action='bootstrap': when false (default), fail non-destructively if bootstrap files already exist; "
+                "when true, replace existing `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md`."
             )
         ),
     ] = False,
@@ -457,7 +474,9 @@ def register(mcp):
     return mcp.tool(
         description=describe(
             "Unified orchestrator tool with action='bootstrap' or action='update_task_status'. "
-            "bootstrap creates `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md` from one high-level request, first deleting existing copies. "
+            "bootstrap creates `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md` from one high-level request. "
+            "By default (overwrite=false), bootstrap is non-destructive and returns error_code='already_exists' if either file exists; "
+            "set overwrite=true to replace existing bootstrap files. "
             "update_task_status atomically updates one task line status (`non_started`, `interrupted`, `complete`, `failed`) in `.handy-coder/tasks.md` or another tracker file and keeps line formatting intact. "
             "Accepted target format is any Markdown task line ('- [ ] <task>' or '- [x] <task>') with zero or one `[status: ...]` tag; if missing, the tag is appended and current status is inferred from checkbox. "
             "Use line_number or task_contains to select the task. Automatically sets checkbox to [x] when status is complete and [ ] otherwise. "

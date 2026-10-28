@@ -735,6 +735,33 @@ class SubagentToolTests(unittest.TestCase):
             self.assertIsNone(manager.open_frame())
             self.assertEqual(manager.get_task(task.task_id).state, "failed")
 
+    def test_subagent_run_includes_tooling_warning_when_bindings_are_missing(
+        self,
+    ) -> None:
+        """Test subagent run includes tooling warning when bindings are missing function."""
+        subagent_tools._BACKEND = "direct:openai"
+        with patch.object(
+            subagent_loop,
+            "tool_binding_health",
+            return_value={"available": ["read_files"], "missing": ["find_files"]},
+        ):
+            with patch.object(
+                subagent_loop,
+                "run_loop",
+                return_value=(
+                    {"final": "- finding: quick result", "trace": []},
+                    1,
+                    42,
+                ),
+            ):
+                out = self.mcp.tools["subagent_manage"](
+                    action="run", role="explorer", task="inspect quickly", wait=True
+                )
+
+        self.assertEqual(out["status"], "completed")
+        self.assertIn("tooling_warning", out)
+        self.assertIn("find_files", out["tooling_warning"])
+
     def test_direct_backend_wait_completes_inline(self) -> None:
         """Test direct backend wait completes inline function."""
         subagent_tools.configure_runtime(client_capabilities=None)
@@ -1020,6 +1047,46 @@ class LoopBackendTests(unittest.TestCase):
         )
         self.assertIn("finding", result["final"])
         self.assertEqual(turns, 2)
+
+    def test_run_loop_retries_once_when_model_falsely_denies_tool_access(self) -> None:
+        """Test run loop retries once when model falsely denies tool access function."""
+        role = get_role("explorer")
+        self.assertIsNotNone(role)
+        calls: dict = {"n": 0}
+
+        def sampling_fn(_system_prompt, history, _max_tokens) -> str:
+            """Sampling fn function."""
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return '{"final":"I do not have file-system tool access in this turn."}'
+            if calls["n"] == 2:
+                self.assertIn("Tool-access self-check", history[-1]["content"])
+                return (
+                    '{"tool":"find_files","args":{"glob_pattern":"README.md",'
+                    '"exclude_pattern":null,"include_generated":false}}'
+                )
+            return '{"final":"- finding: README.md exists"}'
+
+        tools: dict = {
+            "find_files": lambda **_kwargs: {"files": [{"path": "README.md"}]},
+            "read_files": lambda **_kwargs: {"files": []},
+            "search_text": lambda **_kwargs: {"matches": []},
+            "subagent_status": lambda **_kwargs: {},
+            "subagent_result": lambda **_kwargs: {},
+        }
+        with patch.dict(subagent_loop._ALLOWED_TOOLS, tools, clear=True):
+            result, turns, _tokens = subagent_loop.run_loop(
+                "sampling",
+                role,
+                "list one file",
+                None,
+                None,
+                sampling_fn=sampling_fn,
+            )
+
+        self.assertEqual(result["final"], "- finding: README.md exists")
+        self.assertEqual(turns, 3)
+        self.assertEqual(result["trace"][0]["tool"], "find_files")
 
     def test_run_loop_rejects_disallowed_tool(self) -> str:
         """Test run loop rejects disallowed tool function."""

@@ -23,7 +23,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 from lib import support
-from lib.core import code_search, git_manage, read_files, terminal_exec
+from lib.core import (
+    code_search,
+    git_manage,
+    gowitness_screenshot,
+    read_files,
+    terminal_exec,
+)
+from lib.extras import web_fetch
 
 SECRET = "TOPSECRET-OUTSIDE-WORKSPACE"
 
@@ -477,6 +484,23 @@ class CodeSearchTruncationTests(_WorkspaceTestCase):
             [m["path"] for m in result["matches"]],
             [".hidden/secret.py", "src/real.py"],
         )
+
+
+class WebToolSecurityConsistencyTests(_WorkspaceTestCase):
+    """Cross-tool safety regression tests for web-facing tools."""
+
+    def test_local_targets_are_consistently_blocked_as_ssrf(self) -> None:
+        """Screenshot and fetch tools should agree on SSRF policy error code."""
+        url: str = "http://localhost:1"
+
+        screenshot = gowitness_screenshot.capture_url_screenshot(url, timeout_seconds=5)
+        fetched = web_fetch.web_fetch_docs(url, offset=0)
+
+        self.assertFalse(screenshot["ok"])
+        self.assertEqual(screenshot["error_code"], "ssrf_blocked")
+
+        self.assertFalse(fetched["supported"])
+        self.assertEqual(fetched["error_code"], "ssrf_blocked")
 
 
 if __name__ == "__main__":

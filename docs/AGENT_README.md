@@ -215,7 +215,7 @@ Only models with a chat role, a key (literal `apiKey`, an `Authorization` header
 
 `orchestrator` merges orchestration bootstrap and task-status tracking behind an action selector:
 
-- `action="bootstrap"` creates `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md` from a high-level request, deleting any existing copies of those files first (`overwrite` is deprecated and ignored).
+- `action="bootstrap"` creates `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md` from a high-level request. By default (`overwrite=false`), it is non-destructive and returns `error_code="already_exists"` if either file already exists; set `overwrite=true` to replace existing bootstrap files.
 - `action="update_task_status"` atomically updates one Markdown task line (selected by `line_number` or `task_contains`). It accepts `- [ ] <task>` / `- [x] <task>` with zero or one `[status: ...]` marker; status markers may appear in prefix (`- [ ] [status: ...] <task>`) or suffix (`- [ ] <task> [status: ...]`) position. If no marker exists, it infers current status from checkbox and appends a suffix marker. It sets checkbox to `[x]` for `complete` and `[ ]` otherwise.
 
 ### Optional Tier 2 integrations

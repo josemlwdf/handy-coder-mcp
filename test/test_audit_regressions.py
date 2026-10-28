@@ -358,6 +358,27 @@ class AuditRegressionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "file_type"):
             find_files.find_files("*", file_type="directory")
 
+    def test_find_files_rejects_invalid_glob_patterns(self) -> None:
+        """Test find files rejects malformed glob patterns function."""
+        invalid_glob = find_files.find_files("[")
+        self.assertEqual(invalid_glob["files"], [])
+        self.assertEqual(invalid_glob["incomplete"], False)
+        self.assertEqual(invalid_glob["errors"][0]["error_code"], "invalid_glob")
+        self.assertIn("glob_pattern", invalid_glob["errors"][0]["message"])
+
+        invalid_exclude = find_files.find_files("*", exclude_pattern="[")
+        self.assertEqual(invalid_exclude["files"], [])
+        self.assertEqual(invalid_exclude["incomplete"], False)
+        self.assertEqual(invalid_exclude["errors"][0]["error_code"], "invalid_glob")
+        self.assertIn("exclude_pattern", invalid_exclude["errors"][0]["message"])
+
+    def test_find_files_normalizes_backslash_glob_paths(self) -> None:
+        """Test find files normalizes backslash separators in glob patterns."""
+        (self.root / "src").mkdir()
+        (self.root / "src" / "main.py").write_text("print('ok')")
+        result = find_files.find_files("src\\*.py")
+        self.assertEqual(result["files"], ["src/main.py"])
+
     def test_apply_edits_conditional_dependency_hint_and_ignored_limit_warning(
         self,
     ) -> None:
