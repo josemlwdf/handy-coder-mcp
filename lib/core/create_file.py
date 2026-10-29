@@ -25,49 +25,50 @@ def create_file(
     path: Annotated[
         str,
         Field(
-            min_length=1, description="Workspace-relative path of the file to create."
+            min_length=1,
+            description="Workspace-relative path of the file to create. (Required: True)",
         ),
     ],
     content: Annotated[
         str,
         Field(
-            description="Full UTF-8 text content to write to the new file; may be empty."
+            description="Full UTF-8 text content to write to the new file; may be empty. (Required: False)"
         ),
     ] = "",
     overwrite: Annotated[
         bool,
         Field(
-            description="If true, replace the file when it already exists; otherwise an existing file returns error_code='already_exists'. Defaults to false."
+            description="If true, replace the file when it already exists; otherwise an existing file returns error_code='already_exists'. Defaults to false. (Required: False)"
         ),
     ] = False,
     create_parents: Annotated[
         bool,
         Field(
-            description="If true (default), create any missing parent directories inside the workspace."
+            description="If true (default), create any missing parent directories inside the workspace. (Required: False)"
         ),
     ] = True,
     permissions: Annotated[
         int | str | None,
         Field(
-            description="Optional POSIX mode as a decimal integer (0 to 511, e.g. 420) or octal string ('0755' or '0o755'). Ignored on Windows."
+            description="Optional POSIX mode as a decimal integer (0 to 511, e.g. 420) or octal string ('0755' or '0o755'). Ignored on Windows. (Required: False)"
         ),
     ] = None,
     backup: Annotated[
         bool,
         Field(
-            description="When overwriting, save the prior bytes to a sibling .bak file before writing."
+            description="When overwriting, save the prior bytes to a sibling .bak file before writing. (Required: False)"
         ),
     ] = False,
     format_content: Annotated[
         bool,
         Field(
-            description="When true, run an available formatter on supported Python, JavaScript, or HTML files after writing. Defaults to false to preserve submitted content."
+            description="When true, run an available formatter on supported Python, JavaScript, or HTML files after writing. Defaults to false to preserve submitted content. (Required: False)"
         ),
     ] = False,
     post_process_python: Annotated[
         bool,
         Field(
-            description="When true, run Python source post-processing after writing a .py file. Defaults to false."
+            description="When true, run Python source post-processing after writing a .py file. Defaults to false. (Required: False)"
         ),
     ] = False,
     *,

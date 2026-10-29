@@ -6,7 +6,7 @@ MAX_SUMMARY_CHARS = 200
 
 SUMMARY_DESCRIPTION = (
     "One-line, concise summary of the change being made (single line, max "
-    f"{MAX_SUMMARY_CHARS} characters)."
+    f"{MAX_SUMMARY_CHARS} characters). (Required: True)"
 )
 
 

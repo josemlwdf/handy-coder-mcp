@@ -10,34 +10,39 @@ def terminal_exec(
     command: Annotated[
         str,
         Field(
-            description="Shell command to execute. Must not be empty; runs with the configured shell."
+            description="Shell command to execute. Must not be empty; runs with the configured shell. (Required: True)"
         ),
     ],
     cwd: Annotated[
-        str | None, Field(description="Optional workspace-relative working directory.")
+        str | None,
+        Field(
+            description="Optional workspace-relative working directory. (Required: False)"
+        ),
     ] = None,
     timeout_ms: Annotated[
         int,
         Field(
             ge=1,
             le=600000,
-            description="Command timeout in milliseconds, from 1 through 600000 (10 minutes); defaults to 30000 (30 s). Note: MCP clients typically enforce their own shorter timeouts that may cut off a command.",
+            description="Command timeout in milliseconds, from 1 through 600000 (10 minutes); defaults to 30000 (30 s). Note: MCP clients typically enforce their own shorter timeouts that may cut off a command. (Required: False)",
         ),
     ] = 30000,
     env: Annotated[
         dict[str, str] | None,
         Field(
-            description='Optional environment variables added to the inherited process environment as an object of string values, for example {"MODE": "test"}.'
+            description='Optional environment variables added to the inherited process environment as an object of string values, for example {"MODE": "test"}. (Required: False)'
         ),
     ] = None,
     stdin: Annotated[
         str | None,
-        Field(description="Optional text sent to standard input, then closed."),
+        Field(
+            description="Optional text sent to standard input, then closed. (Required: False)"
+        ),
     ] = None,
     shell: Annotated[
         str | None,
         Field(
-            description="Optional shell executable override for this call; defaults to the configured shell."
+            description="Optional shell executable override for this call; defaults to the configured shell. (Required: False)"
         ),
     ] = None,
 ) -> dict:

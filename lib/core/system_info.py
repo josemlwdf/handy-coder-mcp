@@ -166,7 +166,8 @@ def register(mcp):
     _MCP = mcp
     return mcp.tool(
         description=describe(
-            "Return server health and capability status: which tools are available, "
+            "Return server health and capability status for tools and installed toolchains. "
+            "Reports which tools are available, "
             "which optional binaries (for example git and pytest) are installed, "
             "and which optional environment-variable gated features are active. "
             "For optional integrations, tool entries include missing_requirements and setup_docs where applicable. "

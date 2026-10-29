@@ -71,54 +71,63 @@ def find_files(
     glob_pattern: Annotated[
         str,
         Field(
-            description="Non-empty glob pattern matched against workspace-relative paths and file names."
+            description="Non-empty glob pattern matched against workspace-relative paths and file names. (Required: True)"
         ),
     ],
     exclude_pattern: Annotated[
         str | None,
         Field(
-            description="Optional glob pattern to exclude matching workspace-relative paths."
+            description="Optional glob pattern to exclude matching workspace-relative paths. (Required: False)"
         ),
     ] = None,
     include_generated: Annotated[
         bool,
         Field(
-            description="When true, also search generated and build directories that are excluded by default."
+            description="When true, also search generated and build directories that are excluded by default. (Required: False)"
         ),
     ] = False,
     include_dot_dirs: Annotated[
         bool,
         Field(
-            description="When true, include files inside dot-prefixed directories such as .git and .vscode."
+            description="When true, include files inside dot-prefixed directories such as .git and .vscode. (Required: False)"
         ),
     ] = False,
     file_type: Annotated[
         str | None,
         Field(
-            description="Optional extension filter such as .py; file selects all file types."
+            description="Optional extension filter such as .py; file selects all file types. (Required: False)"
         ),
     ] = None,
     min_size: Annotated[
         int | None,
-        Field(ge=0, description="Optional minimum file size in bytes; files only."),
+        Field(
+            ge=0,
+            description="Optional minimum file size in bytes; files only. (Required: False)",
+        ),
     ] = None,
     max_size: Annotated[
         int | None,
-        Field(ge=0, description="Optional maximum file size in bytes; files only."),
+        Field(
+            ge=0,
+            description="Optional maximum file size in bytes; files only. (Required: False)",
+        ),
     ] = None,
     sort_by: Annotated[
         Literal["path", "size", "modified"],
         Field(
-            description="Sort results by path (default), size, or modified (last-modified time)."
+            description="Sort results by path (default), size, or modified (last-modified time). (Required: False)"
         ),
     ] = "path",
     include_metadata: Annotated[
-        bool, Field(description="Include size_bytes and modified_time per result.")
+        bool,
+        Field(
+            description="Include size_bytes and modified_time per result. (Required: False)"
+        ),
     ] = False,
     include_diagnostics: Annotated[
         bool,
         Field(
-            description="Include diagnostics for files skipped because they resolve outside the authorized workspace."
+            description="Include diagnostics for files skipped because they resolve outside the authorized workspace. (Required: False)"
         ),
     ] = False,
 ) -> dict:

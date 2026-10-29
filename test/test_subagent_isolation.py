@@ -187,7 +187,7 @@ class AllowlistTests(unittest.TestCase):
     def test_write_role_runs_without_opt_in(self) -> None:
         """Test write role runs without opt in function."""
         out, provider = run(get_role("coder"), [final_action("done")])
-        self.assertIn("done", out[0])
+        self.assertIn("done", out[0]["final"])
         self.assertEqual(len(provider.payloads), 1)
 
 
@@ -217,7 +217,7 @@ class CallCapTests(unittest.TestCase):
         result, turns, tokens = run(get_role("explorer"), [final_action("- evidence")])[
             0
         ]
-        self.assertEqual(result, "- evidence")
+        self.assertEqual(result["final"], "- evidence")
         self.assertEqual(turns, 1)
         self.assertGreaterEqual(tokens, 1)
 

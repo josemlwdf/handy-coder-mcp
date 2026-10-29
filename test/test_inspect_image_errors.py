@@ -51,6 +51,17 @@ class InspectImageErrorTests(unittest.TestCase):
         self.assertEqual(out["error_code"], "empty_prompt")
         self.assertIn("must not be empty", out["message"])
 
+    def test_invalid_output_mode_returns_invalid_output_mode_error(self) -> None:
+        """Reject output_mode values outside the supported concise/detailed options."""
+        out = self.mcp.tools["inspect_image"](
+            image_path="photo.png",
+            prompt="What is shown?",
+            output_mode="verbose",
+        )
+
+        self.assertEqual(out["error_code"], "invalid_output_mode")
+        self.assertIn("output_mode must be one of", out["message"])
+
     def test_unsupported_image_returns_unsupported_image_error(self) -> None:
         """Reject files that are not recognized as supported image formats."""
         with tempfile.TemporaryDirectory() as temp_dir:

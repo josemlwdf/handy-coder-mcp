@@ -852,6 +852,18 @@ class AuditRegressionTests(unittest.TestCase):
         self.assertEqual(result["exit_code"], 0)
         self.assertNotIn("hint", result)
 
+    def test_code_polish_after_tool_call_does_not_inject_automatic_commit(self) -> None:
+        """Test code polish after tool call does not inject automatic commit function."""
+        subagent_tools._clear_pending_change_summaries_for_tests()
+        result = subagent_tools.after_tool_call(
+            "code_polish",
+            {"written_files": ["src/example.py"]},
+            {"summary": "Format example file"},
+        )
+        self.assertNotIn("automatic_commit", result)
+        self.assertNotIn("progress_summary_hint", result)
+        self.assertEqual(subagent_tools._PENDING_CHANGE_SUMMARIES, [])
+
     def test_subagent_complete_requires_active_cooperative_task(self) -> None:
         """Test subagent complete requires active cooperative task function."""
         manager = subagent_tools.SubagentManager()

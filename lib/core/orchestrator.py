@@ -369,7 +369,7 @@ def orchestrator(
         Field(
             description=(
                 "Orchestrator action to run: bootstrap creates `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md`; "
-                "update_task_status atomically updates one task status in `.handy-coder/tasks.md`, accepting Markdown task lines with or without an existing [status: ...] tag."
+                "update_task_status atomically updates one task status in `.handy-coder/tasks.md`, accepting Markdown task lines with or without an existing [status: ...] tag. (Required: True)"
             )
         ),
     ],
@@ -378,7 +378,7 @@ def orchestrator(
         Field(
             min_length=3,
             description=(
-                "For action='bootstrap': high-level user request to break down into a plan and task tracker."
+                "For action='bootstrap': high-level user request to break down into a plan and task tracker. (Required: False)"
             ),
         ),
     ] = None,
@@ -386,7 +386,7 @@ def orchestrator(
         str | None,
         Field(
             description=(
-                "For action='bootstrap': optional additional context to include in the implementation plan."
+                "For action='bootstrap': optional additional context to include in the implementation plan. (Required: False)"
             )
         ),
     ] = None,
@@ -395,7 +395,7 @@ def orchestrator(
         Field(
             description=(
                 "For action='bootstrap': when false (default), fail non-destructively if bootstrap files already exist; "
-                "when true, replace existing `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md`."
+                "when true, replace existing `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md`. (Required: False)"
             )
         ),
     ] = False,
@@ -403,7 +403,7 @@ def orchestrator(
         Status | None,
         Field(
             description=(
-                "For action='update_task_status': new task status. Allowed values: non_started, interrupted, complete, failed."
+                "For action='update_task_status': new task status. Allowed values: non_started, interrupted, complete, failed. (Required: False)"
             )
         ),
     ] = None,
@@ -415,7 +415,7 @@ def orchestrator(
                 "For action='update_task_status': optional 1-based tasks.md line number selector. "
                 "Selected line must be a Markdown task ('- [ ] <task>'), with zero or one [status: ...] tag. "
                 "When tag is missing, current status is inferred from checkbox before update. "
-                "Provide exactly one selector: line_number or task_contains."
+                "Provide exactly one selector: line_number or task_contains. (Required: False)"
             ),
         ),
     ] = None,
@@ -426,7 +426,7 @@ def orchestrator(
                 "For action='update_task_status': optional text selector matched against task lines. "
                 "Selected line must be a Markdown task ('- [ ] <task>'), with zero or one [status: ...] tag. "
                 "When tag is missing, current status is inferred from checkbox before update. "
-                "Provide exactly one selector: task_contains or line_number."
+                "Provide exactly one selector: task_contains or line_number. (Required: False)"
             )
         ),
     ] = None,
@@ -434,7 +434,7 @@ def orchestrator(
         str,
         Field(
             description=(
-                "For action='update_task_status': workspace-relative path to the task tracker file."
+                "For action='update_task_status': workspace-relative path to the task tracker file. (Required: False)"
             )
         ),
     ] = ".handy-coder/tasks.md",

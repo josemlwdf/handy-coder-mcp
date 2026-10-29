@@ -244,14 +244,14 @@ def web_fetch_docs(
     url: Annotated[
         str,
         Field(
-            description="Public HTTP(S) URL to fetch as text; private, local, and reserved network targets are blocked."
+            description="Public HTTP(S) URL to fetch as text; private, local, and reserved network targets are blocked. (Required: True)"
         ),
     ],
     offset: Annotated[
         int,
         Field(
             ge=0,
-            description="Character offset into the extracted text to start reading from; use to page through content beyond the initial 20 000-character window.",
+            description="Character offset into the extracted text to start reading from; use to page through content beyond the initial 20 000-character window. (Required: False)",
         ),
     ] = 0,
 ) -> dict:

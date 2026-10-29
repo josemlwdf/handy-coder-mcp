@@ -7,6 +7,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -63,6 +64,164 @@ def _backend() -> str:
     return _BACKEND or "cooperative"
 
 
+_VERIFICATION_MAX_FILES: int = 5
+_VERIFICATION_MAX_FILE_BYTES: int = 250_000
+_VERIFICATION_MAX_SNIPPETS: int = 24
+
+
+def _default_verification(*, enabled: bool) -> dict[str, Any]:
+    """Return default verification metadata for a completed subagent result."""
+    return {
+        "mode": "workspace_snippet_match",
+        "enabled": enabled,
+        "verified": False,
+        "confidence": "unverified",
+        "files_checked": [],
+        "snippets_checked": 0,
+        "matched_snippets": [],
+        "unmatched_snippets": [],
+        "reason": "disabled" if not enabled else "insufficient_evidence",
+    }
+
+
+def _extract_workspace_paths(*texts: str | None) -> list[str]:
+    """Extract likely workspace-relative file paths from freeform task text."""
+    candidates: list[str] = []
+    for text in texts:
+        if not isinstance(text, str) or not text:
+            continue
+        for token in re.findall(r"[./A-Za-z0-9_\-]+", text):
+            if "/" not in token:
+                continue
+            cleaned = token.strip("()[]{}<>'\"`,:;!?")
+            if not cleaned or "://" in cleaned or len(cleaned) > 240:
+                continue
+            candidates.append(cleaned)
+    unique: list[str] = []
+    for path in candidates:
+        if path not in unique:
+            unique.append(path)
+    return unique
+
+
+def _extract_snippets_for_verification(final_text: str) -> list[str]:
+    """Extract likely quoted or line-level snippets from a model final answer."""
+    snippets: list[str] = []
+    for quoted in re.finditer(
+        r'"([^"\n]{3,200})"|\'([^\'\n]{3,200})\'|`([^`\n]{3,200})`', final_text
+    ):
+        snippet = next((group for group in quoted.groups() if group), "").strip()
+        if snippet and snippet not in snippets:
+            snippets.append(snippet)
+    if snippets:
+        return snippets[:_VERIFICATION_MAX_SNIPPETS]
+
+    for raw_line in final_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        line = re.sub(r"^[-*]\s+", "", line)
+        line = re.sub(r"^\d+[.)]\s+", "", line)
+        line = re.sub(
+            r"^(line|excerpt|quote|evidence)\s*[:\-]\s*", "", line, flags=re.IGNORECASE
+        )
+        if 3 <= len(line) <= 200 and line not in snippets:
+            snippets.append(line)
+        if len(snippets) >= _VERIFICATION_MAX_SNIPPETS:
+            break
+    return snippets
+
+
+def _build_verification(task_obj: Any, final_text: str) -> dict[str, Any]:
+    """Build workspace-snippet verification metadata for a completed subagent task."""
+    enabled = bool(getattr(task_obj, "verify_workspace_claims", False))
+    metadata = _default_verification(enabled=enabled)
+    if not enabled:
+        return metadata
+
+    referenced_paths = _extract_workspace_paths(
+        getattr(task_obj, "task", None),
+        getattr(task_obj, "context", None),
+        getattr(task_obj, "deliverable", None),
+        final_text,
+    )
+    file_payloads: list[tuple[str, str, set[str]]] = []
+    for candidate in referenced_paths:
+        if len(file_payloads) >= _VERIFICATION_MAX_FILES:
+            break
+        try:
+            resolved = inside(candidate, must_exist=True)
+        except (FileNotFoundError, OSError, ValueError):
+            continue
+        if not resolved.is_file():
+            continue
+        try:
+            raw = resolved.read_bytes()
+        except OSError:
+            continue
+        if len(raw) > _VERIFICATION_MAX_FILE_BYTES:
+            continue
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        rel = str(resolved.relative_to(support.ROOT)).replace("\\", "/")
+        lines: set = {line.strip() for line in text.splitlines() if line.strip()}
+        file_payloads.append((rel, text, lines))
+
+    metadata["files_checked"] = [item[0] for item in file_payloads]
+    if not file_payloads:
+        metadata["reason"] = "no_workspace_files_checked"
+        return metadata
+
+    snippets = _extract_snippets_for_verification(final_text)
+    metadata["snippets_checked"] = len(snippets)
+    if not snippets:
+        metadata["reason"] = "no_snippets_extracted"
+        return metadata
+
+    matched: list[str] = []
+    unmatched: list[str] = []
+    for snippet in snippets:
+        snippet_text = snippet.strip()
+        if any(
+            snippet_text in file_text or snippet_text in line_set
+            for _rel, file_text, line_set in file_payloads
+        ):
+            matched.append(snippet_text)
+        else:
+            unmatched.append(snippet_text)
+    metadata["matched_snippets"] = matched
+    metadata["unmatched_snippets"] = unmatched
+    metadata["verified"] = len(unmatched) == 0 and len(matched) > 0
+    metadata["confidence"] = "high" if metadata["verified"] else "low"
+    metadata["reason"] = (
+        "all_snippets_matched" if metadata["verified"] else "snippet_mismatch"
+    )
+    return metadata
+
+
+def _is_strict_verification_failure(
+    task_obj: Any, verification: dict[str, Any]
+) -> bool:
+    """Return true when strict verification is enabled and confidence is not high."""
+    return bool(
+        getattr(task_obj, "verify_workspace_claims", False)
+        and getattr(task_obj, "verification_policy", "report") == "strict"
+        and verification.get("confidence") != "high"
+    )
+
+
+def _strict_verification_error(verification: dict[str, Any]) -> str:
+    """Build a stable strict-verification failure message."""
+    reason = str(verification.get("reason") or "verification_not_high_confidence")
+    confidence = str(verification.get("confidence") or "unknown")
+    return (
+        "Strict verification failed: subagent output confidence is not high "
+        f"(confidence={confidence}, reason={reason})."
+    )
+
+
 def _changed_files(tool_name: str, result: Any, args: dict[str, Any]) -> list[str]:
     """Changed files function."""
     if not isinstance(result, dict) or result.get("error_code"):
@@ -72,8 +231,8 @@ def _changed_files(tool_name: str, result: Any, args: dict[str, Any]) -> list[st
             return []
         path = result.get("path")
         return [path] if isinstance(path, str) and path else []
-    if tool_name in {"apply_edits", "code_polish"}:
-        if tool_name == "apply_edits" and args.get("dry_run"):
+    if tool_name == "apply_edits":
+        if args.get("dry_run"):
             return []
         if not isinstance(result.get("written_files"), list):
             return []
@@ -569,27 +728,43 @@ def _loop_runner(
         invalid = role_obj.validator(final_text)
         if invalid:
             raise ValueError(invalid)
-        _MANAGER.complete_task(
-            task_id,
-            final_text,
-            trace=list(loop_output.get("trace", [])),
-            turns=turns,
-            tokens=tokens,
-        )
+        verification = _build_verification(task_obj, final_text)
+        if _is_strict_verification_failure(task_obj, verification):
+            _MANAGER.fail_task(
+                task_id,
+                _strict_verification_error(verification),
+                verification=verification,
+            )
+        else:
+            _MANAGER.complete_task(
+                task_id,
+                final_text,
+                trace=list(loop_output.get("trace", [])),
+                turns=turns,
+                tokens=tokens,
+                verification=verification,
+            )
     except loop.SubagentCancelled:
         pass  # task state was already set to cancelled by subagent_cancel
     except Exception as exc:  # noqa: BLE001
+        backend: str = "unknown"
+        task_exists: bool = True
+        try:
+            backend = _MANAGER.get_task(task_id).backend
+        except ValueError:
+            task_exists: bool = False
         project_logs.log_internal_event(
             "error",
             "subagent_loop_failure",
             {
                 "task_id": task_id,
                 "role": role_obj.name,
-                "backend": _MANAGER.get_task(task_id).backend,
+                "backend": backend,
                 "error": loop._redact(exc, secrets),
             },
         )
-        _MANAGER.fail_task(task_id, loop._redact(exc, secrets))
+        if task_exists:
+            _MANAGER.fail_task(task_id, loop._redact(exc, secrets))
     finally:
         _THREADS.pop(task_id, None)
         _CANCEL_EVENTS.pop(task_id, None)
@@ -620,6 +795,11 @@ def _terminal_payload(task_id: str) -> dict:
             "final": task_obj.final or "",
             "trace": list(task_obj.trace),
             "usage": {"turns": task_obj.turns_used, "tokens": task_obj.tokens_used},
+            "verification": (
+                dict(task_obj.verification)
+                if isinstance(task_obj.verification, dict)
+                else _default_verification(enabled=task_obj.verify_workspace_claims)
+            ),
         }
     if task_obj.state in {"failed", "cancelled"}:
         return {
@@ -628,6 +808,11 @@ def _terminal_payload(task_id: str) -> dict:
             "backend": task_obj.backend,
             **({"model": dict(task_obj.model)} if task_obj.model else {}),
             "error": task_obj.error or f"task ended with state {task_obj.state}",
+            **(
+                {"verification": dict(task_obj.verification)}
+                if isinstance(task_obj.verification, dict)
+                else {}
+            ),
         }
     return {
         "status": "running",
@@ -642,39 +827,57 @@ def subagent_run(
     role: Annotated[
         str,
         Field(
-            description="Registered subagent role name, e.g. generalist, coder, explorer, reviewer, planner."
+            description="Registered subagent role name, e.g. generalist, coder, explorer, reviewer, planner. (Required: True)"
         ),
     ],
     task: Annotated[
         str,
         Field(
-            description="Task for the subagent to perform in isolation from the parent flow."
+            description="Task for the subagent to perform in isolation from the parent flow. (Required: True)"
         ),
     ],
     context: Annotated[
         str | None,
         Field(
-            description="Optional context to pass to the subagent, such as branch, files, or constraints."
+            description="Optional context to pass to the subagent, such as branch, files, or constraints. (Required: False)"
         ),
     ] = None,
     deliverable: Annotated[
         str | None,
         Field(
-            description="Optional explicit deliverable format for the subagent result."
+            description="Optional explicit deliverable format for the subagent result. (Required: False)"
         ),
     ] = None,
     model: Annotated[
         str | None,
         Field(
-            description="Optional Continue model name or model identifier. Available choices are listed by get_capabilities under subagents.continue.models. An explicit choice routes this task through that model's direct API provider."
+            description="Optional Continue model name or model identifier. Available choices are listed by get_capabilities under subagents.continue.models. An explicit choice routes this task through that model's direct API provider. (Required: False)"
         ),
     ] = None,
     wait: Annotated[
         bool,
         Field(
-            description="When true (default), wait for completion when the backend can finish quickly. Without a usable backend the result is status unavailable; explicit cooperative mode delegates to the host for completion via subagent_manage(action='complete')."
+            description="When true (default), wait for completion when the backend can finish quickly. Without a usable backend the result is status unavailable; explicit cooperative mode delegates to the host for completion via subagent_manage(action='complete'). (Required: False)"
         ),
     ] = True,
+    verify_workspace_claims: Annotated[
+        bool,
+        Field(
+            description="Optional post-check for action='run'. When true, completed responses include verification metadata that compares extracted snippets against referenced workspace files. (Required: False)"
+        ),
+    ] = False,
+    verification_policy: Annotated[
+        Literal["report", "strict"],
+        Field(
+            description="Verification handling when verify_workspace_claims=true. 'report' includes metadata only; 'strict' fails completion when verification confidence is not high. (Required: False)"
+        ),
+    ] = "report",
+    strict_verification: Annotated[
+        bool,
+        Field(
+            description="Alias for action='run': when true, behaves like verification_policy='strict'. verification_policy remains canonical. (Required: False)"
+        ),
+    ] = False,
 ) -> dict:
     """Subagent run function."""
     selected_continue_model: None = None
@@ -724,8 +927,18 @@ def subagent_run(
         if selected_continue_model
         else None
     )
+    effective_verification_policy: Literal["report", "strict"] = (
+        "strict" if strict_verification else verification_policy
+    )
     task_obj = _MANAGER.create_task(
-        role, task, selected_backend, context, deliverable, model_summary
+        role,
+        task,
+        selected_backend,
+        context,
+        deliverable,
+        model_summary,
+        verify_workspace_claims=verify_workspace_claims,
+        verification_policy=effective_verification_policy,
     )
     if role_obj.name == "committer":
         _clear_pending_change_summaries(reset_progress_counters=False)
@@ -756,7 +969,10 @@ def subagent_run(
 
 def subagent_status(
     task_id: Annotated[
-        str, Field(description="Task identifier returned by subagent_run.")
+        str,
+        Field(
+            description="Task identifier returned by subagent_run. (Required: True)"
+        ),
     ],
 ) -> dict:
     """Subagent status function."""
@@ -775,6 +991,12 @@ def subagent_status(
         **({"model": dict(task_obj.model)} if task_obj.model else {}),
         "usage": {"turns": task_obj.turns_used, "tokens": task_obj.tokens_used},
     }
+    if task_obj.state in {"done", "failed"}:
+        payload["verification"] = (
+            dict(task_obj.verification)
+            if isinstance(task_obj.verification, dict)
+            else _default_verification(enabled=task_obj.verify_workspace_claims)
+        )
     if task_obj.error:
         payload["error"] = task_obj.error
     return payload
@@ -782,13 +1004,16 @@ def subagent_status(
 
 def subagent_result(
     task_id: Annotated[
-        str, Field(description="Task identifier returned by subagent_run.")
+        str,
+        Field(
+            description="Task identifier returned by subagent_run. (Required: True)"
+        ),
     ],
     offset: Annotated[
         int | None,
         Field(
             ge=0,
-            description="Optional 0-based character offset for paging long results.",
+            description="Optional 0-based character offset for paging long results. (Required: False)",
         ),
     ] = None,
 ) -> dict:
@@ -808,13 +1033,15 @@ def subagent_result(
 def subagent_complete(
     task_id: Annotated[
         str,
-        Field(description="Open delegated task id to complete in cooperative mode."),
+        Field(
+            description="Open delegated task id to complete in cooperative mode. (Required: True)"
+        ),
     ],
     result: Annotated[
         str,
         Field(
             max_length=100000,
-            description="Final subagent result text, at most 100,000 characters. Keep it concise or page supporting detail with subagent_result. Must match the role's expected output format.",
+            description="Final subagent result text, at most 100,000 characters. Keep it concise or page supporting detail with subagent_result. Must match the role's expected output format. (Required: True)",
         ),
     ],
 ) -> dict:
@@ -847,7 +1074,28 @@ def subagent_complete(
     if invalid:
         raise ValueError(f"Result validation failed: {invalid}")
 
-    done = _MANAGER.complete_task(task_id, result, trace=[])
+    verification = _build_verification(task_obj, result)
+    if _is_strict_verification_failure(task_obj, verification):
+        failed = _MANAGER.fail_task(
+            task_id,
+            _strict_verification_error(verification),
+            verification=verification,
+        )
+        return {
+            "error_code": "verification_failed",
+            "state": failed.state,
+            "task_id": failed.task_id,
+            "backend": failed.backend,
+            "message": failed.error,
+            "verification": dict(verification),
+        }
+
+    done = _MANAGER.complete_task(
+        task_id,
+        result,
+        trace=[],
+        verification=verification,
+    )
     digest = hashlib.sha1(result.encode("utf-8")).hexdigest()[:10]
     first_line = result.strip().splitlines()[0] if result.strip() else ""
     return {
@@ -860,18 +1108,20 @@ def subagent_complete(
 
 
 def subagent_cancel(
-    task_id: Annotated[str, Field(description="Task identifier to cancel.")],
+    task_id: Annotated[
+        str, Field(description="Task identifier to cancel. (Required: True)")
+    ],
     reason: Annotated[
         str | None,
         Field(
             max_length=2000,
-            description="Optional cancellation reason recorded with the task.",
+            description="Optional cancellation reason recorded with the task. (Required: False)",
         ),
     ] = None,
     confirm: Annotated[
         bool,
         Field(
-            description="Must be true to confirm cancellation; false returns a confirmation-required response."
+            description="Must be true to confirm cancellation; false returns a confirmation-required response. (Required: False)"
         ),
     ] = False,
 ) -> dict:
@@ -936,76 +1186,94 @@ def subagent_manage(
     action: Annotated[
         Literal["run", "status", "result", "complete", "cancel"],
         Field(
-            description="Lifecycle action to perform: run, status, result, complete, or cancel."
+            description="Lifecycle action to perform: run, status, result, complete, or cancel. (Required: True)"
         ),
     ],
     role: Annotated[
         str | None,
         Field(
-            description="For action='run': registered subagent role name, e.g. generalist, coder, explorer, reviewer, planner."
+            description="For action='run': registered subagent role name, e.g. generalist, coder, explorer, reviewer, planner. (Required: False)"
         ),
     ] = None,
     task: Annotated[
         str | None,
         Field(
-            description="For action='run': task for the subagent to perform in isolation from the parent flow."
+            description="For action='run': task for the subagent to perform in isolation from the parent flow. (Required: False)"
         ),
     ] = None,
     context: Annotated[
         str | None,
         Field(
-            description="For action='run': optional context such as branch, files, or constraints."
+            description="For action='run': optional context such as branch, files, or constraints. (Required: False)"
         ),
     ] = None,
     deliverable: Annotated[
         str | None,
         Field(
-            description="For action='run': optional explicit deliverable format for the subagent result."
+            description="For action='run': optional explicit deliverable format for the subagent result. (Required: False)"
         ),
     ] = None,
     model: Annotated[
         str | None,
         Field(
-            description="For action='run': optional Continue model name or model identifier from get_capabilities subagents.continue.models."
+            description="For action='run': optional Continue model name or model identifier from get_capabilities subagents.continue.models. (Required: False)"
         ),
     ] = None,
     wait: Annotated[
         bool,
         Field(
-            description="For action='run': when true (default), wait for completion when the backend can finish quickly."
+            description="For action='run': when true (default), wait for completion when the backend can finish quickly. (Required: False)"
         ),
     ] = True,
+    verify_workspace_claims: Annotated[
+        bool,
+        Field(
+            description="For action='run': when true, include workspace-snippet verification metadata for completed results. (Required: False)"
+        ),
+    ] = False,
+    verification_policy: Annotated[
+        Literal["report", "strict"],
+        Field(
+            description="For action='run': verification behavior when verify_workspace_claims=true: report metadata only or strictly fail low-confidence completions. (Required: False)"
+        ),
+    ] = "report",
+    strict_verification: Annotated[
+        bool,
+        Field(
+            description="For action='run': alias for verification_policy='strict'. verification_policy remains canonical. (Required: False)"
+        ),
+    ] = False,
     task_id: Annotated[
         str | None,
         Field(
-            description="For actions status|result|complete|cancel: task identifier returned by subagent_manage(action='run')."
+            description="For actions status|result|complete|cancel: task identifier returned by subagent_manage(action='run'). (Required: False)"
         ),
     ] = None,
     offset: Annotated[
         int | None,
         Field(
             ge=0,
-            description="For action='result': optional 0-based character offset for paging long results.",
+            description="For action='result': optional 0-based character offset for paging long results. (Required: False)",
         ),
     ] = None,
     result: Annotated[
         str | None,
         Field(
             max_length=100000,
-            description="For action='complete': final subagent result text, at most 100,000 characters.",
+            description="For action='complete': final subagent result text, at most 100,000 characters. (Required: False)",
         ),
     ] = None,
     reason: Annotated[
         str | None,
         Field(
             max_length=2000,
-            description="For action='cancel': optional cancellation reason recorded with the task.",
+            description="For action='cancel': optional cancellation reason recorded with the task. (Required: False)",
         ),
     ] = None,
     confirm: Annotated[
         bool,
         Field(
-            description="For action='cancel': must be true to confirm cancellation.",
+            description="For action='cancel': must be true to confirm cancellation. (Required: False)",
         ),
     ] = False,
 ) -> dict:
@@ -1025,6 +1293,9 @@ def subagent_manage(
             deliverable=deliverable,
             model=model,
             wait=wait,
+            verify_workspace_claims=verify_workspace_claims,
+            verification_policy=verification_policy,
+            strict_verification=strict_verification,
         )
     if normalized == "status":
         if not task_id:
@@ -1113,7 +1384,7 @@ def _image_backend_setup_hint() -> str:
 
 
 def _run_generalist_image_prompt(
-    *, prompt: str, image_base64: str, media_type: str
+    *, prompt: str, image_base64: str, media_type: str, output_mode: str
 ) -> tuple[str, str, dict[str, str] | None]:
     """Run a one-shot generalist prompt with image input and return backend/model/result."""
     backend = _backend()
@@ -1121,10 +1392,17 @@ def _run_generalist_image_prompt(
     if role is None:
         raise RuntimeError("generalist role is not configured")
 
+    result_format = role.result_format
+    if output_mode == "concise":
+        result_format: str = (
+            "Answer the user's question directly in 1-3 sentences. "
+            "Do not return planning templates or multi-section frameworks unless explicitly requested."
+        )
+
     system_prompt = "\n".join(
         [
             role.system_prompt,
-            f"Target result format: {role.result_format}",
+            f"Target result format: {result_format}",
         ]
     )
     max_tokens = max(256, min(role.max_tokens, 4096))
@@ -1249,15 +1527,24 @@ def inspect_image(
         str,
         Field(
             min_length=1,
-            description="Workspace-relative image file path to inspect.",
+            description="Workspace-relative image file path to inspect. (Required: True)",
         ),
     ],
     prompt: Annotated[
         str,
         Field(
-            description="Prompt sent to the generalist subagent with the image input."
+            description="Prompt sent to the generalist subagent with the image input. (Required: True)"
         ),
     ],
+    output_mode: Annotated[
+        Literal["concise", "detailed"],
+        Field(
+            description=(
+                "Output verbosity for the model response: concise returns a direct answer-first response, "
+                "while detailed allows longer structured output. (Required: False)"
+            )
+        ),
+    ] = "concise",
 ) -> dict:
     """Inspect an image by prompting the generalist role with multimodal input."""
     prompt_text = prompt.strip()
@@ -1265,6 +1552,13 @@ def inspect_image(
         return {
             "error_code": "empty_prompt",
             "message": "prompt must not be empty.",
+        }
+
+    mode = output_mode.strip().lower()
+    if mode not in {"concise", "detailed"}:
+        return {
+            "error_code": "invalid_output_mode",
+            "message": "output_mode must be one of: concise, detailed.",
         }
     try:
         path = inside(image_path, must_exist=True)
@@ -1327,6 +1621,7 @@ def inspect_image(
             prompt=prompt_text,
             image_base64=payload,
             media_type=media_type,
+            output_mode=mode,
         )
     except ValueError as exc:
         message = str(exc)
@@ -1352,6 +1647,7 @@ def inspect_image(
         **({"model": model} if model else {}),
         "path": relative_path,
         "media_type": media_type,
+        "output_mode": mode,
         "result": result.strip(),
     }
 
@@ -1381,7 +1677,7 @@ def after_tool_call(
         return result
     automatic_commit: None = None
     progress_hint: None = None
-    if tool_name in {"create_file", "apply_edits", "code_polish"}:
+    if tool_name in {"create_file", "apply_edits"}:
         automatic_commit = _record_file_change(tool_name, result, args)
         progress_hint = _progress_summary_hint(tool_name, result, args)
     frame = _MANAGER.open_frame()
@@ -1433,13 +1729,13 @@ def register(mcp):
         "A subagent runs only when a backend is available: client sampling, a provider key in the environment, or a model from the user's Continue config when SUBAGENT_CONTINUE=1. Without one, subagent_manage(action='run') returns status unavailable and creates no task. "
         "subagent_manage(action='run') accepts an optional Continue model name or model identifier; explicit selection uses that model's direct API provider regardless of automatic backend precedence. get_capabilities lists safe model choices, and subagent responses/status include the chosen model summary when known. Report selected models when summarizing delegated work to the user. "
         "Loop backends let write-capable roles (planner, coder, committer) create and edit files within the workspace. Use subagents for broad searches, independent reviews and summaries of large inputs when available. "
-        "When status is completed, consume result; when running, poll subagent_manage(action='status'); "
+        "When status is completed, consume result and review verification metadata; when running, poll subagent_manage(action='status'); "
         "when unavailable, do the work yourself in this conversation and do not retry; when delegated_to_host (explicit SUBAGENT_BACKEND=cooperative only, scoped role mode), follow instructions then call subagent_manage(action='complete'). Cooperative tasks expire after five minutes; successful git_manage commits by a committer close that frame automatically, while skipped or unsuccessful commits and other roles require explicit completion via subagent_manage(action='complete'). Streaming and checkpoint/resume are unsupported. Roles: generalist/explorer are read-only, reviewer adds diagnostics/tests, planner can also create/edit, coder can create/edit plus diagnostics/tests. Result pages include final_offset, final_total_length, final_next_offset, and trace metadata. An open frame blocks tools outside its role allowlist; recover with subagent_manage(action='complete') or subagent_manage(action='cancel', confirm=true)."
     )
     mcp.tool(
         description=describe(
             "Inspect an image with the generalist subagent profile. "
-            "This tool accepts image_path and prompt, validates the workspace image file, "
+            "This tool accepts image_path, prompt, and optional output_mode, validates the workspace image file, "
             "sends the image as multimodal input to the active LLM backend, and returns the model output. "
             "When no LLM backend is available, the response uses status='unavailable'."
         )

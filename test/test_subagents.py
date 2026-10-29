@@ -159,12 +159,13 @@ class SubagentToolTests(unittest.TestCase):
             _base_url,
             _model,
             _api_key,
-            _system_prompt,
+            system_prompt,
             messages,
             _max_tokens,
             **_kwargs,
         ) -> str:
             """Fake complete function."""
+            captured["system_prompt"] = system_prompt
             captured["messages"] = messages
             return "Image summary"
 
@@ -188,12 +189,57 @@ class SubagentToolTests(unittest.TestCase):
 
         self.assertEqual(out["status"], "completed")
         self.assertEqual(out["backend"], "direct:openai")
+        self.assertEqual(out["output_mode"], "concise")
         self.assertEqual(out["result"], "Image summary")
         self.assertTrue(captured["messages"])
+        self.assertIn("1-3 sentences", captured["system_prompt"])
         content = captured["messages"][0]["content"]
         self.assertEqual(content[0]["type"], "text")
         self.assertEqual(content[1]["type"], "image_url")
         self.assertIn("data:image/png;base64,", content[1]["image_url"]["url"])
+
+    def test_inspect_image_detailed_mode_uses_role_target_format(self) -> None:
+        """Detailed mode should keep the role target format instead of concise-only guidance."""
+        subagent_tools._BACKEND = "direct:openai"
+        captured: dict = {}
+
+        def fake_complete(
+            _base_url,
+            _model,
+            _api_key,
+            system_prompt,
+            _messages,
+            _max_tokens,
+            **_kwargs,
+        ) -> str:
+            """Fake complete function."""
+            captured["system_prompt"] = system_prompt
+            return "Detailed image summary"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_root = str(support.ROOT)
+            support.configure(temp_dir)
+            try:
+                image_path = Path(temp_dir) / "photo.png"
+                image_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 16)
+                with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=False):
+                    with patch.object(
+                        subagent_loop,
+                        "_complete_openai_compatible",
+                        side_effect=fake_complete,
+                    ):
+                        out = self.mcp.tools["inspect_image"](
+                            image_path="photo.png",
+                            prompt="What do you see?",
+                            output_mode="detailed",
+                        )
+            finally:
+                support.configure(previous_root)
+
+        self.assertEqual(out["status"], "completed")
+        self.assertEqual(out["output_mode"], "detailed")
+        self.assertIn("Markdown implementation plan", captured["system_prompt"])
+        self.assertNotIn("1-3 sentences", captured["system_prompt"])
 
     def test_inspect_image_uses_sampling_callback_when_backend_is_sampling(
         self,
@@ -420,9 +466,22 @@ class SubagentToolTests(unittest.TestCase):
             subagent_tools._PENDING_CHANGE_SUMMARIES,
             [
                 {"summary": "Create a tracked file", "paths": ["created.txt"]},
-                {"summary": "Polish tracked file", "paths": ["created.txt"]},
             ],
         )
+
+    def test_code_polish_does_not_trigger_automatic_commit_workflow(self) -> None:
+        """Test code polish does not trigger automatic commit workflow function."""
+        with patch.object(subagent_tools, "subagent_run") as run_committer:
+            result = subagent_tools.after_tool_call(
+                "code_polish",
+                {"written_files": ["formatted.py"]},
+                {"summary": "Format touched file"},
+            )
+
+        self.assertNotIn("automatic_commit", result)
+        self.assertNotIn("progress_summary_hint", result)
+        self.assertEqual(subagent_tools._PENDING_CHANGE_SUMMARIES, [])
+        run_committer.assert_not_called()
 
     def test_five_successful_write_calls_dispatch_one_scoped_committer(self) -> None:
         """Test five successful write calls dispatch one scoped committer function."""
@@ -781,6 +840,138 @@ class SubagentToolTests(unittest.TestCase):
         self.assertIn("finding", out["final"])
         self.assertEqual(out["trace"], [])
         self.assertEqual(out["usage"]["turns"], 1)
+
+    def test_subagent_run_includes_default_unverified_metadata(self) -> None:
+        """Completed runs include verification metadata even when checks are disabled."""
+        subagent_tools.configure_runtime(client_capabilities=None)
+        subagent_tools._BACKEND = "direct:openai"
+
+        with patch.object(
+            subagent_loop,
+            "run_loop",
+            return_value=({"final": "- finding: quick result", "trace": []}, 1, 42),
+        ):
+            out = self.mcp.tools["subagent_manage"](
+                action="run", role="explorer", task="inspect quickly", wait=True
+            )
+
+        self.assertEqual(out["status"], "completed")
+        self.assertIn("verification", out)
+        self.assertFalse(out["verification"]["enabled"])
+        self.assertEqual(out["verification"]["confidence"], "unverified")
+
+    def test_subagent_verification_flags_mismatched_workspace_claim(self) -> None:
+        """Verification mode marks mismatched snippets as low-confidence."""
+        subagent_tools.configure_runtime(client_capabilities=None)
+        subagent_tools._BACKEND = "direct:openai"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_root = str(support.ROOT)
+            support.configure(temp_dir)
+            try:
+                target = Path(temp_dir) / ".audit_tmp" / "sample.txt"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("hello audit\nsecond line edited\n", encoding="utf-8")
+                with patch.object(
+                    subagent_loop,
+                    "run_loop",
+                    return_value=({"final": "sample", "trace": []}, 1, 10),
+                ):
+                    out = self.mcp.tools["subagent_manage"](
+                        action="run",
+                        role="explorer",
+                        task="verify .audit_tmp/sample.txt and report one line",
+                        wait=True,
+                        verify_workspace_claims=True,
+                    )
+            finally:
+                support.configure(previous_root)
+
+        self.assertEqual(out["status"], "completed")
+        self.assertIn("verification", out)
+        self.assertTrue(out["verification"]["enabled"])
+        self.assertEqual(out["verification"]["confidence"], "low")
+        self.assertIn(".audit_tmp/sample.txt", out["verification"]["files_checked"])
+        self.assertIn("sample", out["verification"]["unmatched_snippets"])
+
+        status = self.mcp.tools["subagent_manage"](
+            action="status", task_id=out["task_id"]
+        )
+        result = self.mcp.tools["subagent_manage"](
+            action="result", task_id=out["task_id"]
+        )
+        self.assertEqual(status["verification"]["confidence"], "low")
+        self.assertEqual(result["verification"]["confidence"], "low")
+
+    def test_strict_verification_blocks_low_confidence_completion(self) -> None:
+        """Strict verification mode fails tasks when confidence is not high."""
+        subagent_tools.configure_runtime(client_capabilities=None)
+        subagent_tools._BACKEND = "direct:openai"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_root = str(support.ROOT)
+            support.configure(temp_dir)
+            try:
+                target = Path(temp_dir) / ".audit_tmp" / "sample.txt"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("hello audit\nsecond line edited\n", encoding="utf-8")
+                with patch.object(
+                    subagent_loop,
+                    "run_loop",
+                    return_value=({"final": "sample", "trace": []}, 1, 10),
+                ):
+                    out = self.mcp.tools["subagent_manage"](
+                        action="run",
+                        role="explorer",
+                        task="verify .audit_tmp/sample.txt and report one line",
+                        wait=True,
+                        verify_workspace_claims=True,
+                        verification_policy="strict",
+                    )
+            finally:
+                support.configure(previous_root)
+
+        self.assertEqual(out["status"], "failed")
+        self.assertIn("Strict verification failed", out["error"])
+        self.assertEqual(out["verification"]["confidence"], "low")
+
+        status = self.mcp.tools["subagent_manage"](
+            action="status", task_id=out["task_id"]
+        )
+        self.assertEqual(status["state"], "failed")
+        self.assertEqual(status["verification"]["confidence"], "low")
+
+    def test_strict_verification_alias_enables_strict_policy(self) -> None:
+        """strict_verification=true should behave like verification_policy='strict'."""
+        subagent_tools.configure_runtime(client_capabilities=None)
+        subagent_tools._BACKEND = "direct:openai"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_root = str(support.ROOT)
+            support.configure(temp_dir)
+            try:
+                target = Path(temp_dir) / ".audit_tmp" / "sample.txt"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("hello audit\nsecond line edited\n", encoding="utf-8")
+                with patch.object(
+                    subagent_loop,
+                    "run_loop",
+                    return_value=({"final": "sample", "trace": []}, 1, 10),
+                ):
+                    out = self.mcp.tools["subagent_manage"](
+                        action="run",
+                        role="explorer",
+                        task="verify .audit_tmp/sample.txt and report one line",
+                        wait=True,
+                        verify_workspace_claims=True,
+                        strict_verification=True,
+                    )
+            finally:
+                support.configure(previous_root)
+
+        self.assertEqual(out["status"], "failed")
+        self.assertIn("Strict verification failed", out["error"])
+        self.assertEqual(out["verification"]["confidence"], "low")
 
     def test_explicit_continue_model_overrides_backend_and_is_reported(self) -> tuple:
         """Test explicit continue model overrides backend and is reported function."""

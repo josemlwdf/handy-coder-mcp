@@ -158,6 +158,66 @@ class GowitnessScreenshotTests(unittest.TestCase):
             )
         self.assertEqual(debug_result["stderr_raw"], noisy_stderr)
 
+    def test_success_with_meaningful_stderr_suppresses_output_without_debug(
+        self,
+    ) -> None:
+        """Successful captures should not expose stderr unless debug mode is enabled."""
+        fake_bin = self.root / "external_bin" / "gowitness"
+        fake_bin.parent.mkdir(parents=True, exist_ok=True)
+        fake_bin.write_text("#!/bin/sh\\n")
+
+        meaningful_stderr: str = "navigation warning: page emitted console errors\\n"
+
+        def fake_run_process(command, **kwargs) -> dict:
+            """Fake run process function with non-empty stderr and a valid image."""
+            screenshot_dir = Path(command[command.index("--screenshot-path") + 1])
+            screenshot_dir.mkdir(parents=True, exist_ok=True)
+            (screenshot_dir / "example.jpeg").write_bytes(b"img")
+            return {
+                "stdout": "ok",
+                "stderr": meaningful_stderr,
+                "exit_code": 0,
+                "timed_out": False,
+            }
+
+        with (
+            patch.object(
+                gowitness_screenshot,
+                "resolve_gowitness_binary",
+                return_value=fake_bin,
+            ),
+            patch.object(
+                gowitness_screenshot, "run_process", side_effect=fake_run_process
+            ),
+        ):
+            result = gowitness_screenshot.capture_url_screenshot("https://example.com")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["stderr"], "")
+        self.assertIn("warnings", result)
+        self.assertTrue(
+            any(
+                "diagnostic stderr output" in warning.lower()
+                for warning in result["warnings"]
+            )
+        )
+        self.assertNotIn("stderr_raw", result)
+
+        with (
+            patch.object(
+                gowitness_screenshot,
+                "resolve_gowitness_binary",
+                return_value=fake_bin,
+            ),
+            patch.object(
+                gowitness_screenshot, "run_process", side_effect=fake_run_process
+            ),
+        ):
+            debug_result = gowitness_screenshot.capture_url_screenshot(
+                "https://example.com", debug=True
+            )
+        self.assertEqual(debug_result["stderr_raw"], meaningful_stderr)
+
     def test_success_with_non_zero_exit_code_adds_warning(self) -> None:
         """If image exists but process exits non-zero, capture stays ok and warning is emitted."""
         fake_bin = self.root / "external_bin" / "gowitness"

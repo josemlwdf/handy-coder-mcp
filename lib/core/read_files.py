@@ -12,23 +12,23 @@ class LineRange(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     path: str = Field(
-        description="Workspace-relative file path; must match a value in paths."
+        description="Workspace-relative file path; must match a value in paths. (Required: True)"
     )
     start_line: int | None = Field(
         default=None,
         ge=1,
-        description="First line to include, using 1-based numbering. Required unless the deprecated start alias is supplied.",
+        description="First line to include, using 1-based numbering. Required unless the deprecated start alias is supplied. (Required: False)",
     )
     end_line: int | None = Field(
         default=None,
         ge=1,
-        description="Last line to include, using 1-based numbering; must be greater than or equal to start_line. Required unless the deprecated end alias is supplied.",
+        description="Last line to include, using 1-based numbering; must be greater than or equal to start_line. Required unless the deprecated end alias is supplied. (Required: False)",
     )
     start: int | None = Field(
-        default=None, ge=1, description="Deprecated alias for start_line."
+        default=None, ge=1, description="Deprecated alias for start_line. (Required: False)"
     )
     end: int | None = Field(
-        default=None, ge=1, description="Deprecated alias for end_line."
+        default=None, ge=1, description="Deprecated alias for end_line. (Required: False)"
     )
 
     @model_validator(mode="after")
@@ -50,34 +50,42 @@ class LineRange(BaseModel):
 def read_files(
     paths: Annotated[
         list[str],
-        Field(min_length=1, description="Workspace-relative file paths to read."),
+        Field(
+            min_length=1,
+            description="Workspace-relative file paths to read. (Required: True)",
+        ),
     ],
     line_ranges: Annotated[
         list[LineRange] | None,
         Field(
-            description="Optional 1-based line ranges, for example [{path: 'src/app.py', start_line: 4, end_line: 6}]. Legacy start/end keys are accepted; files without a range are read in full."
+            description="Optional 1-based line ranges, for example [{path: 'src/app.py', start_line: 4, end_line: 6}]. Legacy start/end keys are accepted; files without a range are read in full. (Required: False)"
         ),
     ] = None,
     start_line: Annotated[
         int | None,
         Field(
             ge=1,
-            description="Shorthand first line for a single file; requires end_line.",
+            description="Shorthand first line for a single file; requires end_line. (Required: False)",
         ),
     ] = None,
     end_line: Annotated[
         int | None,
         Field(
             ge=1,
-            description="Shorthand last line for a single file; requires start_line.",
+            description="Shorthand last line for a single file; requires start_line. (Required: False)",
         ),
     ] = None,
     encoding: Annotated[
-        str, Field(description="Text encoding used to decode files; defaults to UTF-8.")
+        str,
+        Field(
+            description="Text encoding used to decode files; defaults to UTF-8. (Required: False)"
+        ),
     ] = "utf-8",
     include_metadata: Annotated[
         bool,
-        Field(description="Include file size in bytes and modification time metadata."),
+        Field(
+            description="Include file size in bytes and modification time metadata. (Required: False)"
+        ),
     ] = False,
 ) -> dict:
     """Read files function."""

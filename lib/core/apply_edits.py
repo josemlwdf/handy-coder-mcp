@@ -21,10 +21,12 @@ class Position(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     line: int = Field(
-        ge=1, description="1-based line where the first regex match search begins."
+        ge=1,
+        description="1-based line where the first regex match search begins. (Required: True)",
     )
     col: int = Field(
-        ge=1, description="1-based column where the first regex match search begins."
+        ge=1,
+        description="1-based column where the first regex match search begins. (Required: True)",
     )
 
 
@@ -33,17 +35,17 @@ class Edit(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     path: str = Field(
-        description="Workspace-relative path of the existing file to edit."
+        description="Workspace-relative path of the existing file to edit. (Required: True)"
     )
     pattern: str = Field(
-        description="Required Python regular expression used to locate text. Capture groups can be referenced with expand_groups=true."
+        description="Required Python regular expression used to locate text. Capture groups can be referenced with expand_groups=true. (Required: True)"
     )
     replacement: str = Field(
-        description="Required replacement text. Literal by default; with expand_groups=true, Python re capture references such as \\1 and \\g<name> are expanded."
+        description="Required replacement text. Literal by default; with expand_groups=true, Python re capture references such as \\1 and \\g<name> are expanded. (Required: True)"
     )
     position: Position | None = Field(
         default=None,
-        description="Optional object with 1-based line and col keys that limits the search to the first match at or after that position.",
+        description="Optional object with 1-based line and col keys that limits the search to the first match at or after that position. (Required: False)",
     )
 
 
@@ -102,35 +104,38 @@ def apply_edits(
         list[Edit],
         Field(
             min_length=1,
-            description="Ordered edits to apply to workspace files. Each edit requires path, pattern, and replacement, and may include position with 1-based line and col keys (search start). Edits are staged in order; later edits run against earlier staged changes, including repeated edits to the same file.",
+            description="Ordered edits to apply to workspace files. Each edit requires path, pattern, and replacement, and may include position with 1-based line and col keys (search start). Edits are staged in order; later edits run against earlier staged changes, including repeated edits to the same file. (Required: True)",
         ),
     ],
     replace_all: Annotated[
         bool,
         Field(
-            description="If true, replace every match for each edit; otherwise replace only the first match."
+            description="If true, replace every match for each edit; otherwise replace only the first match. (Required: False)"
         ),
     ] = False,
     max_replacements: Annotated[
         int | None,
         Field(
             ge=1,
-            description="Optional maximum replacements per edit. Applies with replace_all; when omitted, all matches are replaced.",
+            description="Optional maximum replacements per edit. Applies with replace_all; when omitted, all matches are replaced. (Required: False)",
         ),
     ] = None,
     case_insensitive: Annotated[
-        bool, Field(description="Compile patterns with case-insensitive matching.")
+        bool,
+        Field(
+            description="Compile patterns with case-insensitive matching. (Required: False)"
+        ),
     ] = False,
     dry_run: Annotated[
         bool,
         Field(
-            description="If true, validate and compute diffs for all edits but do not write any changes to disk."
+            description="If true, validate and compute diffs for all edits but do not write any changes to disk. (Required: False)"
         ),
     ] = False,
     expand_groups: Annotated[
         bool,
         Field(
-            description="If true, replacement is a Python re replacement template: \\1 and \\g<name> insert capture groups and backslash escapes are interpreted. Defaults to false (replacement text is literal)."
+            description="If true, replacement is a Python re replacement template: \\1 and \\g<name> insert capture groups and backslash escapes are interpreted. Defaults to false (replacement text is literal). (Required: False)"
         ),
     ] = False,
     *,

@@ -9,6 +9,8 @@ from typing import Any, Literal
 
 from .roles import Role
 
+VerificationPolicy = Literal["report", "strict"]
+
 
 TaskState = Literal["queued", "running", "delegated", "done", "failed", "cancelled"]
 
@@ -33,6 +35,9 @@ class Task:
     turns_used: int = 0
     tokens_used: int = 0
     expires_at: float = 0.0
+    verify_workspace_claims: bool = False
+    verification_policy: VerificationPolicy = "report"
+    verification: dict[str, Any] | None = None
 
 
 @dataclass
@@ -106,6 +111,8 @@ class SubagentManager:
         context: str | None,
         deliverable: str | None,
         model: dict[str, str] | None = None,
+        verify_workspace_claims: bool = False,
+        verification_policy: VerificationPolicy = "report",
     ) -> Task:
         """Create task function."""
         with self._lock:
@@ -126,6 +133,8 @@ class SubagentManager:
                 backend=backend,
                 model=model,
                 task=task_text,
+                verify_workspace_claims=verify_workspace_claims,
+                verification_policy=verification_policy,
                 deliverable=deliverable,
                 context=context,
                 state="queued",
@@ -173,6 +182,7 @@ class SubagentManager:
         trace: list[dict[str, Any]] | None = None,
         turns: int = 0,
         tokens: int = 0,
+        verification: dict[str, Any] | None = None,
     ) -> Task:
         """Complete task function."""
         with self._lock:
@@ -185,18 +195,32 @@ class SubagentManager:
             task.state = "done"
             task.turns_used = turns
             task.tokens_used = tokens
+            task.verification = (
+                dict(verification) if isinstance(verification, dict) else None
+            )
             task.updated_at = time.time()
             if self._stack and self._stack[-1].task_id == task_id:
                 self._stack.pop()
             return task
 
-    def fail_task(self, task_id: str, message: str) -> Task:
+    def fail_task(
+        self,
+        task_id: str,
+        message: str,
+        *,
+        verification: dict[str, Any] | None = None,
+    ) -> Task:
         """Fail task function."""
         with self._lock:
             self._sweep_locked()
             task = self._tasks[task_id]
             task.state = "failed"
             task.error = message
+            task.verification = (
+                dict(verification)
+                if isinstance(verification, dict)
+                else task.verification
+            )
             task.updated_at = time.time()
             self._stack = [f for f in self._stack if f.task_id != task_id]
             return task
@@ -247,6 +271,11 @@ class SubagentManager:
                 "final_total_length": len(text),
                 "final_next_offset": next_offset,
                 "trace": list(task.trace),
+                **(
+                    {"verification": dict(task.verification)}
+                    if isinstance(task.verification, dict)
+                    else {}
+                ),
             }
 
     def open_frame(self) -> Frame | None:

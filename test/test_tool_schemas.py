@@ -427,6 +427,39 @@ class ToolSchemaTests(unittest.TestCase):
                 self.assertIsInstance(annotations.idempotentHint, bool)
                 self.assertIsInstance(annotations.openWorldHint, bool)
 
+    def test_every_parameter_has_required_true_false_annotation(self) -> None:
+        """Test that all parameters and nested models declare Required: True / False."""
+        for name, function in self.mcp.tools.items():
+            hints = get_type_hints(function, include_extras=True)
+            sig = inspect.signature(function)
+            for param_name, param in sig.parameters.items():
+                is_req = param.default is inspect._empty
+                expected = "Required: True" if is_req else "Required: False"
+                metadata = getattr(hints[param_name], "__metadata__", ())
+                descriptions = [
+                    item.description
+                    for item in metadata
+                    if getattr(item, "description", None)
+                ]
+                with self.subTest(tool=name, parameter=param_name):
+                    self.assertTrue(descriptions, f"Missing description for {name}.{param_name}")
+                    for description in descriptions:
+                        self.assertIn(
+                            expected,
+                            description,
+                            f"{name}.{param_name} description '{description}' does not contain '{expected}'",
+                        )
+                for model in _models_in(hints[param_name]):
+                    for field_name, field in model.model_fields.items():
+                        field_is_req = field.is_required()
+                        field_expected = "Required: True" if field_is_req else "Required: False"
+                        with self.subTest(tool=name, model=model.__name__, field=field_name):
+                            self.assertIn(
+                                field_expected,
+                                field.description or "",
+                                f"{model.__name__}.{field_name} description does not contain '{field_expected}'",
+                            )
+
 
 if __name__ == "__main__":
     unittest.main()

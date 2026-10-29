@@ -287,34 +287,38 @@ def run_tests(
     test_framework: Annotated[
         Literal["jest", "pytest", "vitest"] | None,
         Field(
-            description="Test framework to use; omit to detect Jest, Vitest, or pytest from the workspace."
+            description="Test framework to use; omit to detect Jest, Vitest, or pytest from the workspace. (Required: False)"
         ),
     ] = None,
     filter_path: Annotated[
         str | None,
         Field(
-            description="Optional workspace-relative test file or target path. When supplied and points to test files, runs without requiring workspace-wide test discovery."
+            description="Optional workspace-relative test file or target path. When supplied and points to test files, runs without requiring workspace-wide test discovery. (Required: False)"
         ),
     ] = None,
     fail_fast: Annotated[
         bool,
-        Field(description="Stop after the first failure where the runner supports it."),
+        Field(
+            description="Stop after the first failure where the runner supports it. (Required: False)"
+        ),
     ] = False,
     parallel: Annotated[
         int | None,
         Field(
             ge=1,
             le=64,
-            description="Optional worker count; pytest requires pytest-xdist for values greater than one.",
+            description="Optional worker count; pytest requires pytest-xdist for values greater than one. (Required: False)",
         ),
     ] = None,
     coverage: Annotated[
         bool,
         Field(
-            description="Enable coverage collection when supported by the test runner."
+            description="Enable coverage collection when supported by the test runner. (Required: False)"
         ),
     ] = False,
-    verbose: Annotated[bool, Field(description="Request verbose test output.")] = False,
+    verbose: Annotated[
+        bool, Field(description="Request verbose test output. (Required: False)")
+    ] = False,
 ) -> dict:
     """Run tests function."""
     root = inside(".")

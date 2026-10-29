@@ -190,7 +190,7 @@ def code_get_diagnostics(
     path: Annotated[
         str | None,
         Field(
-            description="Optional workspace-relative directory to inspect; defaults to the workspace root."
+            description="Optional workspace-relative directory to inspect; defaults to the workspace root. (Required: False)"
         ),
     ] = None,
     check: Annotated[
@@ -199,7 +199,7 @@ def code_get_diagnostics(
             description=(
                 "Optional configured check to run, such as ruff, mypy, lint, typecheck, "
                 "check, validate, tsc_no_emit, html_syntax_sweep, json_parse, yaml_parse, "
-                "toml_parse, or shell_syntax."
+                "toml_parse, or shell_syntax. (Required: False)"
             )
         ),
     ] = None,
@@ -208,7 +208,7 @@ def code_get_diagnostics(
         Field(
             ge=1,
             le=600000,
-            description="Diagnostic process timeout in milliseconds; defaults to 30000.",
+            description="Diagnostic process timeout in milliseconds; defaults to 30000. (Required: False)",
         ),
     ] = 30000,
 ) -> dict:
@@ -579,7 +579,8 @@ def register(mcp):
     """Register function."""
     return mcp.tool(
         description=describe(
-            "Detect and run the first available diagnostic tool in the selected workspace directory; path selects directory, check selects a named configured check, timeout_ms bounds execution. "
+            "Detect and run the first available diagnostic tool in the selected workspace directory. "
+            "path selects directory, check selects a named configured check, timeout_ms bounds execution. "
             "Detection order: package.json scripts (typecheck > check > lint), "
             "pyproject.toml tools (ruff > mypy), Makefile targets (check > lint > typecheck > validate), "
             "then additional syntax/parse checks (tsc_no_emit, html_syntax_sweep, json_parse, yaml_parse, toml_parse, shell_syntax) when project files indicate they are relevant. "

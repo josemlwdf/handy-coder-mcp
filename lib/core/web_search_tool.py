@@ -565,7 +565,7 @@ def web_search(
         str,
         Field(
             min_length=1,
-            description="Search query for public web pages; results include titles, snippets, normalized links, and optional provider_link values when wrappers are unwrapped.",
+            description="Search query for public web pages; results include titles, snippets, normalized links, and optional provider_link values when wrappers are unwrapped. (Required: True)",
         ),
     ],
     fallback: Annotated[
@@ -575,7 +575,7 @@ def web_search(
             description=(
                 "When false (default), search with DuckDuckGo Lite and automatically "
                 "fallback to lib/extras/bing_search.py if DDG errors or returns zero results. "
-                "When true, force the local Bing fallback implementation."
+                "When true, force the local Bing fallback implementation. (Required: False)"
             ),
         ),
     ] = False,

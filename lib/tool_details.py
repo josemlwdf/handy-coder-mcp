@@ -50,7 +50,13 @@ def _strip_descriptions(value: Any) -> None:
     """Strip descriptions function."""
     if isinstance(value, dict):
         if isinstance(value.get("description"), str):
-            value["description"] = _brief(value["description"])
+            desc = value["description"]
+            brief = _brief(desc)
+            if "Required: True" in desc and "Required: True" not in brief:
+                brief = f"{brief} (Required: True)"
+            elif "Required: False" in desc and "Required: False" not in brief:
+                brief = f"{brief} (Required: False)"
+            value["description"] = brief
         for child in value.values():
             _strip_descriptions(child)
     elif isinstance(value, list):
@@ -347,7 +353,7 @@ def install(mcp: Any) -> None:
             Field(
                 description=(
                     "Canonical registered tool name (for example 'read_files'). "
-                    "Prefixed aliases such as 'handy_coder_read_files' are accepted."
+                    "Prefixed aliases such as 'handy_coder_read_files' are accepted. (Required: True)"
                 )
             ),
         ],

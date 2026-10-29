@@ -131,13 +131,13 @@ def build_project(
     path: Annotated[
         str | None,
         Field(
-            description="Workspace-relative project directory or configuration file path; omit to detect projects across the workspace."
+            description="Workspace-relative project directory or configuration file path; omit to detect projects across the workspace. (Required: False)"
         ),
     ] = None,
     timeout_ms: Annotated[
         int,
         Field(
-            description="Build timeout in milliseconds, from 1 to 600000; defaults to 30000."
+            description="Build timeout in milliseconds, from 1 to 600000; defaults to 30000. (Required: False)"
         ),
     ] = 30_000,
 ) -> dict:

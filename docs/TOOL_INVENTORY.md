@@ -1,7 +1,7 @@
 # Registered tool inventory
 
 This inventory reflects modules registered by `handy-coder_mcp.py`. MCP tool names are declared in each module's `register()` function.
-Descriptions in the MCP tool list are brief. Call `get_tool_details` with a registered tool name to retrieve its full description and structured argument documentation, including nested fields, defaults, and validation constraints. Unknown or unavailable names return an error.
+Descriptions in the MCP tool list are brief. Call `get_tool_details` with a registered tool name to retrieve its full description and structured argument documentation, including nested fields, defaults, validation constraints, and explicit `(Required: True)` / `(Required: False)` parameter requirement indicators. Unknown or unavailable names return an error.
 
 ## Core tools
 
@@ -16,7 +16,7 @@ Descriptions in the MCP tool list are brief. Call `get_tool_details` with a regi
 - `build_project` — detects and builds Python, Node, or .NET projects with structured diagnostics.
 - `git_manage` — successful `init` creates `test/` and `tmp/` and maintains `.gitignore`; `add` updates `.gitignore` before staging and accepts specific paths or `args: ["all"]` to stage every change.
 - `web_search` — searches the public web with DuckDuckGo Lite and returns normalized destination URLs in the primary `link` field (unwrapping provider redirect wrappers and stripping common tracking query parameters). Results may include optional `provider_link` when a wrapper URL was normalized.
-- `capture_url_screenshot` — captures full-page screenshots for URLs via `gowitness` and stores artifacts in `tmp/screenshots/`.
+- `capture_url_screenshot` — captures full-page screenshots for URLs via `gowitness` and stores artifacts in `tmp/screenshots/`. "on success, stderr is intentionally empty unless debug=true." When debug is enabled, raw process stderr is included in `stderr_raw` for diagnostics.
 - `code_intel` — unified C# tool: `action='index'` incrementally indexes workspace C# files in `.handy-coder/code_index.sqlite3`; `action='navigate'` performs indexed search/symbol/reference navigation.
 - `get_capabilities`
 - `get_tool_details` — returns full documentation for a currently registered tool.

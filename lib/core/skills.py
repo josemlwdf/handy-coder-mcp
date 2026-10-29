@@ -340,61 +340,65 @@ def skills_manage(
             "get_reference",
         ],
         Field(
-            description=f"list: return skills (built-in defaults: {BASELINE_SKILLS_INLINE}). search: filter by query. get/export: retrieve full skill Markdown. list_references: list Markdown references for a skill from references/. get_reference: read one reference Markdown file. save: create/update with optional tags and version. delete: remove a skill."
+            description=f"list: return skills (built-in defaults: {BASELINE_SKILLS_INLINE}). search: filter by query. get/export: retrieve full skill Markdown. list_references: list Markdown references for a skill from references/. get_reference: read one reference Markdown file. save: create/update with optional tags and version. delete: remove a skill. (Required: True)"
         ),
     ],
     name: Annotated[
         str | None,
         Field(
-            description="Skill identifier: lowercase letters, digits and hyphens, max 64 chars. Required for get, export, save, delete, list_references, and get_reference."
+            description="Skill identifier: lowercase letters, digits and hyphens, max 64 chars. Required for get, export, save, delete, list_references, and get_reference. (Required: False)"
         ),
     ] = None,
     description: Annotated[
         str | None,
         Field(
-            description="Single-line summary of what the skill does and when to use it. Required for save."
+            description="Single-line summary of what the skill does and when to use it. Required for save. (Required: False)"
         ),
     ] = None,
     content: Annotated[
         str | None,
         Field(
-            description="Skill body in Markdown, without frontmatter (it is generated). Required for save."
+            description="Skill body in Markdown, without frontmatter (it is generated). Required for save. (Required: False)"
         ),
     ] = None,
     invokable: Annotated[
         bool,
         Field(
-            description="For save: whether the skill can be invoked directly by the user. Defaults to true."
+            description="For save: whether the skill can be invoked directly by the user. Defaults to true. (Required: False)"
         ),
     ] = True,
     overwrite: Annotated[
         bool,
         Field(
-            description="For save: replace an existing skill with the same name. Defaults to false."
+            description="For save: replace an existing skill with the same name. Defaults to false. (Required: False)"
         ),
     ] = False,
     query: Annotated[
-        str | None, Field(description="Search text used by the search action.")
+        str | None,
+        Field(
+            description="Search text used by the search action. (Required: False)"
+        ),
     ] = None,
     reference: Annotated[
         str | None,
         Field(
-            description="Reference identifier used by get_reference; maps to skills/<name>/references/<reference>.md."
+            description="Reference identifier used by get_reference; maps to skills/<name>/references/<reference>.md. (Required: False)"
         ),
     ] = None,
     tags: Annotated[
         list[str] | None,
         Field(
-            description='Optional array of tag strings stored in skill metadata when saving, for example ["python", "testing"].'
+            description='Optional array of tag strings stored in skill metadata when saving, for example ["python", "testing"]. (Required: False)'
         ),
     ] = None,
     version: Annotated[
-        str, Field(description="Skill metadata version, defaults to 1.")
+        str,
+        Field(description="Skill metadata version, defaults to 1. (Required: False)"),
     ] = "1",
     confirm: Annotated[
         bool,
         Field(
-            description="For delete: must be true to remove the skill; a backup is kept beside it."
+            description="For delete: must be true to remove the skill; a backup is kept beside it. (Required: False)"
         ),
     ] = False,
 ) -> dict:

@@ -403,7 +403,7 @@ def git_manage(
             description=(
                 "Git operation to run. status and init take no args; diff accepts mode unstaged/staged/both and optional file_paths; diff and log accept "
                 "validated options; add accepts one or more workspace-relative paths or the single argument 'all' to stage every change (options are rejected); commit requires -m and a meaningful message describing the staged diff; push accepts optional remote/refspec arguments with limited flags; branch lists/creates, stash accepts list/push/pop/apply/drop, blame requires one relative file; checkout requires "
-                "exactly one branch, tag, or commit (file paths are rejected with error_code not_a_ref); pull accepts up to remote and branch; merge/rebase require refs. pull, merge, and rebase require a clean worktree. init initializes the workspace root or a repo_path subdirectory, then creates test/ and tmp/ and maintains .gitignore. add maintains .gitignore before staging."
+                "exactly one branch, tag, or commit (file paths are rejected with error_code not_a_ref); pull accepts up to remote and branch; merge/rebase require refs. pull, merge, and rebase require a clean worktree. init initializes the workspace root or a repo_path subdirectory, then creates test/ and tmp/ and maintains .gitignore. add maintains .gitignore before staging. (Required: True)"
             )
         ),
     ],
@@ -415,7 +415,7 @@ def git_manage(
                 "Use no arguments for status or init. diff supports --cached, --stat, "
                 "--name-only, and workspace-relative paths after --; log supports -n, --oneline, "
                 "--decorate, --all, --, and a count. commit requires ['-m', 'message'] where message should clearly summarize staged changes "
-                "and optionally accepts -a; add takes one or more workspace-relative paths or exactly ['all'] to stage every change; push supports -u/--set-upstream, --force-with-lease, --tags, --dry-run plus optional <remote> <refspec>; checkout takes exactly one branch or ref. branch takes --list or one branch name; stash takes list/push/pop/apply/drop; blame takes one workspace-relative file path."
+                "and optionally accepts -a; add takes one or more workspace-relative paths or exactly ['all'] to stage every change; push supports -u/--set-upstream, --force-with-lease, --tags, --dry-run plus optional <remote> <refspec>; checkout takes exactly one branch or ref. branch takes --list or one branch name; stash takes list/push/pop/apply/drop; blame takes one workspace-relative file path. (Required: False)"
             )
         ),
     ] = None,
@@ -425,7 +425,7 @@ def git_manage(
             description=(
                 "Workspace-relative path to the Git repository root. Optional when one "
                 "repository is available, required when multiple repositories are found. Relative paths are resolved from the workspace root. "
-                "and, for init, optionally names the subdirectory to initialize (defaults to the workspace root)."
+                "and, for init, optionally names the subdirectory to initialize (defaults to the workspace root). (Required: False)"
             )
         ),
     ] = None,
@@ -434,7 +434,7 @@ def git_manage(
         Field(
             description=(
                 "Optional diff selection: unstaged, staged, or both. Enforced only when "
-                "action is 'diff'; omitted or null defaults to 'unstaged'."
+                "action is 'diff'; omitted or null defaults to 'unstaged'. (Required: False)"
             )
         ),
     ] = None,
@@ -443,7 +443,7 @@ def git_manage(
         Field(
             description=(
                 "Optional repository-relative files to limit diff review; every path must "
-                "remain within the selected repository. Applied only when action is 'diff'."
+                "remain within the selected repository. Applied only when action is 'diff'. (Required: False)"
             )
         ),
     ] = None,

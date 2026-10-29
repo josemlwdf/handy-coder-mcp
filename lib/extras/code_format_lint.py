@@ -173,13 +173,13 @@ def code_format_lint(
         list[str],
         Field(
             min_length=1,
-            description="Workspace-relative files or directories to lint or format.",
+            description="Workspace-relative files or directories to lint or format. (Required: True)",
         ),
     ],
     fix: Annotated[
         bool,
         Field(
-            description="Apply available automatic fixes and formatting changes when true; otherwise run checks without writing changes."
+            description="Apply available automatic fixes and formatting changes when true; otherwise run checks without writing changes. (Required: False)"
         ),
     ] = False,
     language: Annotated[
@@ -192,26 +192,31 @@ def code_format_lint(
                 "javascript: run ESLint and jsbeautifier for .js/.mjs/.cjs files (also accepts TypeScript .ts/.tsx files for ESLint). "
                 "text: successful no-op; no tools or fixes are run. "
                 "Specify a language for directories or use language='auto' when a language cannot be inferred. "
-                "create_file preserves submitted content by default; format_content=true enables formatting and post_process_python=true enables Python processing."
+                "create_file preserves submitted content by default; format_content=true enables formatting and post_process_python=true enables Python processing. (Required: False)"
             )
         ),
     ] = "auto",
     config_file: Annotated[
         str | None,
-        Field(description="Optional workspace-relative formatter/linter config file."),
+        Field(
+            description="Optional workspace-relative formatter/linter config file. (Required: False)"
+        ),
     ] = None,
     ignore: Annotated[
-        list[str] | None, Field(description="Optional rule codes to ignore for Ruff.")
+        list[str] | None,
+        Field(
+            description="Optional rule codes to ignore for Ruff. (Required: False)"
+        ),
     ] = None,
     severity: Annotated[
         Literal["all", "error", "warning"],
-        Field(description="Ruff severity filter; all by default."),
+        Field(description="Ruff severity filter; all by default. (Required: False)"),
     ] = "all",
     summary: Annotated[
         str | None,
         Field(
             description=SUMMARY_DESCRIPTION
-            + " Required when fix=true; ignored otherwise."
+            + " Required when fix=true; ignored otherwise. (Required: False)"
         ),
     ] = None,
 ) -> dict:

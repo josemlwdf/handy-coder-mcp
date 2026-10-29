@@ -126,17 +126,19 @@ def search_text(
     query: Annotated[
         str,
         Field(
-            description="Text to search for. Interpreted as a regular expression when is_regex is true, otherwise as a literal string."
+            description="Text to search for. Interpreted as a regular expression when is_regex is true, otherwise as a literal string. (Required: True)"
         ),
     ],
     is_regex: Annotated[
         bool,
-        Field(description="Whether query is a regular expression; defaults to true."),
+        Field(
+            description="Whether query is a regular expression; defaults to true. (Required: False)"
+        ),
     ] = True,
     path_glob: Annotated[
         str | None,
         Field(
-            description="Optional glob pattern restricting searched workspace-relative file paths."
+            description="Optional glob pattern restricting searched workspace-relative file paths. (Required: False)"
         ),
     ] = None,
     max_results: Annotated[
@@ -144,7 +146,7 @@ def search_text(
         Field(
             ge=1,
             le=10000,
-            description="Maximum number of matching lines to return, from 1 to 10000.",
+            description="Maximum number of matching lines to return, from 1 to 10000. (Required: False)",
         ),
     ] = 100,
     context_lines: Annotated[
@@ -152,28 +154,31 @@ def search_text(
         Field(
             ge=0,
             le=10,
-            description="Number of surrounding context lines to include before and after each match, from 0 to 10.",
+            description="Number of surrounding context lines to include before and after each match, from 0 to 10. (Required: False)",
         ),
     ] = 0,
     include_generated: Annotated[
         bool,
         Field(
-            description="When true, also search generated and build directories (node_modules, __pycache__, dist, build, .venv, etc.) that are skipped by default."
+            description="When true, also search generated and build directories (node_modules, __pycache__, dist, build, .venv, etc.) that are skipped by default. (Required: False)"
         ),
     ] = False,
     include_dot_dirs: Annotated[
         bool,
         Field(
-            description="When true, include files inside dot-prefixed directories such as .git and .vscode."
+            description="When true, include files inside dot-prefixed directories such as .git and .vscode. (Required: False)"
         ),
     ] = False,
     case_insensitive: Annotated[
-        bool, Field(description="Match text without regard to letter case.")
+        bool,
+        Field(
+            description="Match text without regard to letter case. (Required: False)"
+        ),
     ] = False,
     extensions: Annotated[
         list[str] | None,
         Field(
-            description='Optional array of file extension strings to search, with or without a leading dot, for example [".py", ".md"].'
+            description='Optional array of file extension strings to search, with or without a leading dot, for example [".py", ".md"]. (Required: False)'
         ),
     ] = None,
 ) -> dict:
@@ -194,7 +199,8 @@ def search_text(
 def register(mcp):
     """Register function."""
     description = describe(
-        "Search workspace text with a Python re regex or literal query; path_glob limits the search and scan failures appear in errors. "
+        "Search workspace text with a Python re regex or literal query. "
+        "path_glob limits the search and scan failures appear in errors. "
         "Uses Python's re module (not ripgrep) — supports standard Python regex syntax. "
         "Returns matched lines and optional context lines. "
         "Generated/build directories (node_modules, __pycache__, dist, build, .venv, etc.) are skipped unless include_generated is true. "

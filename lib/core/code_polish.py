@@ -315,19 +315,19 @@ def code_polish(
         str,
         Field(
             min_length=1,
-            description="Workspace-relative path to a file or directory to polish.",
+            description="Workspace-relative path to a file or directory to polish. (Required: True)",
         ),
     ],
     specific_file: Annotated[
         str | None,
         Field(
-            description="When path is a directory, optional file to polish (either relative to that directory or a workspace-relative path that resolves inside it)."
+            description="When path is a directory, optional file to polish (either relative to that directory or a workspace-relative path that resolves inside it). (Required: False)"
         ),
     ] = None,
     all_files: Annotated[
         bool,
         Field(
-            description="When true and path is a directory, recursively polish all supported files under it.",
+            description="When true and path is a directory, recursively polish all supported files under it. (Required: False)",
         ),
     ] = False,
     *,

@@ -131,7 +131,7 @@ def capture_url_screenshot(
         str,
         Field(
             min_length=1,
-            description="Target URL to screenshot. Must be public http(s); local/private/reserved targets are blocked.",
+            description="Target URL to screenshot. Must be public http(s); local/private/reserved targets are blocked. (Required: True)",
         ),
     ],
     timeout_seconds: Annotated[
@@ -139,13 +139,13 @@ def capture_url_screenshot(
         Field(
             ge=1,
             le=120,
-            description="Page load timeout passed to gowitness in seconds (1-120).",
+            description="Page load timeout passed to gowitness in seconds (1-120). (Required: False)",
         ),
     ] = 20,
     debug: Annotated[
         bool,
         Field(
-            description="When true, include raw stderr output in stderr_raw for diagnostics.",
+            description="When true, include raw stderr output in stderr_raw for diagnostics. (Required: False)",
         ),
     ] = False,
 ) -> dict:
@@ -258,7 +258,7 @@ def capture_url_screenshot(
         "exit_code": execution.get("exit_code"),
         "timed_out": execution.get("timed_out", False),
         "stdout": execution.get("stdout", ""),
-        "stderr": stderr_clean,
+        "stderr": "",
         "warnings": warnings,
     }
     if debug:
@@ -273,6 +273,7 @@ def register(mcp):
             "Capture a full-page screenshot for a single URL using external gowitness. "
             "Stores artifacts only under tmp/screenshots/<run-id> and returns the image path. "
             "Rejects non-http(s) and private/local/reserved targets (ssrf_blocked), and reports structured errors for missing binary, timeouts, and failed captures. "
+            '"on success, stderr is intentionally empty unless debug=true." When debug=true, the response also includes stderr_raw. '
             "Use when you need a rendered screenshot of a live webpage."
         )
     )(capture_url_screenshot)

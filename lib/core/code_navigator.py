@@ -59,38 +59,38 @@ def _run_navigate(
 
 
 def code_intel(
-    action: Annotated[str, Field(description="index or navigate")],
+    action: Annotated[str, Field(description="index or navigate. (Required: True)")],
     navigate_action: Annotated[
         str | None,
         Field(
-            description="For action='navigate': search_code, get_symbol, or find_references.",
+            description="For action='navigate': search_code, get_symbol, or find_references. (Required: False)",
         ),
     ] = None,
     query: Annotated[
         str | None,
         Field(
-            description="Natural language or identifier query for navigate_action=search_code."
+            description="Natural language or identifier query for navigate_action=search_code. (Required: False)"
         ),
     ] = None,
     symbol: Annotated[
         str | None,
         Field(
-            description="Symbol name for navigate_action=get_symbol or find_references."
+            description="Symbol name for navigate_action=get_symbol or find_references. (Required: False)"
         ),
     ] = None,
     file_path: Annotated[
         str | None,
         Field(
-            description="Optional workspace-relative path to disambiguate navigate_action=get_symbol."
+            description="Optional workspace-relative path to disambiguate navigate_action=get_symbol. (Required: False)"
         ),
     ] = None,
     limit: Annotated[
-        int, Field(ge=1, le=50, description="Maximum results (1 to 50).")
+        int, Field(ge=1, le=50, description="Maximum results (1 to 50). (Required: False)")
     ] = 10,
     auto_index: Annotated[
         bool,
         Field(
-            description="For action='navigate', run an index pass first when the local index appears empty."
+            description="For action='navigate', run an index pass first when the local index appears empty. (Required: False)"
         ),
     ] = True,
     exclude_dirs: Annotated[
@@ -100,7 +100,7 @@ def code_intel(
                 "For action='index' (and auto-index), optional directory names to skip in addition to the default exclusions. "
                 "Other default exclusions: "
                 + ", ".join(sorted(code_index.DEFAULT_EXCLUDES))
-                + "."
+                + ". (Required: False)"
             ),
         ),
     ] = None,
