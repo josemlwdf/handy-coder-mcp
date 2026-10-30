@@ -1,0 +1,15 @@
+mcp<2,>=1.2
+pydantic<3,>=2
+tree-sitter<0.26,>=0.23
+tree-sitter-c-sharp<0.24,>=0.23
+tree-sitter-language-pack<1,>=0.9
+watchdog<7,>=4
+beautifulsoup4<5,>=4.12
+jsbeautifier<2,>=1.15
+pytest
+ruff
+syntax_checker
+build
+
+[continue]
+pyyaml>=6

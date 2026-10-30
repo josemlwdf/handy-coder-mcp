@@ -63,8 +63,10 @@ class CodeIndexTests(unittest.TestCase):
         add_results = code_index.code_navigator("search_code", query="Add")["results"]
         self.assertEqual(add_results[0]["name"], "Add")
         self.assertEqual(add_results[0]["match_reason"], "symbol-name")
+        self.assertIn("name", add_results[0]["matched_fields"])
         python_add = next(item for item in add_results if item["name"] == "calculate")
         self.assertEqual(python_add["match_reason"], "source-text")
+        self.assertIn("signature", python_add["matched_fields"])
 
         fixture_dir = self.root / "audit-fixtures"
         fixture_dir.mkdir()
@@ -83,6 +85,53 @@ class CodeIndexTests(unittest.TestCase):
         ]
         self.assertEqual(len(audit_results), 3)
         self.assertTrue(all(item["match_reason"] == "path" for item in audit_results))
+        self.assertTrue(all(item["matched_fields"] == ["path"] for item in audit_results))
+
+    def test_reference_matching_respects_language_case_rules(self) -> None:
+        (self.root / "case.py").write_text("def caller():\n    Add()\n")
+        (self.root / "case.cs").write_text("class Caller { void Run() { Add(); } }\n")
+        (self.root / "case.php").write_text("<?php\nFoo();\n$Value = 1;\n$value = 2;\n")
+        (self.root / "case.sql").write_text('SELECT Foo, "Foo", foo FROM t;\n')
+        code_index.index_codebase()
+
+        lower_add = code_index.code_navigator("find_references", symbol="add")["references"]
+        self.assertTrue(all(ref["language"] == "Python" for ref in lower_add))
+        self.assertFalse(any(ref["language"] == "C#" for ref in lower_add))
+        php_foo = code_index.code_navigator("find_references", symbol="foo")["references"]
+        self.assertTrue(any(ref["language"] == "PHP" for ref in php_foo))
+        php_lower_variable = code_index.code_navigator("find_references", symbol="value")["references"]
+        self.assertTrue(any(ref["language"] == "PHP" and ref["target"] == "$value" for ref in php_lower_variable))
+        php_upper_variable = code_index.code_navigator("find_references", symbol="Value")["references"]
+        self.assertTrue(any(ref["language"] == "PHP" and ref["target"] == "$Value" for ref in php_upper_variable))
+        self.assertFalse(any(ref["language"] == "PHP" and ref["target"] == "$Value" for ref in php_lower_variable))
+        sql_foo = code_index.code_navigator("find_references", symbol="FOO")["references"]
+        self.assertTrue(any(ref["language"] == "SQL" for ref in sql_foo))
+        quoted = code_index.code_navigator("find_references", symbol='"Foo"')["references"]
+        self.assertTrue(any(ref["language"] == "SQL" for ref in quoted))
+        wrong_case = code_index.code_navigator("find_references", symbol='"foo"')["references"]
+        self.assertFalse(any(ref["language"] == "SQL" for ref in wrong_case))
+
+    def test_parser_matrix_covers_registered_bindings_and_lexical_fallback(self) -> None:
+        from tree_sitter_language_pack import get_parser
+        seen = set()
+        for extension, (language, grammar) in code_index.LANGUAGES.items():
+            path = self.root / ("sample" + extension)
+            if grammar == "csharp":
+                symbols, refs, detected, mode = code_index._extract_for(path, b"class Sample {}")
+            else:
+                get_parser(grammar)  # A missing declared grammar must fail this coverage.
+                symbols, refs, detected, mode = code_index._extract_for(path, b"")
+            self.assertEqual(detected, language, extension)
+            self.assertEqual(mode, "syntax", extension)
+            seen.add(grammar)
+        self.assertTrue(seen)
+        path = self.root / "fallback.py"
+        with patch("lib.code_index._extract", side_effect=ImportError), patch(
+            "tree_sitter_language_pack.get_parser", side_effect=ImportError
+        ):
+            _, refs, _, mode = code_index._extract_for(path, b"value = target")
+        self.assertEqual(mode, "lexical")
+        self.assertIn("target", [ref["target"] for ref in refs])
 
     def test_get_symbol_normalizes_windows_relative_paths_and_sanitizes_errors(self) -> None:
         nested = self.root / "audit-fixtures" / "csharp"
@@ -159,8 +208,18 @@ class CodeIndexTests(unittest.TestCase):
     def test_add_change_delete(self) -> None:
         """Test add change delete function."""
         code_index.index_codebase()
-        (self.root / "B.cs").write_text("class Added { void Work() {} }")
+        (self.root / "B.cs").write_text(
+            "class Added { void Work() { OldTarget(); } }", encoding="utf-8"
+        )
         self.assertEqual(code_index.index_codebase()["parsed"], 1)
+        (self.root / "B.cs").write_text(
+            "class Added { void Work() { FreshTarget(); } }", encoding="utf-8"
+        )
+        self.assertEqual(code_index.index_codebase()["parsed"], 1)
+        fresh = code_index.code_navigator("find_references", symbol="FreshTarget")["references"]
+        stale = code_index.code_navigator("find_references", symbol="OldTarget")["references"]
+        self.assertTrue(any(ref["path"] == "B.cs" for ref in fresh))
+        self.assertFalse(any(ref["path"] == "B.cs" for ref in stale))
         (self.root / "A.cs").write_text("class Replaced { void Next() {} }")
         code_index.index_codebase()
         (self.root / "B.cs").unlink()

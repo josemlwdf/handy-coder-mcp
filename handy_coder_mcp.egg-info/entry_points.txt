@@ -1,0 +1,2 @@
+[console_scripts]
+handy-coder-mcp = handy_coder_mcp:main

@@ -1,0 +1,21 @@
+Metadata-Version: 2.4
+Name: handy-coder-mcp
+Version: 2.0.0
+Summary: Workspace-confined MCP server for coding agents
+Requires-Python: >=3.11
+License-File: LICENSE
+Requires-Dist: mcp<2,>=1.2
+Requires-Dist: pydantic<3,>=2
+Requires-Dist: tree-sitter<0.26,>=0.23
+Requires-Dist: tree-sitter-c-sharp<0.24,>=0.23
+Requires-Dist: tree-sitter-language-pack<1,>=0.9
+Requires-Dist: watchdog<7,>=4
+Requires-Dist: beautifulsoup4<5,>=4.12
+Requires-Dist: jsbeautifier<2,>=1.15
+Requires-Dist: pytest
+Requires-Dist: ruff
+Requires-Dist: syntax_checker
+Requires-Dist: build
+Provides-Extra: continue
+Requires-Dist: pyyaml>=6; extra == "continue"
+Dynamic: license-file

@@ -417,10 +417,17 @@ def _extract_for(path: Path, source: bytes) -> tuple[list, list, str, str]:
         typ = node.type.lower()
         if typ in {"identifier", "name", "type_identifier", "field_identifier"}:
             parent = node.parent
-            if parent and parent.child_by_field_name("name") == node:
+            target = _node_text(node, source)
+            reference_kind = "identifier_usage"
+            if language == "PHP" and parent and parent.type == "variable_name":
+                target = _node_text(parent, source)
+                reference_kind = "variable"
+            elif language == "SQL":
+                reference_kind = "unquoted_identifier"
+            if language != "SQL" and parent and parent.child_by_field_name("name") == node:
                 pass
             elif parent:
-                refs.append({"target": _node_text(node, source), "kind": "identifier_usage",
+                refs.append({"target": target, "kind": reference_kind,
                     "line": node.start_point.row + 1,
                     "snippet": _node_text(parent, source).splitlines()[0][:240],
                     "enclosing_type": None, "enclosing_method": None})
@@ -438,6 +445,16 @@ def _extract_for(path: Path, source: bytes) -> tuple[list, list, str, str]:
         for child in node.children:
             visit(child)
     visit(root)
+    if language == "SQL":
+        # The bundled SQL grammar treats double-quoted field names as string
+        # literals in some contexts. Preserve them as quoted identifiers for
+        # PostgreSQL's case-sensitive matching rule.
+        text = source.decode("utf-8", "replace")
+        for match in re.finditer(r'"(?:""|[^"\\])*"', text):
+            line = text.count("\n", 0, match.start()) + 1
+            refs.append({"target": match.group(), "kind": "quoted_identifier",
+                "line": line, "snippet": text.splitlines()[line - 1].strip()[:240],
+                "enclosing_type": None, "enclosing_method": None})
     if root.has_error:
         raise IndexErrorBase(f"{language} syntax tree contains parse errors; file was not replaced in the index")
     return symbols, refs, language, "syntax"
@@ -800,6 +817,25 @@ def _code_navigator_once(
                     ).split()
                 )
                 path_tokens = set(_tokens(r["path"]).split())
+                signature_tokens = set(_tokens(r["signature"] or "").split())
+                docs_tokens = set(_tokens(r["docs"] or "").split())
+                body_text = (r["source"] or "")
+                if r["signature"]:
+                    body_text = body_text.replace(r["signature"], "", 1)
+                body_tokens = set(_tokens(body_text).split()) - signature_tokens
+                matched_fields = []
+                if query_tokens & name_tokens:
+                    matched_fields.append("name")
+                if query_tokens & qualified_tokens:
+                    matched_fields.append("qualified_name")
+                if query_tokens & signature_tokens:
+                    matched_fields.append("signature")
+                if query_tokens & docs_tokens:
+                    matched_fields.append("docs")
+                if query_tokens & body_tokens:
+                    matched_fields.append("body")
+                if query_tokens & path_tokens:
+                    matched_fields.append("path")
                 if r["name"] == search_text:
                     priority, reason = 0, "symbol-name"
                 elif r["qualified_name"] == search_text:
@@ -812,10 +848,14 @@ def _code_navigator_once(
                     priority, reason = 4, "symbol-name"
                 elif query_tokens & qualified_tokens:
                     priority, reason = 5, "qualified-name"
-                elif query_tokens & source_tokens:
+                elif query_tokens & signature_tokens:
                     priority, reason = 6, "source-text"
+                elif query_tokens & docs_tokens:
+                    priority, reason = 6, "source-text"
+                elif query_tokens & body_tokens:
+                    priority, reason = 7, "source-text"
                 else:
-                    priority, reason = 7, "path"
+                    priority, reason = 8, "path"
                 item = {
                     "name": r["name"],
                     "qualified_name": r["qualified_name"],
@@ -828,10 +868,12 @@ def _code_navigator_once(
                     "signature": r["signature"],
                     "snippet": r["source"][:300],
                     "match_reason": reason,
+                    "matched_fields": matched_fields,
                 }
-                ranked_results.append((priority, r["rank"], item))
-            ranked_results.sort(key=lambda match: (match[0], match[1]))
-            results = [item for _, _, item in ranked_results[:limit]]
+                coverage = len(query_tokens & (name_tokens | qualified_tokens | signature_tokens | docs_tokens | body_tokens | path_tokens))
+                ranked_results.append((priority, -coverage, r["rank"], item))
+            ranked_results.sort(key=lambda match: (match[0], match[1], match[2]))
+            results = [item for _, _, _, item in ranked_results[:limit]]
             return {
                 "results": results,
                 "index_status": status,
@@ -839,9 +881,26 @@ def _code_navigator_once(
             }
         if action == "find_references":
             rows = con.execute(
-                "SELECT r.*,f.path FROM references_ r JOIN files f ON f.id=r.file_id WHERE lower(r.target)=lower(?) ORDER BY f.path,r.line LIMIT ?",
-                (symbol.split(".")[-1], limit * 3),
+                "SELECT r.*,f.path,f.language,f.analysis_mode FROM references_ r JOIN files f ON f.id=r.file_id ORDER BY f.path,r.line"
             ).fetchall()
+            requested = symbol.split(".")[-1]
+            def ref_matches(row):
+                target = row["target"]
+                language = row["language"] or ""
+                if row["analysis_mode"] != "syntax":
+                    return target == requested
+                if language == "PHP":
+                    # PHP variables are case-sensitive; function, method, and
+                    # class identifiers are case-insensitive.
+                    if row["kind"] == "variable" or requested.startswith("$"):
+                        return target.removeprefix("$") == requested.removeprefix("$")
+                    return target.lower() == requested.lower()
+                if language == "SQL":
+                    # PostgreSQL folds unquoted identifiers; quoted names retain case.
+                    quoted = row["kind"] == "quoted_identifier" or requested.startswith('"')
+                    return target == requested if quoted else target.lower() == requested.lower()
+                return target == requested
+            rows = [row for row in rows if ref_matches(row)][:limit * 3]
             unique: dict = {}
             for row in rows:
                 key: tuple = (row["file_id"], row["line"], row["snippet"])
