@@ -97,31 +97,13 @@ class Uses {
         self.assertEqual(paths, {"A.cs"})
         self.assertTrue((self.root / ".hidden-cache").is_dir())
 
-    def test_code_intel_index_action(self) -> None:
-        """Test code intel index action function."""
-        result = code_navigator_tool.code_intel(action="index")
-        self.assertEqual(result["parsed"], 1)
-
-    def test_code_intel_navigate_auto_indexes_empty_index(self) -> None:
-        """Test code intel navigate auto indexes empty index function."""
+    def test_code_intel_reads_empty_index_without_scanning(self) -> None:
         result = code_navigator_tool.code_intel(
-            action="navigate",
-            navigate_action="search_code",
+            action="search_code",
             query="ClampOutOfBoundsMovement",
-        )
-        self.assertIn("results", result)
-        self.assertEqual(result["results"][0]["name"], "ClampOutOfBoundsMovement")
-
-    def test_code_intel_navigate_without_auto_index_keeps_empty_hint(self) -> None:
-        """Test code intel navigate without auto index keeps empty hint function."""
-        result = code_navigator_tool.code_intel(
-            action="navigate",
-            navigate_action="search_code",
-            query="ClampOutOfBoundsMovement",
-            auto_index=False,
         )
         self.assertEqual(result["results"], [])
-        self.assertIn("run code_intel(action='index')", result["hint"])
+        self.assertIn("background indexer", result["hint"])
 
     def test_input_validation_and_isolation(self) -> None:
         """Test input validation and isolation function."""

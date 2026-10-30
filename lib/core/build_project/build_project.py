@@ -6,6 +6,8 @@ import json
 import importlib.util
 import re
 import shutil
+import subprocess
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -14,6 +16,16 @@ from pydantic import Field
 from ...support import describe, inside, path_escape_message, run_process
 
 _MAX_TIMEOUT_MS = 600_000
+
+
+def _running_under_wsl() -> bool:
+    """Return whether this process is running inside WSL."""
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        return True
+    try:
+        return "microsoft" in Path("/proc/version").read_text().lower()
+    except OSError:
+        return False
 
 
 def _discover(root: Path) -> list[dict[str, str]]:
@@ -88,9 +100,29 @@ def _build_command(
             else f"Node build tool unavailable: {manager} is not installed."
         )
     executable = shutil.which("dotnet")
-    if not executable:
-        return None, ".NET build tool unavailable: dotnet is not installed."
     config_path = directory / candidate["configuration"]
+    if not executable:
+        if not _running_under_wsl():
+            return None, ".NET build tool unavailable: dotnet is not installed (WSL fallback is only available under WSL)."
+        windows_dotnet = shutil.which("dotnet.exe")
+        wslpath = shutil.which("wslpath")
+        if not windows_dotnet or not wslpath:
+            missing = "dotnet.exe" if not windows_dotnet else "wslpath"
+            return None, f".NET build tool unavailable: dotnet is not installed and the WSL fallback requires {missing}."
+        try:
+            converted = subprocess.run(
+                [wslpath, "-w", str(config_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            windows_path = converted.stdout.strip()
+            if not windows_path:
+                raise ValueError("wslpath returned an empty path")
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            return None, f".NET build tool unavailable: could not convert the project path with wslpath -w: {exc}"
+        return [windows_dotnet, "build", windows_path], None
     return [executable, "build", str(config_path)], None
 
 

@@ -389,8 +389,7 @@ def install(mcp: Any) -> None:
             str,
             Field(
                 description=(
-                    "Canonical registered tool name (for example 'read_files'). "
-                    "Prefixed aliases such as 'handy_coder_read_files' are accepted. (Required: True)"
+                    "Registered tool name, e.g. 'read_files'. Prefix aliases accepted. (Required: True)"
                 )
             ),
         ],
@@ -433,7 +432,7 @@ def install(mcp: Any) -> None:
 
     # Register through the original FastMCP method so this meta-tool is not shortened.
     meta_description: str = (
-        "Get full documentation and argument details for a registered tool."
+        "Get a tool's full docs and arguments."
     )
     original_tool(name="get_tool_details", description=meta_description)(
         get_tool_details
@@ -446,11 +445,28 @@ def install(mcp: Any) -> None:
         "inputSchema": _schema(meta_tool),
     }
 
-    def discover_tools(query: str, limit: int = 4) -> dict:
+    def discover_tools(
+        query: Annotated[
+            str,
+            Field(
+                description="Tool name or capability terms to search. (Required: True)"
+            ),
+        ],
+        limit: Annotated[
+            int,
+            Field(
+                description="Max matches. Capped at 4. (Required: False)"
+            ),
+        ] = 4,
+    ) -> dict:
         """Find registered tools by name, summary, and full documentation."""
         query_text = " ".join((query or "").split()).casefold()
         if not query_text:
-            return {"tools": [], "count": 0}
+            return {
+                "tools": [],
+                "count": 0,
+                "hint": "Provide a non-empty search query, such as a tool name or capability.",
+            }
         terms = re.findall(r"[\w.-]+", query_text)
         manager_tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
         candidates = []
@@ -487,11 +503,24 @@ def install(mcp: Any) -> None:
 
     register_meta(
         "discover_tools",
-        "Search registered tools and return their full schemas.",
+        "Search tools by name or capability. Return full schemas.",
         discover_tools,
     )
 
-    async def invoke_tool(tool_name: str, arguments: dict) -> Any:
+    async def invoke_tool(
+        tool_name: Annotated[
+            str,
+            Field(
+                description="Registered tool name to call. Prefix aliases accepted. (Required: True)"
+            ),
+        ],
+        arguments: Annotated[
+            dict,
+            Field(
+                description="JSON args matching the tool's input schema. (Required: True)"
+            ),
+        ],
+    ) -> Any:
         """Invoke an internally registered tool through FastMCP's normal call path."""
         requested_name = (tool_name or "").strip()
         canonical = _canonical_tool_name(requested_name)
@@ -508,7 +537,7 @@ def install(mcp: Any) -> None:
 
     register_meta(
         "invoke_tool",
-        "Invoke a discovered registered tool by name with a JSON arguments object.",
+        "Call a registered tool by name with JSON args.",
         invoke_tool,
     )
 

@@ -27,7 +27,7 @@ from pydantic import Field
 from ...support import describe
 
 SKILLS_DIR_ENV: str = "HANDY_CODER_SKILLS_DIR"
-DEFAULT_SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
+DEFAULT_SKILLS_DIR = Path(__file__).resolve().parents[3] / "skills"
 BASELINE_SKILLS = frozenset(
     {"grill-me", "handoff", "mcp-audit", "mcp-tools-only", "plan", "troubleshoot"}
 )

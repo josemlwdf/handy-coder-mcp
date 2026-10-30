@@ -19,13 +19,13 @@ The local index helps a coding agent navigate a C# project by finding relevant m
 
 ## 2. MCP Tool Interface
 
-Expose two tools.
+Expose one navigation tool and run indexing in a server-managed background process.
 
-### Tool A: `index_codebase`
+### Background index worker
 
-Purpose: Build or update the current project's local index.
+Purpose: Build or update the current project's local index without blocking MCP startup.
 
-Call it automatically during MCP initialization. Keep it callable manually to refresh the index when necessary.
+Launch it automatically during MCP initialization. It performs one initial scan and then watches eligible C# files.
 
 It must:
 - Resolve the current project's root directory.
@@ -40,13 +40,13 @@ It must:
 
 Do not recreate the entire database during ordinary initialization.
 
-### Tool B: `code_navigator`
+### MCP tool: `code_intel`
 
 This single MCP tool provides three actions through an `action` parameter.
 
 Suggested interface:
 
-`code_navigator(action, query=None, symbol=None, file_path=None, limit=10)`
+`code_intel(action, query=None, symbol=None, file_path=None, limit=10)`
 
 Supported actions:
 
@@ -273,7 +273,7 @@ Before implementation, inspect the existing MCP server structure, SDK version, i
 
 Integrate with those conventions instead of rewriting the server architecture.
 
-Register the indexing tool without scanning the workspace during startup. Run each requested index operation in the existing isolated worker process.
+Run the incremental indexer in a background subprocess at startup and after debounced eligible C# file events. Navigation must not initiate a scan.
 
 Avoid indexing synchronously on every incoming search request.
 
@@ -306,7 +306,7 @@ Add a small set of realistic search queries from actual coding-agent tasks and e
 
 ## 10. Integration and limitations
 
-The server registers `index_codebase` and `code_navigator` but does not scan the workspace during startup. Call `index_codebase` to build or refresh the index; that tool runs in an isolated worker process. The database is workspace-local at `.handy-coder/code_index.sqlite3`; the indexer does not modify C# source files.
+The server launches a background indexing worker at startup. It incrementally scans the workspace, then watches eligible `.cs` files and refreshes after debounced create, change, rename, and delete events. The `code_intel` tool exposes `search_code`, `get_symbol`, and `find_references` directly and only reads the maintained index. The database is workspace-local at `.handy-coder/code_index.sqlite3`; indexing does not modify C# source files.
 
 Search uses SQLite FTS5 over symbol and source text. It splits identifiers into lexical tokens, but does not use embeddings or infer concepts that are absent from the indexed text. `find_references` reports syntax-based candidates and cannot resolve overloads, inheritance, aliases, or dynamic dispatch like a C# compiler.
 

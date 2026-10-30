@@ -16,11 +16,13 @@ The JSON Schema below is the registered input contract. Required fields appear i
 {
   "properties": {
     "query": {
+      "description": "Tool name or capability keywords to search for. (Required: True)",
       "title": "Query",
       "type": "string"
     },
     "limit": {
       "default": 4,
+      "description": "Maximum number of matches to return; capped at 4. (Required: False)",
       "title": "Limit",
       "type": "integer"
     }
@@ -36,6 +38,8 @@ The JSON Schema below is the registered input contract. Required fields appear i
 ## Results
 
 Returns structured tool documentation, matching tools, or the selected tool's result. Errors use structured `error_code` values.
+
+An empty or whitespace-only `query` returns no tools and includes a `hint` asking for a search term. Search with a tool name or capability, such as `files`.
 
 ## Side effects and runtime requirements
 

@@ -126,7 +126,7 @@ Subagents using a loop backend (client sampling, a provider key, or a Continue m
 
 The internal catalog covers workspace file operations, code search and navigation, terminal commands, diagnostics, builds, tests, Git actions, skills, orchestration, and subagents. Optional tools can format or lint code when supported binaries are installed, and web tools can fetch public documentation or search the web.
 
-For local C# navigation, `code_intel(action="index")` incrementally indexes workspace `.cs` files in `.handy-coder/code_index.sqlite3`; `code_intel(action="navigate")` searches code, symbols, and references. The index is local and uses Tree-sitter C# and SQLite FTS5. The server does not scan the workspace at startup. Search is lexical, and references are syntactic candidates rather than compiler-resolved results. See [Local C# code navigation](docs/SEMANTIC_SEARCH.md).
+For local C# navigation, `code_intel(action="search_code"|"get_symbol"|"find_references")` reads the automatically maintained index in `.handy-coder/code_index.sqlite3`. A background worker performs an initial incremental scan and watches eligible `.cs` files for changes. The index is local and uses Tree-sitter C# and SQLite FTS5. Search is lexical, and references are syntactic candidates rather than compiler-resolved results. See [Local C# code navigation](docs/SEMANTIC_SEARCH.md).
 
 ## Security and workspace scope
 

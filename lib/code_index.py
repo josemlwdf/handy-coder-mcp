@@ -510,7 +510,7 @@ def code_navigator(
                     "results": [],
                     **(
                         {
-                            "hint": "Index is empty; run code_intel(action='index') to index C# files."
+                            "hint": "The background indexer is building or refreshing the C# index; try again shortly."
                         }
                         if not count
                         else {}
@@ -538,7 +538,7 @@ def code_navigator(
                 "results": results,
                 **(
                     {
-                        "hint": "Index is empty; run code_intel(action='index') to index C# files."
+                        "hint": "The background indexer is building or refreshing the C# index; try again shortly."
                     }
                     if not count
                     else {}
@@ -621,10 +621,10 @@ def code_navigator(
         ).fetchone()[0]
         con.close()
         if digest != indexed_digest:
-            index_codebase()
-            return code_navigator(
-                action, symbol=symbol, file_path=file_path, limit=limit
-            )
+            return {
+                "error_code": "index_refresh_pending",
+                "message": "The source changed after indexing; the background indexer will refresh it shortly.",
+            }
         lines = data.decode("utf-8", "replace").splitlines()
         # Use fresh indexed range; stale-content equality was verified above.
         return {

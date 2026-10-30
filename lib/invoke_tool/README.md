@@ -16,11 +16,13 @@ The JSON Schema below is the registered input contract. Required fields appear i
 {
   "properties": {
     "tool_name": {
+      "description": "Registered tool name to invoke; prefixed aliases are accepted. (Required: True)",
       "title": "Tool Name",
       "type": "string"
     },
     "arguments": {
       "additionalProperties": true,
+      "description": "JSON object of arguments matching the selected tool's input schema. (Required: True)",
       "title": "Arguments",
       "type": "object"
     }

@@ -4,7 +4,7 @@ import unittest
 
 from mcp.server.fastmcp import FastMCP
 
-from lib import code_index, tool_details
+from lib import tool_details
 from lib.core import code_navigator, gowitness_screenshot, system_info, web_search_tool
 from lib.subagents import tools as subagent_tools
 
@@ -25,20 +25,10 @@ class CodeIntelSchemaTests(unittest.TestCase):
         self.mcp = FastMCP("t")
         code_navigator.register(self.mcp)
 
-    def test_exclude_dirs_description_lists_real_defaults(self) -> None:
-        """Test exclude dirs description lists real defaults function."""
+    def test_code_intel_exposes_only_navigation_contract(self) -> None:
         props = self.mcp._tool_manager.get_tool("code_intel").parameters["properties"]
-        description = props["exclude_dirs"]["description"]
-        self.assertIn("in addition to the default exclusions", description)
-        for name in code_index.DEFAULT_EXCLUDES:
-            self.assertIn(name, description)
-
-    def test_exclude_dirs_remains_optional_string_list(self) -> None:
-        """Test exclude dirs remains optional string list function."""
-        schema = self.mcp._tool_manager.get_tool("code_intel").parameters
-        self.assertNotIn("exclude_dirs", schema.get("required", []))
-        any_of = schema["properties"]["exclude_dirs"]["anyOf"]
-        self.assertIn({"type": "array", "items": {"type": "string"}}, any_of)
+        self.assertEqual(set(props), {"action", "query", "symbol", "file_path", "limit"})
+        self.assertEqual(props["action"]["enum"], ["search_code", "get_symbol", "find_references"])
 
 
 class CapabilityNotesTests(unittest.TestCase):
@@ -84,8 +74,7 @@ class CapabilityNotesTests(unittest.TestCase):
         """Test notes mention key behavior function."""
         system_info._MCP = None
         tools = system_info.get_capabilities()["tools"]
-        self.assertIn("action=index", tools["code_intel"]["note"])
-        self.assertIn("auto-index", tools["code_intel"]["note"])
+        self.assertIn("search_code", tools["code_intel"]["note"])
         self.assertNotIn("index_codebase", tools)
         self.assertNotIn("code_navigator", tools)
         self.assertIn("unknown_tool", tools["get_tool_details"]["note"])

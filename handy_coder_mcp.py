@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -276,6 +277,31 @@ def main() -> None:
     _apply_tool_annotations(mcp)
     _assert_tool_argument_types_known(mcp)
 
+    index_worker = None
+    try:
+        index_worker = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "lib.code_index_worker",
+                "--root",
+                support.ROOT,
+                "--parent-pid",
+                str(os.getpid()),
+            ],
+            cwd=Path(__file__).resolve().parent,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=None,
+            start_new_session=False,
+            close_fds=True,
+        )
+    except OSError as exc:
+        print(
+            f"[handy-coder-mcp] Could not launch background C# indexer: {exc}",
+            file=sys.stderr,
+        )
+
     try:
         subprocess.Popen(
             [
@@ -302,7 +328,16 @@ def main() -> None:
 
     worker_supervisor.supervise_fastmcp_tools(mcp)
     error_handler.install(mcp)
-    mcp.run(transport="stdio")
+    try:
+        mcp.run(transport="stdio")
+    finally:
+        if index_worker is not None and index_worker.poll() is None:
+            index_worker.terminate()
+            try:
+                index_worker.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                index_worker.kill()
+                index_worker.wait()
 
 
 if __name__ == "__main__":

@@ -45,36 +45,36 @@ def get_capabilities() -> dict:
 
     tools: dict[str, dict] = {
         # Core tools — always available
-        "read_files": {"available": True, "note": "always enabled"},
-        "create_file": {"available": True, "note": "always enabled"},
-        "apply_edits": {"available": True, "note": "always enabled"},
-        "code_polish": {"available": True, "note": "always enabled"},
-        "terminal_exec": {"available": True, "note": "always enabled"},
+        "read_files": {"available": True, "note": "always on"},
+        "create_file": {"available": True, "note": "always on"},
+        "apply_edits": {"available": True, "note": "always on"},
+        "code_polish": {"available": True, "note": "always on"},
+        "terminal_exec": {"available": True, "note": "always on"},
         "search_text": {
             "available": True,
-            "note": "uses Python re, supports regex or literal text",
+            "note": "Python regex or literal search",
         },
-        "find_files": {"available": True, "note": "always enabled"},
+        "find_files": {"available": True, "note": "always on"},
         "skills_manage": {
             "available": True,
-            "note": "list/get/save skills at skills/<name>/SKILL.md; base directory override via HANDY_CODER_SKILLS_DIR",
+            "note": "list, get, or save skills; base dir: HANDY_CODER_SKILLS_DIR",
         },
         "orchestrator": {
             "available": True,
-            "note": "unified orchestrator tool with bootstrap and update_task_status actions",
+            "note": "orchestrate tasks; actions: bootstrap, update_task_status",
         },
         "run_tests": {
             "available": pytest_ok,
-            "note": "pytest binary" if not pytest_ok else "pytest found",
+            "note": "pytest missing" if not pytest_ok else "pytest installed",
         },
         "git_manage": {
             "available": git_ok,
-            "note": "git binary" if not git_ok else "git found",
+            "note": "git missing" if not git_ok else "git installed",
         },
         "build_project": {
             "available": True,
             "ecosystems": ["python", "node", "dotnet"],
-            "note": "build tool availability is checked for the selected project",
+            "note": "checks build tools for selected project",
         },
         "code_get_diagnostics": {
             "available": True,
@@ -83,27 +83,31 @@ def get_capabilities() -> dict:
                 "pyproject Ruff/mypy",
                 "Makefile check/lint/typecheck/validate targets",
             ],
-            "note": "detects and runs the first configured installed check",
+            "note": "runs first configured, installed check",
         },
         "web_search": {
             "available": True,
-            "note": "searches the public web via DuckDuckGo Lite by default, auto-falls back to lib/extras/bing_search.py on DDG error/zero results, and supports forcing fallback via fallback=true; requires outbound network access",
+            "note": "web search; DDG Lite first, Bing fallback on error or no hits; fallback=true forces Bing; needs network",
         },
         "capture_url_screenshot": {
             "available": screenshot_available,
-            "note": "captures URL screenshots to tmp/ via gowitness; "
-            + screenshot_note,
+            "note": "screenshots URLs to tmp/ via gowitness; "
+            + (
+                f"binary: {screenshot_note.removeprefix('gowitness found at ')}"
+                if screenshot_available
+                else "gowitness missing; install or add external_bin/gowitness"
+            ),
         },
         "code_intel": {
             "available": True,
-            "note": "unified code intelligence facade: action=index runs indexing, action=navigate runs code navigation and can auto-index when the local index is empty",
+            "note": "index or navigate C# code; auto-indexes when index is empty",
         },
         "get_tool_details": {
             "available": True,
-            "note": "returns full documentation and argument details for one registered tool; unknown names return error_code unknown_tool",
+            "note": "gets tool docs and arguments; unknown name: unknown_tool",
         },
         # Extras
-        "web_fetch_docs": {"available": True, "note": "fetches public HTTP(S) text"},
+        "web_fetch_docs": {"available": True, "note": "fetch public HTTP(S) text"},
         "subagent_manage": {
             "available": True,
             "backend": subagent_backend,
@@ -115,11 +119,11 @@ def get_capabilities() -> dict:
                 }
                 for name, role in ROLES.items()
             },
-            "note": "unified lifecycle endpoint with action=run|status|result|complete|cancel",
+            "note": "manage subagents; actions: run, status, result, complete, cancel",
         },
         "inspect_image": {
             "available": True,
-            "note": "inspects a workspace image with a multimodal backend via the generalist subagent profile",
+            "note": "inspect workspace image via generalist multimodal backend",
         },
     }
 
@@ -128,7 +132,7 @@ def get_capabilities() -> dict:
         # The registry is authoritative for the internal callable catalog; retain
         # per-tool capability metadata where available and add every registration.
         tools: dict = {
-            name: tools.get(name, {"available": True, "note": "registered MCP tool"})
+            name: tools.get(name, {"available": True, "note": "registered tool"})
             for name in sorted(registry)
         }
     else:
@@ -139,9 +143,9 @@ def get_capabilities() -> dict:
             "get_tool_details",
             "inspect_image",
         ):
-            tools.setdefault(name, {"available": True, "note": "registered MCP tool"})
+            tools.setdefault(name, {"available": True, "note": "registered tool"})
     tools.setdefault(
-        "get_capabilities", {"available": True, "note": "this capability endpoint"}
+        "get_capabilities", {"available": True, "note": "reports runtime capabilities"}
     )
     tools: dict = {name: tools[name] for name in sorted(tools)}
     return {
@@ -166,12 +170,9 @@ def register(mcp):
     _MCP = mcp
     return mcp.tool(
         description=describe(
-            "Return server health and capability status for tools and installed toolchains. "
-            "Reports which tools are available, "
-            "which optional binaries (for example git and pytest) are installed, "
-            "and which optional environment-variable gated features are active. "
-            "For optional integrations, tool entries include missing_requirements and setup_docs where applicable. "
-            "Call this first to avoid wasting turns discovering disabled tools. "
-            "When to use: Check what tools are usable before planning a task."
+            "Report runtime tools, dependencies, and feature status. "
+            "Shows available tools, installed binaries, and active environment-gated features. "
+            "Optional integrations may include missing_requirements and setup_docs. "
+            "Call first to check what you can use."
         )
     )(get_capabilities)
