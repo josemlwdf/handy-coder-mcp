@@ -1,15 +1,17 @@
 """Module documentation."""
 
-from pathlib import Path
+import json
 import os
 import re
 import shutil
 import stat
 import time
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
+from ... import support
 from ...support import inside, run_process, describe, path_escape_message
 
 _REPOSITORIES: tuple[str, ...] | None = None
@@ -61,6 +63,51 @@ _GENERIC_COMMIT_SUBJECTS: set = {
     "commit",
 }
 _DISALLOWED_COMMIT_WORD = re.compile(r"\bcommit\b", re.IGNORECASE)
+
+
+def _pending_change_summaries_for_paths(
+    paths: list[str], repo_root: Path
+) -> list[dict[str, Any]]:
+    """Read persisted summaries that cover currently untracked paths."""
+    if not paths:
+        return []
+    state_path = Path(support.ROOT) / support.HANDY_CODER_STATE_DIRNAME / "state.json"
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    subagents = payload.get("subagents")
+    if not isinstance(subagents, dict):
+        return []
+    raw_summaries = subagents.get("pending_change_summaries")
+    if not isinstance(raw_summaries, list):
+        return []
+
+    untracked_paths = set(paths)
+    try:
+        repo_prefix = repo_root.resolve().relative_to(Path(support.ROOT).resolve())
+    except (OSError, ValueError):
+        repo_prefix = Path()
+    if str(repo_prefix) != ".":
+        untracked_paths.update((repo_prefix / path).as_posix() for path in paths)
+    summaries = []
+    for item in raw_summaries:
+        if not isinstance(item, dict):
+            continue
+        summary = item.get("summary")
+        summary_paths = item.get("paths")
+        if (
+            not isinstance(summary, str)
+            or not summary.strip()
+            or not isinstance(summary_paths, list)
+        ):
+            continue
+        clean_paths = [path for path in summary_paths if isinstance(path, str) and path]
+        if any(path in untracked_paths for path in clean_paths):
+            summaries.append({"summary": summary.strip(), "paths": clean_paths})
+    return summaries
 
 _LOG_REGEX_FLAG: str = "--path-regex"
 _LOG_MAX_CANDIDATES_FLAG: str = "--max-candidates"
@@ -220,7 +267,7 @@ def _tool_description() -> str:
             "they want a new repository initialized before calling git_manage with action='init'."
         )
     return describe(
-        "Run a validated workspace Git action: status, diff, log, add, commit, push, pull, merge, rebase, checkout, branch, stash, blame, or init. For add, pass one or more repository-relative paths to stage those paths, or args=['all'] to stage every change. For commit, provide a meaningful -m message that accurately summarizes the staged changes. Successful init creates test/ and tmp/ and maintains the repository .gitignore; add updates .gitignore before staging. These updates preserve existing content, add .handy-coder/ and tmp/, and ignore generated directories from the common exclusion list when present. status returns structured staged/working-tree and untracked summaries; diff preserves raw text and accepts mode unstaged/staged/both plus repository-relative file_paths; log includes recent commit history. pull accepts an optional remote and branch; merge/rebase require one or more refs. These three actions require a clean worktree (including untracked files). "
+        "Run a validated workspace Git action: status, diff, log, add, commit, push, pull, merge, rebase, checkout, branch, stash, blame, or init. For add, pass one or more repository-relative paths to stage those paths, or args=['all'] to stage every change. For commit, provide a meaningful -m message that accurately summarizes the staged changes. Successful init creates test/ and tmp/ and maintains the repository .gitignore; add updates .gitignore before staging. These updates preserve existing content, add .handy-coder/ and tmp/, and ignore generated directories from the common exclusion list when present. status returns structured staged/working-tree and untracked summaries, including matching pending change summaries from .handy-coder/state.json; diff preserves raw text and accepts mode unstaged/staged/both plus repository-relative file_paths; log includes recent commit history. pull accepts an optional remote and branch; merge/rebase require one or more refs. These three actions require a clean worktree (including untracked files). "
         "Pass action-specific Git options as separate strings in args. "
         f"{state} init may target the workspace root or a subdirectory alongside other repositories, but cannot target a directory inside an existing repository. Use workspace-relative repo_path when selecting a repository. "
         "When repo_path is given and has a .git marker, workspace scan is bypassed for faster execution. "
@@ -908,7 +955,12 @@ def git_manage(
         result["untracked_files"] = [
             item["path"] for item in entries if item["untracked"]
         ]
-        result["untracked_summary"] = {"count": len(result["untracked_files"])}
+        result["untracked_summary"] = {
+            "count": len(result["untracked_files"]),
+            "summaries": _pending_change_summaries_for_paths(
+                result["untracked_files"], selected_path
+            ),
+        }
     elif action == "log" and result.get("exit_code") == 0:
         history_args = list(git_args)
         separator = (

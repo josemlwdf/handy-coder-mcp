@@ -236,7 +236,6 @@ def capture_url_screenshot(
 
     image_file = images[-1]
     image_path = image_file.relative_to(Path(support.ROOT)).as_posix()
-    output_path = output_dir.relative_to(Path(support.ROOT)).as_posix()
     stat = image_file.stat()
 
     warnings = list(stderr_warnings)
@@ -253,7 +252,6 @@ def capture_url_screenshot(
         "ok": True,
         "url": normalized_url,
         "image_path": image_path,
-        "output_dir": output_path,
         "file_size_bytes": stat.st_size,
         "exit_code": execution.get("exit_code"),
         "timed_out": execution.get("timed_out", False),

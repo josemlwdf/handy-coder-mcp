@@ -59,8 +59,7 @@ class GitManageFixP23Tests(unittest.TestCase):
         result = git_manage.git_manage("status", repo_path=".")
         self.assertEqual(result["exit_code"], 0)
         self.assertEqual(result["untracked_files"], ["new.txt"])
-        self.assertEqual(result["untracked_summary"], {"count": 1})
-        self.assertNotIn("files", result["untracked_summary"])
+        self.assertEqual(result["untracked_summary"], {"count": 1, "summaries": []})
 
     def test_path_escape_wording_is_unified(self):
         cases = [

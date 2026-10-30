@@ -184,6 +184,11 @@ def create_file(
         apply_python_postprocess=post_process_python,
         apply_line_endings=bool(format_content or post_process_python),
     )
+    # The caller exposes diff_hint at the top level; keep the embedded report
+    # focused on per-file polish details so clients don't display it twice.
+    diff_hint = polish_report.pop(
+        "diff_hint", "Diffs include both LLM changes and code polish actions."
+    )
     if not polish_report.get("ok"):
         _LOGGER.warning(
             "Automatic code polish reported issues for %s: %s",
@@ -225,9 +230,7 @@ def create_file(
         "diff": diff,
         "submitted_diff": submitted_diff,
         "code_polish_report": polish_report,
-        "diff_hint": polish_report.get(
-            "diff_hint", "Diffs include both LLM changes and code polish actions."
-        ),
+        "diff_hint": diff_hint,
     }
 
     if p.suffix.lower() == ".py":

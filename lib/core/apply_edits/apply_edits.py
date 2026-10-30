@@ -334,6 +334,7 @@ def apply_edits(
     # Phase 2: Write all staged changes to disk; roll back on failure.
     # Skipped entirely when dry_run=True.
     written: list[str] = []
+    diff_hint = "Diffs include both LLM changes and code polish actions."
     if not dry_run:
         try:
             for resolved_key, new_text in staged_contents.items():
@@ -356,6 +357,9 @@ def apply_edits(
             apply_python_postprocess=False,
             apply_line_endings=True,
         )
+        # Keep the hint at the response root instead of duplicating it inside
+        # the embedded code-polish report.
+        diff_hint = polish_report.pop("diff_hint", diff_hint)
     else:
         polish_report: dict = {
             "ok": True,
@@ -420,9 +424,7 @@ def apply_edits(
         "written_files": written_files,
         "dry_run": dry_run,
         "code_polish_report": polish_report,
-        "diff_hint": polish_report.get(
-            "diff_hint", "Diffs include both LLM changes and code polish actions."
-        ),
+        "diff_hint": diff_hint,
     }
     if checked_files:
         if len(checked_files) == 1:
