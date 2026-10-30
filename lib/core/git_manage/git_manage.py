@@ -459,7 +459,8 @@ def git_manage(
         Field(
             description=(
                 "Optional action-specific Git arguments, each as a separate string. Relative file paths for add and diff are resolved against repo_path (or the selected repository) and must stay inside that repository. "
-                "Use no arguments for status or init. diff supports --cached, --stat, "
+                "Use no arguments for status or init. diff supports --cached (equivalent to "
+                "mode='staged' when mode is omitted), --stat, "
                 "--name-only, and workspace-relative paths after --; log supports -n, --oneline, "
                 "--decorate, --all, --, and a count. commit requires ['-m', 'message'] where message should clearly summarize staged changes "
                 "and optionally accepts -a; add takes one or more workspace-relative paths or exactly ['all'] to stage every change; push supports -u/--set-upstream, --force-with-lease, --tags, --dry-run plus optional <remote> <refspec>; checkout takes exactly one branch or ref. branch takes --list or one branch name; stash takes list/push/pop/apply/drop; blame takes one workspace-relative file path. (Required: False)"
@@ -520,7 +521,8 @@ def git_manage(
     if action == "init" and args:
         raise ValueError("init accepts no args")
     if action == "diff":
-        mode = mode or "unstaged"
+        cached_requested = "--cached" in args
+        mode = mode or ("staged" if cached_requested else "unstaged")
         file_paths = file_paths or []
         if mode not in {"unstaged", "staged", "both"}:
             raise ValueError("mode must be unstaged, staged, or both")

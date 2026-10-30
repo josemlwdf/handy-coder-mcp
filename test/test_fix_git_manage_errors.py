@@ -105,6 +105,5 @@ class GitManageDiffOptionErrorTests(unittest.TestCase):
         result = git_manage.git_manage("diff", args=["--stat"], repo_path=".")
         self.assertNotIn("error_code", result)
 
-
 if __name__ == "__main__":
     unittest.main()

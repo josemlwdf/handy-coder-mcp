@@ -116,4 +116,4 @@ Runs supported formatter and linter executables when present. This helper is cal
 
 The helper lives in the `code_format_lint` package and is called by `code_polish`. It is not part of the public MCP tool catalog.
 
-JavaScript linting passes the repository's `.eslintrc.json` to ESLint by default. Set `config_file` to use a different workspace-relative ESLint config; the same option is passed to Ruff when processing Python files.
+JavaScript linting passes the repository's `.eslintrc.json` to ESLint by default. When neither that file nor an explicit `config_file` exists, ESLint is skipped with reason `no_config`; available formatting such as jsbeautifier still runs. Set `config_file` to use a different workspace-relative ESLint config; the same option is passed to Ruff when processing Python files.

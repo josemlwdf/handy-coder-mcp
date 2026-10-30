@@ -343,8 +343,11 @@ def code_format_lint(
     args: list = [str(path) for path in resolved]
     config_path = str(inside(config_file, must_exist=True)) if config_file else None
     root = inside(".")
-    eslint_config_path = config_path or str(
-        inside(".eslintrc.json", must_exist=True)
+    default_eslint_config = root / ".eslintrc.json"
+    eslint_config_path = config_path or (
+        str(inside(".eslintrc.json", must_exist=True))
+        if default_eslint_config.is_file()
+        else None
     )
     reports: list = []
     tools_run: list = []
@@ -390,7 +393,7 @@ def code_format_lint(
         available: bool = False
         eslint = _tool_path("eslint", root)
         jsbeautifier_result = _format_javascript(resolved, fix)
-        if eslint:
+        if eslint and eslint_config_path:
             available: bool = True
             tools_run.append("eslint")
             reports.append(
@@ -403,8 +406,10 @@ def code_format_lint(
                     ),
                 }
             )
-        else:
+        elif not eslint:
             tools_skipped.append(_skipped("eslint"))
+        else:
+            tools_skipped.append(_skipped("eslint", "no_config"))
         if jsbeautifier_result["available"]:
             available: bool = True
             tools_run.append("jsbeautifier")
