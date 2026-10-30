@@ -26,12 +26,19 @@ The JSON Schema below is the registered input contract. Required fields appear i
     "timeout_ms": {
       "description": "Build timeout in milliseconds, from 1 to 600000; defaults to 30000. (Required: False)",
       "type": "integer"
+    },
+    "include_raw_output": {
+      "description": "Include the combined stdout and stderr log in the response. A second call with this enabled reruns the build. (Required: False)",
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [],
   "additionalProperties": false
 }
 ```
+
+The default response includes `success`, parsed `errors` and `warnings`, and build metadata. Set `include_raw_output` to `true` to include `raw_output` (stdout followed by stderr, concatenated and not interleaved). A second call with this option reruns the build.
 
 ## Results
 

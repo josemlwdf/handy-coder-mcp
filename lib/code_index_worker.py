@@ -18,9 +18,9 @@ def _eligible(path: str, root: Path) -> bool:
         relative = candidate.resolve().relative_to(root).as_posix()
     except (OSError, ValueError):
         return False
-    parts = Path(relative).parts
+    parts = Path(relative).parts[:-1]
     return candidate.suffix.lower() in code_index.SOURCE_EXTENSIONS and not any(
-        part.startswith(".") or part in code_index.DEFAULT_EXCLUDES for part in parts
+        code_index._ignored_directory(part) for part in parts
     )
 
 
@@ -55,10 +55,22 @@ def run(
     observer.start()
     try:
         try:
-            result = code_index.index_codebase()
+            code_index.set_index_status("scanning", worker_pid=os.getpid(), scanned=0, failed=0, message="Initial workspace scan is running.")
+            result = code_index.index_codebase(
+                progress=lambda stats: code_index.set_index_status(
+                    "scanning", scanned=stats["scanned"], failed=stats["failed"],
+                    message="Initial workspace scan is running.",
+                )
+            )
+            state = "ready_with_errors" if result.get("failed") else "ready"
+            code_index.set_index_status(
+                state, scanned=result["scanned"], failed=result["failed"],
+                message=(f"{result['failed']} file(s) could not be indexed." if result.get("failed") else "Workspace index is ready."),
+            )
             if result.get("failed"):
                 print(f"[handy-coder-mcp-indexer] Initial scan reported: {result['errors']}", file=sys.stderr, flush=True)
         except Exception as exc:  # worker failures must not affect MCP startup
+            code_index.set_index_status("failed", message=str(exc))
             print(f"[handy-coder-mcp-indexer] Initial indexing failed: {exc}", file=sys.stderr, flush=True)
         while not stop_event.is_set() and (
             parent_pid is None or os.getppid() == parent_pid
@@ -73,10 +85,22 @@ def run(
             if stop_event.is_set():
                 break
             try:
-                result = code_index.index_codebase()
+                code_index.set_index_status("refreshing", scanned=0, failed=0, message="A workspace change is being indexed.")
+                result = code_index.index_codebase(
+                    progress=lambda stats: code_index.set_index_status(
+                        "refreshing", scanned=stats["scanned"], failed=stats["failed"],
+                        message="A workspace change is being indexed.",
+                    )
+                )
+                state = "ready_with_errors" if result.get("failed") else "ready"
+                code_index.set_index_status(
+                    state, scanned=result["scanned"], failed=result["failed"],
+                    message=(f"{result['failed']} file(s) could not be indexed." if result.get("failed") else "Workspace index is ready."),
+                )
                 if result.get("failed"):
                     print(f"[handy-coder-mcp-indexer] Index refresh reported: {result['errors']}", file=sys.stderr, flush=True)
             except Exception as exc:
+                code_index.set_index_status("failed", message=str(exc))
                 print(f"[handy-coder-mcp-indexer] Index refresh failed: {exc}", file=sys.stderr, flush=True)
     finally:
         observer.stop()

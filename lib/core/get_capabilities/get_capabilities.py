@@ -6,6 +6,7 @@ import os
 import shutil
 
 from ... import support
+from ... import code_index
 from ...subagents.resolve import (
     resolve_backend,
     resolve_continue,
@@ -26,6 +27,21 @@ def get_capabilities() -> dict:
 
     subagent_backend = resolve_backend()
     screenshot_available, screenshot_note = gowitness_available()
+    try:
+        indexer = code_index.index_status()
+        worker_pid = indexer.get("worker_pid")
+        if worker_pid:
+            try:
+                os.kill(worker_pid, 0)
+                indexer["worker_alive"] = True
+            except ProcessLookupError:
+                indexer["worker_alive"] = False
+            except PermissionError:
+                indexer["worker_alive"] = True
+        else:
+            indexer["worker_alive"] = None
+    except Exception as exc:
+        indexer = {"state": "unavailable", "worker_alive": None, "message": str(exc)}
     # Only non-secret identifiers: provider, model name and config path. Never the key.
     continue_info: None = None
     continue_models = resolve_continue_models()
@@ -100,7 +116,8 @@ def get_capabilities() -> dict:
         },
         "code_intel": {
             "available": True,
-            "note": "index or navigate C# code; auto-indexes when index is empty",
+            "note": "navigate the automatically maintained multilingual source index",
+            "indexer": indexer,
         },
         "get_tool_details": {
             "available": True,

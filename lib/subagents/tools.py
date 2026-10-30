@@ -1678,7 +1678,8 @@ def after_tool_call(
     automatic_commit: None = None
     progress_hint: None = None
     if tool_name in {"create_file", "apply_edits"}:
-        automatic_commit = _record_file_change(tool_name, result, args)
+        if isinstance(args, dict) and args.get("automatic_commit") is True:
+            automatic_commit = _record_file_change(tool_name, result, args)
         progress_hint = _progress_summary_hint(tool_name, result, args)
     frame = _MANAGER.open_frame()
     if (

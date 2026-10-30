@@ -236,6 +236,20 @@ class ToolSchemaTests(unittest.TestCase):
         self.assertIn("expand_groups", schema.get("properties", {}))
         self.assertNotIn("expand_groups", schema.get("required", []))
 
+    def test_fastmcp_registered_build_project_schema_exposes_raw_output_option(self) -> None:
+        try:
+            from mcp.server.fastmcp import FastMCP
+        except ModuleNotFoundError:
+            self.skipTest("FastMCP dependency is not installed")
+        server = FastMCP("build-schema-contract")
+        build_project.register(server)
+        registered = server._tool_manager._tools["build_project"]
+        schema = getattr(registered, "parameters", None) or getattr(registered, "input_schema", {})
+        option = schema.get("properties", {}).get("include_raw_output", {})
+        self.assertEqual(option.get("type"), "boolean")
+        self.assertNotIn("include_raw_output", schema.get("required", []))
+        self.assertIn("second call", option.get("description", ""))
+
     def test_fastmcp_runtime_apply_edits_parameters_include_nested_edit_keys(
         self,
     ) -> None:

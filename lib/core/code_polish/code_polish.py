@@ -206,14 +206,8 @@ def polish_paths(
         if suffix not in _SUPPORTED_SUFFIXES:
             file_reports.append(
                 {
-                    "path": rel_path,
-                    "changed": False,
                     "skipped": True,
                     "reason": "unsupported_suffix",
-                    "transformations": [],
-                    "tool_outputs": [],
-                    "diff": "",
-                    "changed_lines": 0,
                 }
             )
             continue
@@ -292,7 +286,6 @@ def polish_paths(
 
         file_reports.append(
             {
-                "path": rel_path,
                 "changed": changed,
                 "changed_lines": _changed_line_count(diff),
                 "diff": diff,

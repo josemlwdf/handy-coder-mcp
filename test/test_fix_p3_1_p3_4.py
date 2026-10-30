@@ -96,16 +96,18 @@ class BuildProjectRawOutputTests(unittest.TestCase):
         mcp = FastMCP("t")
         build_project.register(mcp)
         description = mcp._tool_manager.get_tool("build_project").description
-        self.assertIn("raw_output is stdout followed by stderr", description)
+        self.assertIn("include_raw_output=true", description)
+        self.assertIn("second call", description)
 
     def test_raw_output_is_stdout_followed_by_stderr(self):
         (self.root / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
         fake = {"exit_code": 0, "stdout": "OUT\n", "stderr": "ERR\n", "timed_out": False, "duration_ms": 1}
         with patch("lib.core.build_project._build_command", return_value=(["build"], None)), \
              patch("lib.core.build_project.run_process", return_value=fake):
-            result = build_project.build_project(path=".")
+            result = build_project.build_project(path=".", include_raw_output=True)
         self.assertEqual(result["raw_output"], "OUT\nERR\n")
-        self.assertEqual(result["raw_output"], result["stdout"] + result["stderr"])
+        self.assertNotIn("stdout", result)
+        self.assertNotIn("stderr", result)
 
 
 if __name__ == "__main__":

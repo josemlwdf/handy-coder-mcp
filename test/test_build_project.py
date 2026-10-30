@@ -38,7 +38,33 @@ class BuildProjectTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0], ["/bin/pnpm", "run", "build"])
         self.assertEqual(result["errors"][0]["line"], 4)
         self.assertEqual(result["errors"][0]["column"], 2)
-        self.assertEqual(result["raw_output"], output["stdout"] + output["stderr"])
+        self.assertTrue(result["success"] is False)
+        self.assertNotIn("raw_output", result)
+        self.assertNotIn("stdout", result)
+        self.assertNotIn("stderr", result)
+
+    def test_raw_output_is_opt_in_and_includes_stderr(self):
+        project = self.root / "app"
+        project.mkdir()
+        (project / "package.json").write_text(json.dumps({"scripts": {"build": "tsc"}}))
+        output = {"exit_code": 0, "stdout": "OUT\n", "stderr": "warning: check\n", "timed_out": False, "duration_ms": 1}
+        with patch.object(build_project.shutil, "which", return_value="/bin/npm"), patch.object(build_project, "run_process", return_value=output):
+            result = build_project.build_project(path="app", include_raw_output=True)
+        self.assertEqual(result["raw_output"], "OUT\nwarning: check\n")
+        self.assertEqual(result["warnings"][0]["message"], "check")
+        self.assertNotIn("stdout", result)
+        self.assertNotIn("stderr", result)
+
+    def test_exit_code_and_timeout_determine_success(self):
+        project = self.root / "app"
+        project.mkdir()
+        (project / "package.json").write_text(json.dumps({"scripts": {"build": "tsc"}}))
+        for output in (
+            {"exit_code": 1, "stdout": "Build succeeded", "stderr": "", "timed_out": False},
+            {"exit_code": 0, "stdout": "Build succeeded", "stderr": "", "timed_out": True},
+        ):
+            with self.subTest(output=output), patch.object(build_project.shutil, "which", return_value="/bin/npm"), patch.object(build_project, "run_process", return_value=output):
+                self.assertFalse(build_project.build_project(path="app")["success"])
 
     def test_path_confinement(self):
         result = build_project.build_project(path="../outside")
@@ -101,7 +127,7 @@ class BuildProjectTests(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertEqual(result["exit_code"], 1)
         self.assertEqual(result["errors"][0]["code"], "CS1000")
-        self.assertEqual(result["stderr"], output["stderr"])
+        self.assertNotIn("stderr", result)
 
     def test_timeout_is_forwarded_and_reported(self):
         project = self.root / "app"

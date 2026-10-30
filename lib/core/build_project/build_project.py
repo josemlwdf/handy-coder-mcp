@@ -172,6 +172,12 @@ def build_project(
             description="Build timeout in milliseconds, from 1 to 600000; defaults to 30000. (Required: False)"
         ),
     ] = 30_000,
+    include_raw_output: Annotated[
+        bool,
+        Field(
+            description="Include the combined stdout and stderr log in the response. A second call with this enabled reruns the build. (Required: False)"
+        ),
+    ] = False,
 ) -> dict:
     """Detect and build a Python, Node, or .NET project without invoking a shell."""
     if not 1 <= int(timeout_ms) <= _MAX_TIMEOUT_MS:
@@ -254,7 +260,7 @@ def build_project(
     result = run_process(command, cwd=directory, timeout_ms=timeout_ms)
     raw = result.get("stdout", "") + result.get("stderr", "")
     errors, warnings = _diagnostics(raw, "error"), _diagnostics(raw, "warning")
-    return {
+    response = {
         "success": result["exit_code"] == 0 and not result.get("timed_out", False),
         "supported": True,
         "exit_code": result["exit_code"],
@@ -269,17 +275,17 @@ def build_project(
         ),
         "errors": errors,
         "warnings": warnings,
-        "raw_output": raw,
-        "stdout": result.get("stdout", ""),
-        "stderr": result.get("stderr", ""),
         "duration_ms": result.get("duration_ms"),
     }
+    if include_raw_output:
+        response["raw_output"] = raw
+    return response
 
 
 def register(mcp):
     """Register function."""
     return mcp.tool(
         description=describe(
-            "Build one detected Python, Node, or .NET project using its declared build system. If several projects exist, supply path to select one; otherwise project choices are returned without running a build. Uses the project lockfile to select a Node package manager and returns parsed diagnostics plus raw output: raw_output is stdout followed by stderr (concatenated, not interleaved), and stdout and stderr are also returned separately. When to use: Build a workspace project and inspect structured build results."
+            "Build one detected Python, Node, or .NET project using its declared build system. If several projects exist, supply path to select one; otherwise project choices are returned without running a build. Uses the project lockfile to select a Node package manager and returns parsed errors and warnings. Set include_raw_output=true to include raw_output, which is stdout followed by stderr (concatenated, not interleaved); a second call with this option reruns the build. Build success follows the process exit code and timeout status. When to use: Build a workspace project and inspect structured build results."
         )
     )(build_project)

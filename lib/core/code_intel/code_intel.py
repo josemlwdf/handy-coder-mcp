@@ -39,5 +39,6 @@ def register(mcp) -> None:
     mcp.tool(description=describe(
         "Query the automatically maintained multilingual source index with action=search_code|get_symbol|find_references. "
         "The background indexer watches registered language extensions. Each result reports its detected language and syntax or lexical analysis mode. "
+        "Empty searches and missing symbols include index_status with worker state, progress, counts, and any indexing failure. "
         "Use query for search_code and symbol for get_symbol or find_references."
     ))(code_intel)

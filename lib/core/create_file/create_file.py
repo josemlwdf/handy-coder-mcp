@@ -71,6 +71,12 @@ def create_file(
             description="When true, run Python source post-processing after writing a .py file. Defaults to false. (Required: False)"
         ),
     ] = False,
+    automatic_commit: Annotated[
+        bool,
+        Field(
+            description="If true, include this successful change in the automatic commit workflow, which dispatches a committer after five opted-in file changes. Defaults to false. (Required: False)"
+        ),
+    ] = False,
     *,
     summary: Annotated[str, Field(description=SUMMARY_DESCRIPTION)],
 ) -> dict:
@@ -267,6 +273,7 @@ def register(mcp):
         description=describe(
             "Create a new UTF-8 text file in the workspace (max 2 MiB), optionally with initial content. "
             "Requires summary: a one-line, concise description of the change. Fails with error_code='already_exists' instead of replacing an existing file unless overwrite=true. "
+            "Automatic commits are opt-in: set automatic_commit=true on this call to include the change in the automatic commit workflow (a committer is dispatched after five opted-in successful file changes); the default is false. "
             "Missing parent directories are created unless create_parents=false. "
             "Optional permissions sets POSIX mode bits; backup=true saves the prior file as a sibling .bak before overwrite. "
             "Failures return error_code (invalid_summary, already_exists, path_escape, not_a_file, not_a_directory, parent_missing, file_too_large, io_error) "

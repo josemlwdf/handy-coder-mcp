@@ -343,6 +343,9 @@ def code_format_lint(
     args: list = [str(path) for path in resolved]
     config_path = str(inside(config_file, must_exist=True)) if config_file else None
     root = inside(".")
+    eslint_config_path = config_path or str(
+        inside(".eslintrc.json", must_exist=True)
+    )
     reports: list = []
     tools_run: list = []
     tools_skipped: list = []
@@ -393,7 +396,11 @@ def code_format_lint(
             reports.append(
                 {
                     "tool": "eslint",
-                    **_run(eslint, [*(["--fix"] if fix else []), *args], root),
+                    **_run(
+                        eslint,
+                        ["--config", eslint_config_path, *(["--fix"] if fix else []), *args],
+                        root,
+                    ),
                 }
             )
         else:

@@ -67,6 +67,25 @@ def test_public_list_is_router_only_and_discovery_is_stable() -> None:
     assert len(discover("", limit=4)["tools"]) == 0
 
 
+def test_wildcard_discovery_returns_compact_full_catalog() -> None:
+    server = _server()
+    discover = server._tool_manager._tools["discover_tools"].fn
+
+    result = discover("*", limit=1)
+
+    assert result["count"] > 4
+    assert "discover_tools" not in {tool["name"] for tool in result["tools"]}
+    read_files = next(tool for tool in result["tools"] if tool["name"] == "read_files")
+    assert read_files["description"] == "Read files and return their contents."
+    assert read_files["parameters"]["paths"]["type"] == "array"
+    assert "description" in read_files["parameters"]["paths"]
+    assert "inputSchema" not in read_files
+
+    metadata = server._tool_manager._tools["discover_tools"].description
+    assert "query='*'" in metadata
+    assert "get_tool_details" in metadata
+
+
 def test_router_dispatch_validates_original_schema_and_unknown_names() -> None:
     server = _server()
 

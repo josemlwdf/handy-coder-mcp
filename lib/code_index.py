@@ -46,6 +46,11 @@ DEFAULT_EXCLUDES = frozenset(
 )
 
 
+def _ignored_directory(name: str, exclusions=None) -> bool:
+    """Return whether a directory name is hidden or explicitly excluded."""
+    return name.startswith(".") or name in (DEFAULT_EXCLUDES | set(exclusions or ()))
+
+
 class IndexErrorBase(RuntimeError):
     """IndexErrorBase class."""
 
@@ -395,13 +400,11 @@ def _extract_for(path: Path, source: bytes) -> tuple[list, list, str, str]:
 
 def _files(root: Path, exclusions: None = None) -> None:
     """Files function."""
-    excluded = DEFAULT_EXCLUDES | set(exclusions or ())
     for base, dirs, names in os.walk(root, followlinks=False):
         dirs[:] = sorted(
             d
             for d in dirs
-            if d not in excluded
-            and not d.startswith(".")
+            if not _ignored_directory(d, exclusions)
             and not (Path(base) / d).is_symlink()
         )
         for name in sorted(names):
@@ -414,7 +417,61 @@ def _files(root: Path, exclusions: None = None) -> None:
                 yield path
 
 
-def index_codebase(exclusions: None = None) -> dict:
+def set_index_status(status: str, **details) -> None:
+    """Persist the background indexer's latest state for navigation responses."""
+    con = _db()
+    try:
+        values = {"state": status, "updated_at": time.time(), **details}
+        with con:
+            for key, value in values.items():
+                con.execute(
+                    "INSERT OR REPLACE INTO metadata VALUES(?,?)",
+                    (f"index_{key}", str(value)),
+                )
+    finally:
+        con.close()
+
+
+def index_status(con=None) -> dict:
+    """Return persisted worker state and current index counts."""
+    own_connection = con is None
+    con = con or _db()
+    try:
+        metadata = {
+            row["key"]: row["value"]
+            for row in con.execute("SELECT key,value FROM metadata WHERE key LIKE 'index_%'")
+        }
+        return {
+            "state": metadata.get("index_state", "unknown"),
+            "worker_pid": int(metadata["index_worker_pid"])
+            if metadata.get("index_worker_pid") else None,
+            "updated_at": float(metadata["index_updated_at"])
+            if metadata.get("index_updated_at") else None,
+            "scanned": int(metadata.get("index_scanned", 0)),
+            "failed": int(metadata.get("index_failed", 0)),
+            "message": metadata.get("index_message"),
+            "files": con.execute("SELECT COUNT(*) FROM files WHERE error IS NULL").fetchone()[0],
+            "symbols": con.execute("SELECT COUNT(*) FROM symbols").fetchone()[0],
+        }
+    finally:
+        if own_connection:
+            con.close()
+
+
+def _index_status_hint(status: dict) -> str:
+    state = status["state"]
+    if state in {"scanning", "refreshing"}:
+        return f"The workspace index is {state} ({status['scanned']} files scanned so far)."
+    if state == "failed":
+        return f"The workspace indexer failed: {status.get('message') or 'no error details were recorded'}."
+    if state == "ready_with_errors":
+        return f"The index is ready, but {status['failed']} file(s) failed to index. {status.get('message') or ''}".strip()
+    if state == "ready":
+        return f"The index is ready with {status['files']} files and {status['symbols']} symbols; this query had no match."
+    return "No indexing status is available yet. The background indexer may not have started; the index may still be building or refreshing."
+
+
+def index_codebase(exclusions: None = None, progress=None) -> dict:
     """Index codebase function."""
     root = Path(support.ROOT).resolve(strict=True)
     con = _db()
@@ -456,6 +513,8 @@ def index_codebase(exclusions: None = None) -> dict:
                             "message": "File content hash unchanged; kept previously indexed symbols.",
                         }
                     )
+                    if progress:
+                        progress(stats)
                     continue
                 symbols, refs, language, analysis_mode = _extract_for(path, data)
                 with con:
@@ -542,6 +601,8 @@ def index_codebase(exclusions: None = None) -> dict:
                             "INSERT OR IGNORE INTO files(path,sha256,size,mtime,indexed_at,error) VALUES(?,?,?,?,?,?)",
                             (rel, "", 0, 0, time.time(), str(exc)),
                         )
+            if progress:
+                progress(stats)
         stale = set(known) - present
         with con:
             for rel in stale:
@@ -612,6 +673,7 @@ def code_navigator(
     con = _db()
     try:
         if action == "search_code":
+            status = index_status(con)
             expr = _fts_query(query or "")
             if not expr:
                 count = con.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
@@ -619,7 +681,8 @@ def code_navigator(
                     "results": [],
                     **(
                         {
-                            "hint": "The background indexer is building or refreshing the C# index; try again shortly."
+                            "hint": _index_status_hint(status),
+                            "index_status": status,
                         }
                         if not count
                         else {}
@@ -649,7 +712,8 @@ def code_navigator(
                 "results": results,
                 **(
                     {
-                        "hint": "The background indexer is building or refreshing the C# index; try again shortly."
+                        "hint": _index_status_hint(status),
+                        "index_status": status,
                     }
                     if not count
                     else {}
@@ -721,9 +785,12 @@ def code_navigator(
                 ],
             }
         if not rows:
+            status = index_status(con)
             return {
                 "error_code": "symbol_not_found",
                 "message": f"No indexed symbol matches {exact}",
+                "hint": _index_status_hint(status),
+                "index_status": status,
             }
         row = rows[0]
         try:

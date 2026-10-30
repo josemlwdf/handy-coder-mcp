@@ -455,11 +455,11 @@ def install(mcp: Any) -> None:
         limit: Annotated[
             int,
             Field(
-                description="Max matches. Capped at 4. (Required: False)"
+                description="Max search matches, capped at 4; ignored for query='*'. (Required: False)"
             ),
         ] = 4,
     ) -> dict:
-        """Find registered tools by name, summary, and full documentation."""
+        """Search tools or list a compact catalog with query='*'."""
         query_text = " ".join((query or "").split()).casefold()
         if not query_text:
             return {
@@ -470,6 +470,46 @@ def install(mcp: Any) -> None:
         terms = re.findall(r"[\w.-]+", query_text)
         manager_tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
         candidates = []
+        if query_text == "*":
+            result = []
+            ordered_catalog = sorted(
+                catalog.items(), key=lambda item: item[0].casefold()
+            )
+            for name, entry in ordered_catalog:
+                if name == "discover_tools" or name not in manager_tools:
+                    continue
+                parameters = {}
+                details = _arguments(entry.get("inputSchema", {}))
+                for parameter_name, detail in details.items():
+                    parameter = {
+                        "type": detail["type"],
+                        "description": _brief(detail["description"]),
+                        "required": detail["required"],
+                    }
+                    if "properties" in detail:
+                        parameter["properties"] = {
+                            child_name: {
+                                "type": child["type"],
+                                "description": _brief(child["description"]),
+                                "required": child["required"],
+                            }
+                            for child_name, child in detail["properties"].items()
+                        }
+                    if "items" in detail:
+                        item = detail["items"]
+                        parameter["items"] = {
+                            "type": item["type"],
+                            "description": _brief(item["description"]),
+                            "required": item["required"],
+                        }
+                    parameters[parameter_name] = parameter
+                result.append({
+                    "name": name,
+                    "description": _brief(entry.get("description", "")),
+                    "parameters": parameters,
+                })
+            return {"tools": result, "count": len(result)}
+
         for name, entry in catalog.items():
             if name not in manager_tools:
                 continue
@@ -503,7 +543,7 @@ def install(mcp: Any) -> None:
 
     register_meta(
         "discover_tools",
-        "Search tools by name or capability. Return full schemas.",
+        "Search by name or capability to get matching tools and their full schemas. Use query='*' once to list every registered tool (except discover_tools) with short descriptions and parameter types and descriptions; call get_tool_details only when expanded argument documentation is needed.",
         discover_tools,
     )
 

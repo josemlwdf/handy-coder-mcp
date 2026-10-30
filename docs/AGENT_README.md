@@ -153,7 +153,7 @@ Unfiltered `run_tests` runs require a recognized test setup (for example, pytest
 
 Every 10th logged tool call, dict tool responses include `status_summary_request` with a short reminder to provide a concise user update (what was found, what changed, what comes next).
 
-Committing is left entirely to the user or to an explicit request, and `git_manage` `action="commit"` remains available as an ordinary action. When commit is used, `git_manage` now includes guidance to use meaningful commit messages that accurately summarize staged changes.
+Committing is left to the user by default. `create_file` and `apply_edits` accept `automatic_commit=true` to opt successful changes into the automatic committer workflow, which dispatches after five opted-in file changes; the default is false. `git_manage` `action="commit"` remains available as an ordinary action. When commit is used, `git_manage` includes guidance to use meaningful commit messages that accurately summarize staged changes.
 
 ### Skills
 
