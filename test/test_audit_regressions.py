@@ -386,12 +386,48 @@ class AuditRegressionTests(unittest.TestCase):
             for kind in ("method_call", "member_access"):
                 con.execute(
                     "INSERT INTO references_(file_id,target,line,kind,snippet,enclosing_type,enclosing_method) VALUES(?,?,?,?,?,?,?)",
-                    (file_id, "Add", 8, kind, "c.Add(1, 2)", "C", "Run"),
+                    (
+                        file_id,
+                        "Add",
+                        8,
+                        kind,
+                        "c.Add" if kind == "member_access" else "c.Add(1, 2)",
+                        "C",
+                        "Run",
+                    ),
                 )
         result = code_index.code_navigator("find_references", symbol="Add")
         self.assertEqual(len(result["references"]), 1)
+        self.assertEqual(result["references"][0]["kind"], "method_call")
+        self.assertEqual(result["references"][0]["snippet"], "c.Add(1, 2)")
         self.assertNotIn("id", result["references"][0])
         self.assertNotIn("file_id", result["references"][0])
+        con.close()
+
+    def test_code_navigator_keeps_distinct_same_line_calls(self) -> None:
+        """Keep separate call occurrences when they share a source line."""
+        code_index.index_codebase()
+        con = code_index._db(readonly=False)
+        with con:
+            file_id = con.execute(
+                "INSERT INTO files(path,sha256,size,mtime,indexed_at) VALUES(?,?,?,?,?)",
+                ("Calls.cs", "digest", 1, 1.0, 1.0),
+            ).lastrowid
+            for kind, snippet in (
+                ("method_call", "a.Add(1)"),
+                ("member_access", "a.Add"),
+                ("method_call", "b.Add(2)"),
+                ("member_access", "b.Add"),
+            ):
+                con.execute(
+                    "INSERT INTO references_(file_id,target,line,kind,snippet,enclosing_type,enclosing_method) VALUES(?,?,?,?,?,?,?)",
+                    (file_id, "Add", 1, kind, snippet, "C", "Run"),
+                )
+        references = code_index.code_navigator(
+            "find_references", symbol="Add"
+        )["references"]
+        self.assertEqual(len(references), 2)
+        self.assertTrue(all(ref["kind"] == "method_call" for ref in references))
         con.close()
 
     def test_code_navigator_errors_use_error_code(self) -> None:

@@ -89,6 +89,9 @@ Read current source from disk and detect stale index entries before returning it
 Required: `symbol`
 
 Find likely calls and other usages of a given symbol.
+Method calls are reported as `method_call` references; standalone member
+usages are reported as `member_access`. An overlapping member-access candidate
+within a call-site snippet is represented by the method-call result only.
 
 Return:
 - Referenced symbol name.

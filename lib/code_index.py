@@ -815,26 +815,54 @@ def _code_navigator_once(
             unique: dict = {}
             for row in rows:
                 key: tuple = (row["file_id"], row["line"], row["snippet"])
-                unique.setdefault(
-                    key,
-                    {
-                        name: row[name]
-                        for name in (
-                            "path",
-                            "target",
-                            "line",
-                            "kind",
-                            "snippet",
-                            "enclosing_type",
-                            "enclosing_method",
-                            "language",
-                            "analysis_mode",
-                        )
-                    },
-                )
-                unique[key]["reference_type"] = (
+                item = {
+                    name: row[name]
+                    for name in (
+                        "path",
+                        "target",
+                        "line",
+                        "kind",
+                        "snippet",
+                        "enclosing_type",
+                        "enclosing_method",
+                        "language",
+                        "analysis_mode",
+                    )
+                }
+                item["reference_type"] = (
                     "lexical match" if row["analysis_mode"] == "lexical" else "syntactic candidate"
                 )
+                # Older indexes can contain both a method_call and a
+                # member_access for the same target within the call snippet.
+                # Prefer the call, while retaining distinct calls on a line
+                # because each has its own full call-site snippet.
+                overlap = None
+                if row["kind"] == "member_access":
+                    overlap = next(
+                        (
+                            existing
+                            for existing in unique.values()
+                            if existing["path"] == row["path"]
+                            and existing["line"] == row["line"]
+                            and existing["target"].lower() == row["target"].lower()
+                            and existing["kind"] == "method_call"
+                            and row["snippet"] in existing["snippet"]
+                        ),
+                        None,
+                    )
+                if overlap is not None:
+                    continue
+                if row["kind"] == "method_call":
+                    for existing_key, existing in list(unique.items()):
+                        if (
+                            existing["path"] == row["path"]
+                            and existing["line"] == row["line"]
+                            and existing["target"].lower() == row["target"].lower()
+                            and existing["kind"] == "member_access"
+                            and existing["snippet"] in row["snippet"]
+                        ):
+                            del unique[existing_key]
+                unique.setdefault(key, item)
             return {
                 "reference_type": "syntactic candidates or lexical matches; never compiler-resolved",
                 "symbol": symbol,
