@@ -14,6 +14,7 @@ from ...subagents.resolve import (
 )
 from ...support import describe
 from ..gowitness_screenshot import gowitness_available
+from ..build_project.build_project import _python_build_runtime
 from ...subagents.roles import ROLES
 
 _MCP: None = None
@@ -24,6 +25,7 @@ def get_capabilities() -> dict:
     # Core binaries
     git_ok = shutil.which("git") is not None
     pytest_ok = shutil.which("pytest") is not None
+    python_build_python, python_build_ok = _python_build_runtime()
 
     subagent_backend = resolve_backend()
     screenshot_available, screenshot_note = gowitness_available()
@@ -90,7 +92,13 @@ def get_capabilities() -> dict:
         "build_project": {
             "available": True,
             "ecosystems": ["python", "node", "dotnet"],
-            "note": "checks build tools for selected project",
+            "python_build_available": python_build_ok,
+            "python_interpreter": python_build_python,
+            "note": (
+                "checks build tools for selected project; Python build is available"
+                if python_build_ok
+                else "checks build tools for selected project; Python build unavailable: install 'build' in the selected Python interpreter"
+            ),
         },
         "code_get_diagnostics": {
             "available": True,

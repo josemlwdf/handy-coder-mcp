@@ -37,7 +37,15 @@ class CodeIndexWorkerTests(unittest.TestCase):
 
             try:
                 wait_for(lambda paths: paths == {"A.cs"})
+                (root / "new-dir").mkdir()
+                (root / "new-dir" / "Nested.cs").write_text(
+                    "class Nested { void Added() {} }"
+                )
+                wait_for(lambda paths: paths == {"A.cs", "new-dir/Nested.cs"})
                 (root / "B.py").write_text("class Beta:\n    def work(self): pass\n")
+                wait_for(lambda paths: paths == {"A.cs", "new-dir/Nested.cs", "B.py"})
+                (root / "new-dir" / "Nested.cs").unlink()
+                (root / "new-dir").rmdir()
                 wait_for(lambda paths: paths == {"A.cs", "B.py"})
                 (root / "B.py").write_text("class Gamma:\n    def work(self): pass\n")
                 deadline = time.monotonic() + 5
@@ -56,6 +64,12 @@ class CodeIndexWorkerTests(unittest.TestCase):
                 stop.set()
                 thread.join(timeout=5)
             self.assertFalse(thread.is_alive())
+
+    def test_empty_scan_message_is_actionable(self):
+        message = code_index_worker._scan_message({"scanned": 0})
+        self.assertIn("Workspace scan", message)
+        self.assertIn(".git", message)
+        self.assertIn("Add a supported source file", message)
 
 
 if __name__ == "__main__":

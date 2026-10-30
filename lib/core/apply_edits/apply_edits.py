@@ -356,13 +356,53 @@ def apply_edits(
             raise RuntimeError(f"Write failed; all edits rolled back: {exc}") from exc
 
         # Apply polish after raw edits are written.
-        polish_report = polish_paths(
-            [entry["path"] for entry in submitted_files],
-            summary,
-            apply_formatting=True,
-            apply_python_postprocess=False,
-            apply_line_endings=True,
-        )
+        try:
+            polish_report = polish_paths(
+                [entry["path"] for entry in submitted_files],
+                summary,
+                apply_formatting=True,
+                apply_python_postprocess=False,
+                apply_line_endings=True,
+            )
+        except Exception as exc:
+            rollback_errors = []
+            for key in reversed(written):
+                try:
+                    Path(key).write_bytes(original_contents[key].encode("utf-8"))
+                except OSError as rollback_exc:
+                    rollback_errors.append(str(rollback_exc))
+            message = f"Post-processing failed; all edits rolled back: {exc}"
+            if rollback_errors:
+                message += " Rollback also failed: " + "; ".join(rollback_errors)
+            return {
+                "error_code": "post_processing_failed",
+                "message": message,
+                "edits": [],
+                "files": [],
+                "written_files": [],
+                "dry_run": False,
+            }
+        if not isinstance(polish_report, dict):
+            polish_report = {"ok": True, "files": [], "written_files": [], "errors": []}
+        if polish_report.get("ok") is False or polish_report.get("errors"):
+            rollback_errors = []
+            for key in reversed(written):
+                try:
+                    Path(key).write_bytes(original_contents[key].encode("utf-8"))
+                except OSError as rollback_exc:
+                    rollback_errors.append(str(rollback_exc))
+            details = polish_report.get("errors") or "post-processing reported failure"
+            message = f"Post-processing failed; all edits rolled back: {details}"
+            if rollback_errors:
+                message += " Rollback also failed: " + "; ".join(rollback_errors)
+            return {
+                "error_code": "post_processing_failed",
+                "message": message,
+                "edits": [],
+                "files": [],
+                "written_files": [],
+                "dry_run": False,
+            }
         # Keep the hint at the response root instead of duplicating it inside
         # the embedded code-polish report.
         diff_hint = polish_report.pop("diff_hint", diff_hint)
@@ -377,7 +417,7 @@ def apply_edits(
     by_path: dict[str, dict[str, Any]] = {
         item["path"]: item
         for item in polish_report.get("files", [])
-        if isinstance(item, dict)
+        if isinstance(item, dict) and isinstance(item.get("path"), str)
     }
     files: list[dict[str, Any]] = []
     for submitted in submitted_files:

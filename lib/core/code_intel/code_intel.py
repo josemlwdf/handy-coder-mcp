@@ -29,7 +29,11 @@ def code_intel(
     try:
         return code_index.code_navigator(action, query, symbol, file_path, limit)
     except code_index.IndexErrorBase as exc:
-        return {"error_code": "index_unavailable", "message": str(exc)}
+        try:
+            status = code_index.index_status()
+        except Exception:
+            status = {"state": "unavailable", "message": None}
+        return {"error_code": "index_unavailable", "message": str(exc), "index_status": status}
     except (ValueError, TypeError) as exc:
         return {"error_code": "invalid_input", "message": str(exc)}
 

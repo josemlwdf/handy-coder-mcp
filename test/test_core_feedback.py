@@ -472,7 +472,8 @@ class CoreFeedbackTests(unittest.TestCase):
 
         def initialize(command, *, cwd):
             """Initialize function."""
-            (cwd / ".git").mkdir()
+            if command[1] == "init":
+                (cwd / ".git").mkdir()
             return result
 
         with (
@@ -1490,7 +1491,8 @@ class CoreFeedbackTests(unittest.TestCase):
 
         def initialize(command, *, cwd) -> dict:
             """Initialize function."""
-            (cwd / ".git").mkdir()
+            if command[1] == "init":
+                (cwd / ".git").mkdir()
             return {
                 "stdout": "Initialized",
                 "stderr": "",

@@ -44,6 +44,8 @@ DEFAULT_EXCLUDES = frozenset(
         *support.GENERATED_DIRS,
     }
 )
+_LOCK_RETRIES = 4
+_LOCK_RETRY_DELAY = 0.05
 
 
 def _ignored_directory(name: str, exclusions=None) -> bool:
@@ -80,15 +82,10 @@ def _db():
     root = Path(support.ROOT).resolve()
     path = root / ".handy-coder" / "code_index.sqlite3"
     path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(path)
+    con = sqlite3.connect(path, timeout=5.0)
     con.row_factory = sqlite3.Row
     try:
-        con.execute("CREATE VIRTUAL TABLE IF NOT EXISTS _fts_check USING fts5(value)")
-        con.execute("DROP TABLE _fts_check")
-    except sqlite3.OperationalError as exc:
-        con.close()
-        raise IndexErrorBase(f"SQLite FTS5 is unavailable: {exc}") from exc
-    con.executescript("""
+        con.executescript("""
       CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS files(id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL,
         sha256 TEXT NOT NULL, size INTEGER NOT NULL, mtime REAL NOT NULL,
@@ -105,7 +102,15 @@ def _db():
       CREATE INDEX IF NOT EXISTS references_target ON references_(target);
       CREATE VIRTUAL TABLE IF NOT EXISTS symbol_fts USING fts5(name, qualified_name, signature, docs, searchable, path,
         tokenize='unicode61');
-    """)
+        """)
+    except sqlite3.OperationalError as exc:
+        con.close()
+        message = str(exc).lower()
+        if "locked" in message or "busy" in message:
+            raise
+        if "fts5" in message or "no such module" in message:
+            raise IndexErrorBase(f"SQLite FTS5 is unavailable: {exc}") from exc
+        raise
     for table in ("files", "symbols", "references_"):
         existing = {row[1] for row in con.execute(f"PRAGMA table_info({table})")}
         for column in ("language", "analysis_mode"):
@@ -467,11 +472,13 @@ def _index_status_hint(status: dict) -> str:
     if state == "ready_with_errors":
         return f"The index is ready, but {status['failed']} file(s) failed to index. {status.get('message') or ''}".strip()
     if state == "ready":
+        if status["files"] == 0 and status.get("message"):
+            return status["message"]
         return f"The index is ready with {status['files']} files and {status['symbols']} symbols; this query had no match."
-    return "No indexing status is available yet. The background indexer may not have started; the index may still be building or refreshing."
+    return "No indexing status is available yet; run code_intel(action='index') to start indexing. The background indexer may not have started, or the index may still be building or refreshing."
 
 
-def index_codebase(exclusions: None = None, progress=None) -> dict:
+def _index_codebase_once(exclusions: None = None, progress=None) -> dict:
     """Index codebase function."""
     root = Path(support.ROOT).resolve(strict=True)
     con = _db()
@@ -634,6 +641,22 @@ def index_codebase(exclusions: None = None, progress=None) -> dict:
         con.close()
 
 
+def index_codebase(exclusions: None = None, progress=None) -> dict:
+    """Index with bounded retries when SQLite reports transient lock errors."""
+    result = None
+    for attempt in range(_LOCK_RETRIES + 1):
+        result = _index_codebase_once(exclusions, progress)
+        lock_failures = [
+            error for error in result.get("errors", [])
+            if "locked" in error.get("message", "").lower()
+            or "busy" in error.get("message", "").lower()
+        ]
+        if not lock_failures or attempt == _LOCK_RETRIES:
+            return result
+        time.sleep(_LOCK_RETRY_DELAY * (attempt + 1))
+    return result or {}
+
+
 def _fts_query(query):
     """Fts query function."""
     terms = list(dict.fromkeys(_tokens(query).split()))
@@ -646,7 +669,7 @@ def _limit(value) -> None:
         raise ValueError("limit must be an integer from 1 to 50")
 
 
-def code_navigator(
+def _code_navigator_once(
     action: str,
     query: str | None = None,
     symbol: str | None = None,
@@ -710,14 +733,8 @@ def code_navigator(
             ]
             return {
                 "results": results,
-                **(
-                    {
-                        "hint": _index_status_hint(status),
-                        "index_status": status,
-                    }
-                    if not count
-                    else {}
-                ),
+                "index_status": status,
+                **({"hint": _index_status_hint(status)} if not results else {}),
             }
         if action == "find_references":
             rows = con.execute(
@@ -828,3 +845,31 @@ def code_navigator(
             con.close()
         except Exception:
             pass
+
+
+def code_navigator(action, query=None, symbol=None, file_path=None, limit=10):
+    """Run navigation with bounded retries for transient SQLite locks."""
+    for attempt in range(_LOCK_RETRIES + 1):
+        try:
+            result = _code_navigator_once(action, query, symbol, file_path, limit)
+            if isinstance(result, dict) and "index_status" not in result:
+                try:
+                    result["index_status"] = index_status()
+                except Exception:
+                    result["index_status"] = {"state": "unavailable", "message": None}
+            return result
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                raise
+            if attempt < _LOCK_RETRIES:
+                time.sleep(_LOCK_RETRY_DELAY * (attempt + 1))
+                continue
+            try:
+                status = index_status()
+            except Exception:
+                status = {"state": "unavailable", "message": None}
+            return {
+                "error_code": "index_locked",
+                "message": "The code index remained locked after bounded retries; try again shortly.",
+                "index_status": status,
+            }

@@ -12,6 +12,16 @@ from pathlib import Path
 from . import code_index, support
 
 
+def _scan_message(result: dict) -> str:
+    if result.get("scanned", 0) == 0:
+        excluded = ", ".join(sorted(code_index.DEFAULT_EXCLUDES))
+        return (
+            "Workspace scan completed with no eligible source files. Add a supported source file; "
+            f"directories excluded from the scan include hidden directories and: {excluded}."
+        )
+    return "Workspace index is ready."
+
+
 def _eligible(path: str, root: Path) -> bool:
     try:
         candidate = Path(path)
@@ -44,10 +54,13 @@ def run(
 
     class Handler(FileSystemEventHandler):
         def on_any_event(self, event):
-            if event.is_directory:
-                return
             paths = [getattr(event, "src_path", ""), getattr(event, "dest_path", "")]
-            if any(path and _eligible(path, workspace) for path in paths):
+            if event.is_directory:
+                # Creating or renaming a directory can make new eligible source
+                # files visible without producing a file event for each one.
+                if any(path and Path(path).resolve().is_relative_to(workspace) for path in paths):
+                    changed.set()
+            elif any(path and _eligible(path, workspace) for path in paths):
                 changed.set()
 
     observer = Observer()
@@ -65,7 +78,7 @@ def run(
             state = "ready_with_errors" if result.get("failed") else "ready"
             code_index.set_index_status(
                 state, scanned=result["scanned"], failed=result["failed"],
-                message=(f"{result['failed']} file(s) could not be indexed." if result.get("failed") else "Workspace index is ready."),
+                message=(f"{result['failed']} file(s) could not be indexed." if result.get("failed") else _scan_message(result)),
             )
             if result.get("failed"):
                 print(f"[handy-coder-mcp-indexer] Initial scan reported: {result['errors']}", file=sys.stderr, flush=True)
@@ -95,7 +108,7 @@ def run(
                 state = "ready_with_errors" if result.get("failed") else "ready"
                 code_index.set_index_status(
                     state, scanned=result["scanned"], failed=result["failed"],
-                    message=(f"{result['failed']} file(s) could not be indexed." if result.get("failed") else "Workspace index is ready."),
+                    message=(f"{result['failed']} file(s) could not be indexed." if result.get("failed") else _scan_message(result)),
                 )
                 if result.get("failed"):
                     print(f"[handy-coder-mcp-indexer] Index refresh reported: {result['errors']}", file=sys.stderr, flush=True)

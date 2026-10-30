@@ -283,6 +283,38 @@ class ApplyEditsContractTests(unittest.TestCase):
         self.assertIn("-before\n", result["files"][0]["diff"])
         self.assertIn("+after\n", result["files"][0]["diff"])
 
+    def test_polish_report_without_path_is_ignored_for_unsupported_type(self) -> None:
+        from unittest.mock import patch
+
+        target = self.root / "sample.xyz"
+        target.write_text("old", encoding="utf-8")
+        with patch(
+            "lib.core.apply_edits.apply_edits.polish_paths",
+            return_value={"ok": True, "files": [{"ok": True}]},
+        ):
+            result = apply_edits.apply_edits(
+                [apply_edits.Edit(path="sample.xyz", pattern="old", replacement="new")],
+                summary="test change",
+            )
+        self.assertNotIn("error_code", result)
+        self.assertEqual(target.read_text(encoding="utf-8"), "new")
+
+    def test_post_processing_exception_rolls_back_written_content(self) -> None:
+        from unittest.mock import patch
+
+        target = self.root / "sample.txt"
+        target.write_text("original", encoding="utf-8")
+        with patch(
+            "lib.core.apply_edits.apply_edits.polish_paths",
+            side_effect=RuntimeError("simulated failure"),
+        ):
+            result = apply_edits.apply_edits(
+                [apply_edits.Edit(path="sample.txt", pattern="original", replacement="changed")],
+                summary="test change",
+            )
+        self.assertEqual(result["error_code"], "post_processing_failed")
+        self.assertEqual(target.read_text(encoding="utf-8"), "original")
+
     def test_non_newline_file_diff_is_line_separated_and_counts_changes(self) -> None:
         """Test non newline file diff is line separated and counts changes function."""
         target = self.root / "sandbox.txt"

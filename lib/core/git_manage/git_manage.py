@@ -575,7 +575,7 @@ def git_manage(
             raise ValueError("commit message cannot be blank")
         if _DISALLOWED_COMMIT_WORD.search(commit_message):
             raise ValueError(
-                "commit message cannot contain both 'chore' and 'commit'; use a meaningful message that summarizes staged changes"
+                "commit message cannot contain the word 'commit'; use a meaningful message that summarizes staged changes"
             )
         commit_message_hint = _commit_message_hint_for(commit_message)
         if any(
@@ -700,9 +700,32 @@ def git_manage(
             (init_path / "test").mkdir(exist_ok=True)
             (init_path / "tmp").mkdir(exist_ok=True)
             _maintain_gitignore(init_path)
+            staged_defaults = run_process(
+                [git, "add", "--", ".gitignore"], cwd=init_path
+            )
+            commit_result = (
+                run_process(
+                    [git, "commit", "-m", "chore: add repository defaults"],
+                    cwd=init_path,
+                )
+                if staged_defaults.get("exit_code") == 0
+                else staged_defaults
+            )
             new_repositories, new_errors = discover_repositories()
             _set_inventory(new_repositories, new_errors)
             _update_tool_description(target_mcp, _tool_description())
+            if commit_result.get("exit_code") != 0:
+                return {
+                    "supported": True,
+                    "initialized": True,
+                    "exit_code": commit_result.get("exit_code", 1),
+                    "stdout": result.get("stdout", ""),
+                    "stderr": commit_result.get("stderr", ""),
+                    "commit_failure": commit_result,
+                    "message": "Git initialization succeeded, but the repository defaults commit failed.",
+                    "hint": "Configure Git user.name and user.email if needed, then run git add -- .gitignore and git commit -m 'chore: add repository defaults'.",
+                }
+            result["defaults_commit"] = "chore: add repository defaults"
         return _route_failure_to_stderr(result)
 
     # Fast path: when repo_path is explicitly given and a .git marker exists there,
@@ -902,6 +925,9 @@ def git_manage(
         git_args[index] = str(resolved)
     if action == "add":
         _maintain_gitignore(selected_path)
+        # Include maintained defaults explicitly; Git stages only these paths.
+        if not add_all and ".gitignore" not in git_args and str(selected_path / ".gitignore") not in git_args:
+            git_args.append(str(selected_path / ".gitignore"))
     if action == "diff":
         if mode == "both":
             staged = run_process(

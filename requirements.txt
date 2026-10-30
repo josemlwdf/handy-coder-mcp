@@ -12,3 +12,4 @@ jsbeautifier>=1.15,<2
 pytest
 ruff
 syntax_checker
+build

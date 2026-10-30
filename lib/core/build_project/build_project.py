@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import importlib.util
 import re
 import shutil
 import subprocess
@@ -16,6 +15,20 @@ from pydantic import Field
 from ...support import describe, inside, path_escape_message, run_process
 
 _MAX_TIMEOUT_MS = 600_000
+
+
+def _python_build_runtime() -> tuple[str | None, bool]:
+    """Return the interpreter used for builds and whether it can import build."""
+    python = shutil.which("python") or shutil.which("python3")
+    if not python:
+        return None, False
+    try:
+        result = subprocess.run(
+            [python, "-c", "import build"], capture_output=True, timeout=10
+        )
+        return python, result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return python, False
 
 
 def _running_under_wsl() -> bool:
@@ -69,10 +82,10 @@ def _build_command(
     """Build command function."""
     ecosystem = candidate["ecosystem"]
     if ecosystem == "python":
-        python = shutil.which("python") or shutil.which("python3")
+        python, build_available = _python_build_runtime()
         if not python:
             return None, "Python build tool unavailable: python is not installed."
-        if importlib.util.find_spec("build") is None:
+        if not build_available:
             return (
                 None,
                 "Python build tool unavailable: install the 'build' package in the active Python environment.",
