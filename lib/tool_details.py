@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import functools
 import inspect
+import re
 from typing import Annotated, Any
 
 from pydantic import Field
@@ -408,3 +409,81 @@ def install(mcp: Any) -> None:
         "description": meta_description,
         "inputSchema": _schema(meta_tool),
     }
+
+    def discover_tools(query: str, limit: int = 4) -> dict:
+        """Find registered tools by name, summary, and full documentation."""
+        query_text = " ".join((query or "").split()).casefold()
+        if not query_text:
+            return {"tools": [], "count": 0}
+        terms = re.findall(r"[\w.-]+", query_text)
+        manager_tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
+        candidates = []
+        for name, entry in catalog.items():
+            if name not in manager_tools:
+                continue
+            description = entry.get("description", "")
+            summary = _brief(description)
+            haystack = f"{name} {summary} {description}".casefold()
+            matched = sum(term in haystack for term in terms)
+            if matched != len(terms):
+                continue
+            exact = name.casefold() == query_text
+            # Weight names above summaries and full documentation; lexical order breaks ties.
+            name_hits = sum(term in name.casefold() for term in terms)
+            summary_hits = sum(term in summary.casefold() for term in terms)
+            doc_hits = sum(term in description.casefold() for term in terms)
+            score = name_hits * 10 + summary_hits * 3 + doc_hits
+            candidates.append((not exact, -score, name.casefold(), name, entry))
+        candidates.sort(key=lambda item: item[:4])
+        result = []
+        for _, _, _, name, entry in candidates[: max(0, min(int(limit), 4))]:
+            result.append({
+                "name": name,
+                "description": entry.get("description", ""),
+                "inputSchema": copy.deepcopy(entry.get("inputSchema", {})),
+            })
+        return {"tools": result, "count": len(result)}
+
+    def register_meta(name: str, description: str, function: Any) -> None:
+        original_tool(name=name, description=description)(function)
+        runtime = getattr(getattr(mcp, "_tool_manager", None), "_tools", {}).get(name)
+        catalog[name] = {"description": description, "inputSchema": _schema(runtime)}
+
+    register_meta(
+        "discover_tools",
+        "Search registered tools and return their full schemas.",
+        discover_tools,
+    )
+
+    async def invoke_tool(tool_name: str, arguments: dict) -> Any:
+        """Invoke an internally registered tool through FastMCP's normal call path."""
+        requested_name = (tool_name or "").strip()
+        canonical = _canonical_tool_name(requested_name)
+        manager = getattr(mcp, "_tool_manager", None)
+        runtime_tools = getattr(manager, "_tools", {})
+        if canonical not in catalog or canonical not in runtime_tools or canonical == "invoke_tool":
+            return {"error_code": "unknown_tool", "message": f"Unknown or unavailable tool: {requested_name}"}
+        if not isinstance(arguments, dict):
+            return {"error_code": "invalid_arguments", "message": "arguments must be a JSON object"}
+        try:
+            return await manager.call_tool(canonical, arguments)
+        except Exception as exc:  # manager errors are returned as structured router errors
+            return {"error_code": "tool_invocation_failed", "tool_name": canonical, "message": str(exc)}
+
+    register_meta(
+        "invoke_tool",
+        "Invoke a discovered registered tool by name with a JSON arguments object.",
+        invoke_tool,
+    )
+
+    # Keep every registration available to dispatch while publishing only the stable router API.
+    manager = getattr(mcp, "_tool_manager", None)
+    if manager is not None and callable(getattr(manager, "list_tools", None)):
+        original_list_tools = manager.list_tools
+
+        def public_list_tools(*args, **kwargs):
+            listed = original_list_tools(*args, **kwargs)
+            public_names = {"get_capabilities", "get_tool_details", "discover_tools", "invoke_tool"}
+            return [tool for tool in listed if getattr(tool, "name", None) in public_names]
+
+        manager.list_tools = public_list_tools

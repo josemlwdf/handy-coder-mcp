@@ -79,6 +79,29 @@ class SkillsToolTests(unittest.TestCase):
         self.assertFalse(result["skills"][0]["invokable"])
         self.assertEqual(result["skills"][1]["description"], "Second.")
 
+    def test_list_query_ranks_metadata_matches_and_limits_results(self) -> None:
+        for name in ["e-match", "d-match", "c-match", "b-match", "a-match", "z-match"]:
+            self.save(name, description="testing helper", tags=["unit"])
+        self.save("top-match", description="python testing task", tags=["python"])
+        result = skills.skills_manage(action="list", query="python testing")
+        self.assertEqual(result["count"], 5)
+        self.assertEqual(
+            [skill["name"] for skill in result["skills"]],
+            ["top-match", "a-match", "b-match", "c-match", "d-match"],
+        )
+
+    def test_list_query_returns_empty_for_unmatched_query(self) -> None:
+        self.save()
+        result = skills.skills_manage(action="list", query="unmatched zebra")
+        self.assertEqual(result["count"], 0)
+        self.assertEqual(result["skills"], [])
+
+    def test_search_remains_substring_filter(self) -> None:
+        self.save("first", description="Python helper")
+        self.save("second", description="Java helper")
+        result = skills.skills_manage(action="search", query="python")
+        self.assertEqual([skill["name"] for skill in result["skills"]], ["first"])
+
     def test_save_refuses_overwrite_by_default(self) -> None:
         """Test save refuses overwrite by default function."""
         self.save()
@@ -239,24 +262,23 @@ class SkillsToolTests(unittest.TestCase):
 class BaselineSkillsTests(unittest.TestCase):
     """Run against the real project skills directory (read-only)."""
 
-    def test_register_description_mentions_baseline_defaults(self) -> None:
-        """Test register description mentions baseline defaults function."""
+    def test_register_description_omits_skill_catalog(self) -> None:
+        """Test register description omits skill catalog function."""
         mcp = FakeMCP()
         skills.register(mcp)
         description = mcp.descriptions["skills_manage"]
-        self.assertIn("built-in defaults:", description)
-        self.assertIn("plan", description)
-        self.assertIn("troubleshoot", description)
+        self.assertNotIn("Default baseline skills and descriptions", description)
+        self.assertNotIn("Installed skills and their descriptions", description)
+        self.assertNotIn("- plan:", description)
+        self.assertNotIn("- troubleshoot:", description)
 
-    def test_action_argument_mentions_baseline_defaults(self) -> None:
-        """Test action argument mentions baseline defaults function."""
+    def test_action_argument_describes_query_based_list(self) -> None:
+        """Test action argument describes query based list function."""
         action_hint = get_type_hints(skills.skills_manage, include_extras=True)[
             "action"
         ]
         action_field = get_args(action_hint)[1]
-        self.assertIn("built-in defaults:", action_field.description)
-        self.assertIn("plan", action_field.description)
-        self.assertIn("troubleshoot", action_field.description)
+        self.assertIn("query is supplied", action_field.description)
 
     def test_baseline_skills_are_listed(self) -> None:
         """Test baseline skills are listed function."""

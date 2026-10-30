@@ -23,11 +23,17 @@ _NO_WORKER_TOOLS: set = {
     # This handler closes over the live FastMCP registry and is intentionally
     # executed in-process; spawning it would re-import a non-module-level function.
     "get_tool_details",
+    # Capabilities reads the live registry installed during server startup.
+    "get_capabilities",
+    # Discovery closes over the live registration catalog and must read it in-process.
+    "discover_tools",
     # Subagent lifecycle uses in-memory task state and cancellation events.
     "subagent_manage",
     # Image inspection relies on process-local runtime backend configuration,
     # including callback wiring for sampling backends.
     "inspect_image",
+    # The router must call the live manager so the selected tool's own wrapper runs.
+    "invoke_tool",
 }
 
 
@@ -184,6 +190,42 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
     for name, tool in list(tools.items()):
         original_fn = tool.fn
         original_signature = inspect.signature(original_fn)
+
+        if inspect.iscoroutinefunction(original_fn):
+            @functools.wraps(original_fn)
+            async def supervised_async_wrapper(
+                *args,
+                _target_fn=original_fn,
+                _tool_name=name,
+                _sig=original_signature,
+                **kwargs,
+            ):
+                """Supervise async handlers without moving live manager calls to workers."""
+                try:
+                    bound_args = dict(_sig.bind_partial(*args, **kwargs).arguments)
+                except TypeError:
+                    bound_args = dict(kwargs)
+                # The dispatched tool's own wrapper enforces subagent scope and logs it.
+                if _tool_name == "invoke_tool":
+                    return await _target_fn(*args, **kwargs)
+                scope_block = subagent_tools.before_tool_call(_tool_name, bound_args)
+                if scope_block is not None:
+                    project_logs.log_internal_event("warning", "subagent_scope_violation", {"tool_name": _tool_name, "args": bound_args, "result": scope_block})
+                    log_path = project_logs.log_tool_call(_tool_name, bound_args, scope_block)
+                    return project_logs.attach_tool_log_path(scope_block, log_path)
+                try:
+                    result = await _target_fn(*args, **kwargs)
+                    wrapped = subagent_tools.after_tool_call(_tool_name, result, bound_args)
+                    log_path = project_logs.log_tool_call(_tool_name, bound_args, wrapped)
+                    return project_logs.attach_tool_log_path(wrapped, log_path)
+                except Exception as exc:
+                    project_logs.log_internal_event("error", "tool_execution_exception", {"tool_name": _tool_name, "args": bound_args, "error": f"{type(exc).__name__}: {exc}"})
+                    raise
+
+            supervised_async_wrapper.__signature__ = original_signature
+            supervised_async_wrapper.__annotations__ = getattr(original_fn, "__annotations__", {})
+            tool.fn = supervised_async_wrapper
+            continue
 
         @functools.wraps(original_fn)
         def supervised_wrapper(

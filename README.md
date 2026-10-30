@@ -82,7 +82,7 @@ The server includes tools for workspace file operations, code search, terminal c
 
 For local C# navigation, `index_codebase` incrementally indexes workspace `.cs` files in `.handy-coder/code_index.sqlite3`. `code_navigator` supports `search_code`, `get_symbol`, and `find_references`; search is lexical and references are syntax based, not compiler resolved. Tree-sitter C# and SQLite FTS5 are required.
 
-The available tools and optional dependencies vary by environment. Use `get_capabilities` from your MCP client to see what is available. The full [tool inventory](docs/TOOL_INVENTORY.md) lists registered tools; [optional setup notes](docs/SETUP.md) cover configuration and troubleshooting.
+The public tool list contains the stable router tools `get_capabilities`, `get_tool_details`, `discover_tools`, and `invoke_tool`. Find relevant tools with `discover_tools(query, limit=4)`, then call one through `invoke_tool(tool_name, arguments)`. The server validates routed arguments against each tool's original schema and preserves its execution controls. See the full [internal tool inventory](docs/TOOL_INVENTORY.md); [optional setup notes](docs/SETUP.md) cover configuration and troubleshooting.
 
 ## Security and workspace scope
 

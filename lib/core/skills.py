@@ -31,7 +31,6 @@ DEFAULT_SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
 BASELINE_SKILLS = frozenset(
     {"grill-me", "handoff", "mcp-audit", "mcp-tools-only", "plan", "troubleshoot"}
 )
-BASELINE_SKILLS_INLINE = ", ".join(sorted(BASELINE_SKILLS))
 MAX_SKILL_BYTES = 256 * 1024
 MAX_DESCRIPTION_CHARS: int = 300
 SKILL_FILE_NAME: str = "SKILL.md"
@@ -177,6 +176,29 @@ def _list_skills() -> dict:
     return {"skills": skills, "count": len(skills), "errors": errors}
 
 
+def _query_skills(query: str | None) -> dict:
+    """Return up to five metadata matches ranked by query term coverage."""
+    listed = _list_skills()
+    terms = re.findall(r"[a-z0-9]+", (query or "").lower())
+    if not terms:
+        listed["skills"] = []
+        listed["count"] = 0
+        return listed
+
+    ranked: list[tuple[int, str, dict]] = []
+    for skill in listed["skills"]:
+        searchable = " ".join(
+            [skill["name"], skill["description"], *skill["tags"]]
+        ).lower()
+        score = sum(1 for term in terms if term in searchable)
+        if score:
+            ranked.append((score, skill["name"], skill))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    listed["skills"] = [item[2] for item in ranked[:5]]
+    listed["count"] = len(listed["skills"])
+    return listed
+
+
 def _get_skill(name: str | None) -> dict:
     """Get skill function."""
     problem = _validate_name(name)
@@ -246,10 +268,7 @@ def _save_skill(
     name: str | None,
     description: str | None,
     content: str | None,
-    invokable: bool,
     overwrite: bool,
-    tags: list[str] | None = None,
-    version: str = "1",
 ) -> dict:
     """Save skill function."""
     problem = _validate_name(name)
@@ -271,12 +290,11 @@ def _save_skill(
     if body.startswith("---\n") or body.strip() == "---":
         return _error(
             "content_has_frontmatter",
-            "content must be the skill body only; frontmatter is generated from name, description and invokable.",
+            "content must be the skill body only; frontmatter is generated from name and description.",
         )
 
     document = (
-        f"---\nname: {name}\ndescription: {description}\n"
-        f"invokable: {'true' if invokable else 'false'}\nversion: {version}\ntags: {','.join(tags or [])}\n---\n\n{body}\n"
+        f"---\nname: {name}\ndescription: {description}\n---\n\n{body}\n"
     )
     encoded = document.encode("utf-8")
     if len(encoded) > MAX_SKILL_BYTES:
@@ -340,7 +358,7 @@ def skills_manage(
             "get_reference",
         ],
         Field(
-            description=f"list: return skills (built-in defaults: {BASELINE_SKILLS_INLINE}). search: filter by query. get/export: retrieve full skill Markdown. list_references: list Markdown references for a skill from references/. get_reference: read one reference Markdown file. save: create/update with optional tags and version. delete: remove a skill. (Required: True)"
+            description="list: return all skill metadata, or rank up to five matches when query is supplied. search: filter by query. get/export: retrieve full skill Markdown. list_references: list Markdown references for a skill from references/. get_reference: read one reference Markdown file. save: create/update a skill using its name and description. delete: remove a skill. (Required: True)"
         ),
     ],
     name: Annotated[
@@ -361,12 +379,6 @@ def skills_manage(
             description="Skill body in Markdown, without frontmatter (it is generated). Required for save. (Required: False)"
         ),
     ] = None,
-    invokable: Annotated[
-        bool,
-        Field(
-            description="For save: whether the skill can be invoked directly by the user. Defaults to true. (Required: False)"
-        ),
-    ] = True,
     overwrite: Annotated[
         bool,
         Field(
@@ -376,7 +388,7 @@ def skills_manage(
     query: Annotated[
         str | None,
         Field(
-            description="Search text used by the search action. (Required: False)"
+            description="For list, rank up to five skills by matching metadata; for search, filter by matching metadata. (Required: False)"
         ),
     ] = None,
     reference: Annotated[
@@ -385,16 +397,6 @@ def skills_manage(
             description="Reference identifier used by get_reference; maps to skills/<name>/references/<reference>.md. (Required: False)"
         ),
     ] = None,
-    tags: Annotated[
-        list[str] | None,
-        Field(
-            description='Optional array of tag strings stored in skill metadata when saving, for example ["python", "testing"]. (Required: False)'
-        ),
-    ] = None,
-    version: Annotated[
-        str,
-        Field(description="Skill metadata version, defaults to 1. (Required: False)"),
-    ] = "1",
     confirm: Annotated[
         bool,
         Field(
@@ -404,7 +406,7 @@ def skills_manage(
 ) -> dict:
     """Skills manage function."""
     if action == "list":
-        return _list_skills()
+        return _query_skills(query) if query is not None else _list_skills()
     if action == "get":
         return _get_skill(name)
     if action == "export":
@@ -481,62 +483,17 @@ def skills_manage(
             return _error(
                 "protected_skill", f"Baseline skill cannot be replaced: {name}"
             )
-        # Metadata values are plain single-line strings in the simple frontmatter format.
-        if not version.strip() or any(c in version for c in "\r\n:"):
-            return _error(
-                "invalid_version",
-                "version must be a non-empty single-line value without ':'",
-            )
-        if tags and any(
-            not tag.strip() or any(c in tag for c in ",\r\n") for tag in tags
-        ):
-            return _error(
-                "invalid_tags",
-                "tags must be non-empty single-line values without commas",
-            )
-        return _save_skill(
-            name, description, content, invokable, overwrite, tags, version
-        )
+        return _save_skill(name, description, content, overwrite)
     return _error("invalid_action", f"Unknown action: {action}")
-
-
-def _default_skill_catalog() -> str:
-    """Return baseline/default skills with descriptions from the built-in skills directory."""
-    lines: list[str] = []
-    for name in sorted(BASELINE_SKILLS):
-        path = DEFAULT_SKILLS_DIR / name / SKILL_FILE_NAME
-        description: str = "(description unavailable)"
-        try:
-            if path.is_file():
-                text = path.read_text(encoding="utf-8")
-                description = _entry(name, text)["description"] or description
-        except (OSError, UnicodeDecodeError):
-            pass
-        lines.append(f"- {name}: {description}")
-    return "\n".join(lines)
 
 
 def register(mcp):
     """Register function."""
-    baseline_catalog = _default_skill_catalog()
-    listed = _list_skills()
-    skill_lines: list = [
-        f"- {item['name']}: {item['description']}" for item in listed["skills"]
-    ]
-    skill_catalog = (
-        "\n".join(skill_lines)
-        if skill_lines
-        else "(No skills are currently installed.)"
-    )
     return mcp.tool(
         description=describe(
-            f"Manage reusable skills stored as Markdown files at skills/<name>/SKILL.md (built-in defaults: {BASELINE_SKILLS_INLINE}). "
-            "Default baseline skills and descriptions:\n"
-            f"{baseline_catalog}\n"
-            "Installed skills and their descriptions at server startup:\n"
-            f"{skill_catalog}\n"
-            "Actions: list returns name, description, invokable, tags and version; search filters those fields; get/export returns full Markdown; list_references lists available files from skills/<name>/references/*.md; get_reference reads one reference file by reference name; delete requires confirm=true, protects baseline skills, and keeps a .bak backup; "
-            'save creates a skill from name, description and content (optional tags as an array of strings, for example ["python", "testing"], and version; fails with already_exists '
+            "Manage reusable skills stored as Markdown files at skills/<name>/SKILL.md. "
+            "Actions: list returns metadata for all skills or ranks up to five matches by name, description and tags when query is supplied; search filters those fields; get/export returns full Markdown; list_references lists available files from skills/<name>/references/*.md; get_reference reads one reference file by reference name; delete requires confirm=true, protects baseline skills, and keeps a .bak backup; "
+            'save creates a skill from name, description and content; fails with already_exists '
             "unless overwrite=true). Failures return error_code (missing_argument, invalid_name, invalid_reference_name, "
             "invalid_description, content_has_frontmatter, skill_too_large, not_found, already_exists, "
             "io_error, confirmation_required, protected_skill, backup_exists, path_escape, binary_file). "

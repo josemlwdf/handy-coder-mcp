@@ -1,137 +1,108 @@
 ---
 name: dotnet-webapi
-description: >
-  Guides creation and modification of ASP.NET Core Web API endpoints with
-  correct HTTP semantics, OpenAPI metadata, and error handling.
-  USE FOR: adding new API endpoints (controllers or minimal APIs), wiring up
-  OpenAPI/Swagger, creating .http test files, setting up global error handling
-  middleware.
-  DO NOT USE FOR: general C# coding style, EF Core data access or query
-  optimization (use optimizing-ef-core-queries), frontend/Blazor work, gRPC
-  services, or SignalR hubs.
-license: MIT
+description: >-
+  Builds and modifies ASP.NET Core Web API endpoints with correct HTTP
+  semantics, OpenAPI metadata, and error handling. Use for controllers,
+  minimal APIs, DTOs, OpenAPI/Swagger, .http tests, and global error handling.
+  Not for general C# style, EF Core data/query optimization, frontend/Blazor,
+  gRPC, or SignalR.
 ---
 
 # ASP.NET Core Web API
 
-Produce well-structured ASP.NET Core Web API endpoints with proper HTTP
-semantics, OpenAPI documentation, and error handling.
+Build or modify ASP.NET Core HTTP APIs. Match project style. Use correct HTTP status codes, documented contracts, safe errors, and verifiable tests.
 
 ## When to Use
 
-Use this skill when working on ASP.NET Core HTTP APIs, including:
-
-- adding or modifying Web API endpoints implemented with controllers or minimal APIs;
-- wiring up OpenAPI/Swagger metadata and endpoint documentation;
-- defining request/response DTOs and consistent HTTP status code behavior;
-- adding `.http` files or similar request-based API testing artifacts;
-- configuring centralized API error handling middleware or exception mapping.
+- Add or modify controller or minimal API endpoints.
+- Configure OpenAPI/Swagger and endpoint metadata.
+- Define request/response DTOs and status-code behavior.
+- Create `.http` request files for API testing.
+- Configure global exception handling and exception-to-status mapping.
 
 ## When Not to Use
 
-Do not use this skill for:
+- General C# style or non-API refactoring.
+- EF Core data modeling or query optimization; use relevant EF Core guidance.
+- Frontend, Razor, or Blazor UI.
+- gRPC services.
+- SignalR hubs or real-time messaging.
 
-- general C# coding style or non-API refactoring;
-- EF Core data modeling or query optimization work; use `optimizing-ef-core-queries`;
-- frontend, Razor, or Blazor UI changes;
-- gRPC services;
-- SignalR hubs or real-time messaging flows.
+## Inputs / Prerequisites
 
-## Inputs / prerequisites
+Inspect project context before changing code:
 
-Before applying this skill, gather the project context needed to match the
-existing API style and wiring:
+- ASP.NET Core entry point, usually `Program.cs`.
+- Existing controllers (`ControllerBase`, `[ApiController]`).
+- Existing minimal API routes (`app.MapGet`, `MapPost`, `MapPut`, `MapDelete`, etc.).
+- Existing DTOs, models, validation, and error-handling types.
+- Available build, run, and test commands.
 
-- the ASP.NET Core entry point, typically `Program.cs`;
-- any existing controllers, especially classes inheriting `ControllerBase` or
-  using `[ApiController]`;
-- any existing minimal API registrations such as `app.MapGet`, `app.MapPost`,
-  `app.MapPut`, or `app.MapDelete`;
-- related DTO, model, validation, and error-handling types already used by the project;
-- available build, run, and test commands so changes can be verified.
+New endpoint → inspect project structure first. Match existing conventions; do not mix API styles.
 
-If the user asks for a new endpoint, inspect the current project structure first
-so the implementation follows the established conventions rather than mixing styles.
 ## Workflow
 
-### Step 1: Determine the API style
+### Step 1: Detect API Style
 
-Scan the project for existing endpoint patterns before writing any code.
+Search project before coding:
 
-1. Search for classes inheriting `ControllerBase` or decorated with `[ApiController]`.
-2. Search `Program.cs` or endpoint files for `app.MapGet`, `app.MapPost`, etc.
-3. If the project already uses **controllers**, continue with controllers.
-4. If the project already uses **minimal APIs**, continue with minimal APIs.
-5. If neither exists (new project), **default to minimal APIs** unless the user
-   explicitly requests controllers.
+1. Find classes inheriting `ControllerBase` or marked `[ApiController]`.
+2. Find `app.MapGet`, `app.MapPost`, `app.MapPut`, `app.MapDelete`, etc. in `Program.cs` and endpoint files.
+3. Existing controllers → use controllers.
+4. Existing minimal APIs → use minimal APIs.
+5. Neither (new project) → default to minimal APIs unless user requests controllers.
 
-Do not mix styles in the same project.
+**Do not mix controllers and minimal APIs in one project.**
 
-### Step 2: Define request and response types
+### Step 2: Define Request and Response Types
 
-Create dedicated types for API input and output. Never expose EF Core entities
-directly in request or response bodies.
+Create dedicated API input/output types. Never expose EF Core entities directly in request or response bodies.
 
-**Use `sealed record` for all DTOs.** Records enforce immutability, provide
-value-based equality, and produce concise code. Seal them to prevent unintended
-inheritance and enable JIT devirtualization (CA1852).
+**DTO rule: use `sealed record`.** Records provide immutability, value equality, concise syntax. `sealed` blocks unintended inheritance and supports JIT devirtualization (CA1852).
 
-**Naming convention:**
+**Naming:**
 
 | Role | Convention | Example |
-|------|-----------|---------|
-| Input (create) | `Create{Entity}Request` | `CreateProductRequest` |
-| Input (update) | `Update{Entity}Request` | `UpdateProductRequest` |
-| Output (single) | `{Entity}Response` | `ProductResponse` |
-| Output (list) | `{Entity}ListResponse` | `ProductListResponse` |
+|---|---|---|
+| Create input | `Create{Entity}Request` | `CreateProductRequest` |
+| Update input | `Update{Entity}Request` | `UpdateProductRequest` |
+| Single output | `{Entity}Response` | `ProductResponse` |
+| List output | `{Entity}ListResponse` | `ProductListResponse` |
 
-**XML doc comments on all DTOs:** Add `<summary>` XML doc comments to every
-request and response type exposed in the API. These comments are automatically
-included in the generated OpenAPI specification, producing richer documentation
-without extra metadata calls.
+**XML docs:** Add `<summary>` XML comments to every API-exposed request and response DTO. OpenAPI can include these comments automatically.
 
 Reference: https://learn.microsoft.com/en-us/aspnet/core/fundamentals/openapi/openapi-comments
 
-**Date and time values — use `DateTimeOffset`:** When a DTO includes a date or
-time property, always use `DateTimeOffset` instead of `DateTime`.
-`DateTimeOffset` preserves the UTC offset, avoids ambiguous timezone
-conversions, and serializes to ISO 8601 with offset information in JSON — which
-is what API consumers expect.
+**Date/time:** Use `DateTimeOffset`, not `DateTime`, for DTO date/time properties. It preserves UTC offset, avoids ambiguous timezone conversion, and serializes as ISO 8601 with offset.
 
 Reference: https://learn.microsoft.com/en-us/dotnet/api/system.datetimeoffset
-**JSON serialization options — preserve existing behavior by default:** For
-existing APIs, do **not** introduce stricter serialization/deserialization settings
-unless the project already uses them or the user explicitly asks for them. Settings
-such as case-sensitive property matching and strict number handling can break
-existing clients. For **new projects**, or when strict JSON handling is explicitly
-requested, configure options like the following to minimize the potential of
-processing malicious requests:
+
+**JSON compatibility:** Preserve existing serialization behavior by default. Do not silently add stricter serialization/deserialization settings to an existing API; case-sensitive matching or strict number handling can break clients.
+
+For new projects, or explicit strict-JSON requests, consider:
 
 ```csharp
-// Apply these settings only for new projects, when the existing project already
-// uses them, or when the user explicitly requests stricter JSON behavior.
+// Use only for new projects, existing matching configuration,
+// or when user explicitly requests stricter JSON behavior.
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
-    // disallow reading numbers from JSON strings
+    // Reject numbers encoded as JSON strings.
     options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
-    // match properties with exact casing during deserialization
+    // Require exact property-name casing during deserialization.
     options.SerializerOptions.PropertyNameCaseInsensitive = false;
-    // reject duplicate JSON property names during deserialization
+    // Reject duplicate JSON property names during deserialization.
     options.SerializerOptions.AllowDuplicateProperties = false;
-    // omit null properties from serialized output
+    // Omit null properties from serialized output.
     options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
 });
 ```
-**Enum properties — serialize as strings by default:** Unless the user
-explicitly requests integer serialization, all enum properties should be
-serialized as strings. String-serialized enums are human-readable, less fragile
-when values are reordered, and produce better OpenAPI documentation. See Step 4
-for the `JsonStringEnumConverter` configuration.
 
-**Response DTOs** — use positional sealed records for concise, immutable output:
+**Enums:** Serialize enum values as strings by default. Use integer serialization only when user explicitly requests it. Configure `JsonStringEnumConverter` in Step 4.
+
+**Response DTO:** Prefer positional sealed records:
 
 ```csharp
-/// <summary>Represents a product returned by the API.</summary>
+/// <summary>Product returned by the API.</summary>
 public sealed record ProductResponse(
     int Id,
     string Name,
@@ -141,11 +112,10 @@ public sealed record ProductResponse(
     DateTimeOffset CreatedAt);
 ```
 
-**Request DTOs** — use sealed records with `init` properties so data annotations
-work naturally:
+**Request DTO:** Use sealed records with `init` properties; data annotations work naturally:
 
 ```csharp
-/// <summary>Payload for creating a new product.</summary>
+/// <summary>Payload for creating a product.</summary>
 public sealed record CreateProductRequest
 {
     [Required, MaxLength(200)]
@@ -158,95 +128,69 @@ public sealed record CreateProductRequest
 }
 ```
 
-Follow the same pattern for `Update{Entity}Request` records, adding any
-additional properties the update requires (e.g., `IsAvailable`).
+Use same pattern for `Update{Entity}Request`; add required update fields, e.g. `IsAvailable`.
 
-**Minimal API validation — register explicitly:** Data-annotation validation
-(`[Required]`, `[MaxLength]`, `[Range]`, etc.) is automatic in MVC controllers,
-but minimal APIs require explicit opt-in. For **.NET 10+** projects using minimal
-APIs, add the validation services in `Program.cs`:
+**Minimal API validation:** MVC controllers validate data annotations automatically. Minimal APIs need explicit validation registration. For .NET 10+ minimal API projects, add in `Program.cs`:
 
 ```csharp
 builder.Services.AddValidation();
 ```
 
-This wires up an endpoint filter that validates parameters decorated with data
-annotations before the handler executes, returning a `400 Bad Request` with a
-validation problem details response on failure.
+This adds an endpoint filter. It validates data-annotated parameters before handler execution and returns `400 Bad Request` with validation Problem Details on failure.
 
 Reference: https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis?view=aspnetcore-10.0
 
-**Do not** use mutable classes (`{ get; set; }`) for DTOs. Mutable DTOs allow
-accidental modification after construction and lose the self-documenting
-immutability that records provide.
+**Do not use mutable DTO classes** with `{ get; set; }`. Use immutable `sealed record` types.
 
-### Step 3: Implement the endpoints
+### Step 3: Implement Endpoints
 
-Whether using controllers or minimal APIs, follow these HTTP conventions
-consistently.
+Apply HTTP conventions consistently to controllers and minimal APIs.
 
-**Organizing minimal API endpoints:** For projects using minimal APIs, organize
-endpoints by resource using static classes with a static `Map<Resource>` method.
-This pattern keeps endpoint definitions grouped by resource type, making the
-code more maintainable and easier to navigate as the API grows.
+#### Organize Minimal API Endpoints
 
-**Pattern structure:**
+Group routes by resource using static classes and static `Map<Resource>` methods:
 
-1. Create one static class per resource (e.g., `ProductEndpoints`, `CategoryEndpoints`).
-2. Define a static `Map<Resource>(this WebApplication app)` extension method.
-3. Inside the method, call `MapGet`, `MapPost`, `MapPut`, `MapDelete`, etc. for
-   that resource's endpoints.
-4. In `Program.cs`, call each resource's `Map` method in order.
+1. One static class per resource, e.g. `ProductEndpoints`, `CategoryEndpoints`.
+2. Add static extension method `Map<Resource>(this WebApplication app)`.
+3. Register that resource's `MapGet`, `MapPost`, `MapPut`, `MapDelete`, etc. inside the method.
+4. Call each resource's `Map` method from `Program.cs`.
 
-**Minimal API return types — prefer `TypedResults`:**
+This keeps resource routes grouped and code navigable as API grows.
 
-Always prefer `TypedResults` over the `Results` factory. `TypedResults` embeds
-response type information in the method signature, giving the OpenAPI generator
-richer metadata automatically.
+#### Prefer `TypedResults`
 
-When a handler returns **multiple result types** (e.g., `Ok` or `NotFound`),
-annotate the lambda with an explicit `Results<T1, T2>` return type. This
-lets you use `TypedResults` while still giving the compiler a common type:
+Prefer `TypedResults` over `Results`. `TypedResults` exposes response types in handler signatures and gives OpenAPI richer metadata automatically.
+
+Handler returns multiple result types (e.g. `Ok` or `NotFound`) → declare explicit `Results<T1, T2>` return type:
 
 ```csharp
 async Task<Results<Ok<ProductResponse>, NotFound>> (int id, ...) => ...
 ```
 
-**Do not** use `TypedResults.Ok(x)` and `TypedResults.NotFound()` in a bare
-ternary without an explicit return type annotation. `Ok<T>` and `NotFound` are
-different types with no common base the compiler can infer, which causes
-`CS1593: Delegate 'RequestDelegate' does not take N arguments` because the
-compiler falls back to matching `RequestDelegate(HttpContext)`.
+**Do not put different `TypedResults` types in a bare ternary without explicit return type.** `Ok<T>` and `NotFound` have no common inferred type. Compiler may fall back to `RequestDelegate(HttpContext)`, causing `CS1593: Delegate 'RequestDelegate' does not take N arguments`.
 
-**Fallback — `Results` factory:** If a handler has many conditional branches
-(7+ result types), you may use the `Results` factory (`Results.Ok()`,
-`Results.NotFound()`) which returns `IResult`, sacrificing compile-time OpenAPI
-inference for simpler signatures.
+**Fallback:** Handler has many conditional branches (7+ result types) → `Results` factory is acceptable (`Results.Ok()`, `Results.NotFound()`). It returns `IResult`; simpler signature, less compile-time OpenAPI inference.
 
-**Status codes:**
+#### HTTP Status Codes
 
 | Operation | Success | Common errors |
-|-----------|---------|---------------|
-| GET (single) | `200 OK` | `404 Not Found` |
-| GET (list) | `200 OK` | — |
-| POST (create) | `201 Created` with `Location` header | `400 Bad Request`, `409 Conflict` |
-| PUT (full update) | `200 OK` | `400 Bad Request`, `404 Not Found` |
-| PATCH (partial/action) | `200 OK` | `400 Bad Request`, `404 Not Found` |
+|---|---|---|
+| GET single | `200 OK` | `404 Not Found` |
+| GET list | `200 OK` | — |
+| POST create | `201 Created` + `Location` header | `400 Bad Request`, `409 Conflict` |
+| PUT full update | `200 OK` | `400 Bad Request`, `404 Not Found` |
+| PATCH partial/action | `200 OK` | `400 Bad Request`, `404 Not Found` |
 | DELETE | `204 No Content` | `404 Not Found`, `409 Conflict` |
 
-**POST 201 responses:** Always return a `Location` header pointing to the
-newly created resource.
+**POST create:** Always return `201 Created` with `Location` pointing to new resource.
 
-- Controllers: use `CreatedAtAction(nameof(GetById), new { id = ... }, response)`
-- Minimal APIs: use `TypedResults.Created($"/api/products/{id}", response)`
+- Controller: `CreatedAtAction(nameof(GetById), new { id = ... }, response)`.
+- Minimal API: `TypedResults.Created($"/api/products/{id}", response)`.
 
-**CancellationToken:** Accept `CancellationToken` in every endpoint signature
-and forward it through to all async calls (service methods, EF Core queries,
-`HttpClient` calls). This allows the server to stop work when a client
-disconnects.
+**CancellationToken:** Add `CancellationToken` to every endpoint signature. Forward it through every async call: service methods, EF Core queries, `HttpClient`, etc. Client disconnect → server can cancel remaining work.
 
 ```csharp
-// Controller example
+// Controller
 [HttpGet("{id}")]
 public async Task<ActionResult<ProductResponse>> GetById(
     int id, CancellationToken cancellationToken)
@@ -255,7 +199,7 @@ public async Task<ActionResult<ProductResponse>> GetById(
     return product is null ? NotFound() : Ok(product);
 }
 
-// Minimal API example — TypedResults with explicit return type (recommended)
+// Minimal API: TypedResults + explicit return type
 app.MapGet("/api/products/{id}", async Task<Results<Ok<ProductResponse>, NotFound>> (
     int id, IProductService service, CancellationToken cancellationToken) =>
 {
@@ -264,49 +208,52 @@ app.MapGet("/api/products/{id}", async Task<Results<Ok<ProductResponse>, NotFoun
 });
 ```
 
-### Step 4: Wire up OpenAPI
+### Step 4: Configure OpenAPI
 
-Every ASP.NET Core Web API should have OpenAPI documentation. Check whether
-the project already has OpenAPI configured before adding it.
+Every Web API needs OpenAPI documentation. Check existing configuration before adding anything.
 
-**For .NET 9+ projects**, use the built-in ASP.NET Core OpenAPI support
-(`builder.Services.AddOpenApi()` + `app.MapOpenApi()` in development).
-This is all that is needed — no additional packages required.
+**.NET 9+:** Prefer built-in ASP.NET Core OpenAPI:
 
-**Do NOT add any `Swashbuckle.*` NuGet package** (`Swashbuckle.AspNetCore`,
-`Swashbuckle.AspNetCore.SwaggerUI`, `Swashbuckle.AspNetCore.SwaggerGen`,
-etc.) to .NET 9+ projects. Swashbuckle has known compatibility issues with
-.NET 9+ and .NET 10 OpenAPI types. For projects targeting .NET 8 or earlier,
-Swashbuckle is acceptable. If the project already has Swashbuckle installed,
-keep it unless the user asks to remove it.
+```csharp
+builder.Services.AddOpenApi();
+app.MapOpenApi(); // usually expose in development
+```
+
+No extra package needed.
+
+**Do not add `Swashbuckle.*` NuGet packages to .NET 9+ projects.** This includes `Swashbuckle.AspNetCore`, `Swashbuckle.AspNetCore.SwaggerUI`, and `Swashbuckle.AspNetCore.SwaggerGen`. Swashbuckle has known compatibility issues with .NET 9+ and .NET 10 OpenAPI types.
+
+For .NET 8 or earlier, Swashbuckle is acceptable. Existing Swashbuckle installation → keep it unless user asks for removal.
 
 Reference: https://learn.microsoft.com/en-us/aspnet/core/fundamentals/openapi/overview
 
-**OpenAPI metadata on endpoints:** Add descriptive metadata so the generated
-documentation is useful, not just a list of routes. For minimal APIs, chain
-the metadata methods:
+#### Add Endpoint Metadata
+
+Document endpoints with meaningful metadata, not route names alone. For minimal APIs:
 
 ```csharp
 app.MapGet("/api/products/{id}", handler)
     .WithName("GetProductById")
     .WithSummary("Get a product by ID")
-    .WithDescription("Returns the full product details including category.")
+    .WithDescription("Returns full product details, including category.")
     .Produces<ProductResponse>(StatusCodes.Status200OK)
     .Produces(StatusCodes.Status404NotFound);
 ```
 
-**Enum serialization (strings by default):** Configure JSON serialization so
-enums appear as readable strings in both API responses and OpenAPI schemas.
-Always add this configuration unless the user explicitly requests integer
-enum serialization. Configure it for both minimal APIs and controllers, as
-they use different option types:
+#### Serialize Enums as Strings
+
+Configure JSON so enum values appear as readable strings in responses and OpenAPI schemas. Do this by default unless user explicitly requests integer serialization.
+
+Minimal APIs:
 
 ```csharp
-// Minimal APIs
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+```
 
-// Controllers / MVC
+Controllers / MVC:
+
+```csharp
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -314,12 +261,13 @@ builder.Services.AddControllers()
     });
 ```
 
-### Step 5: Set up error handling
+Configure the option type matching the API style. Minimal APIs and MVC use different JSON options.
 
-Use a global exception handler so that individual endpoints do not need
-try-catch blocks. Return RFC 7807 Problem Details for all error responses.
+### Step 5: Configure Error Handling
 
-**For .NET 8+ projects**, prefer the built-in exception handler middleware:
+Use global exception handling. Avoid endpoint-level try/catch blocks for routine API error mapping. Return RFC 7807 Problem Details for error responses.
+
+**.NET 8+:** Prefer built-in exception middleware:
 
 ```csharp
 builder.Services.AddProblemDetails();
@@ -328,8 +276,7 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 ```
 
-If the project needs custom exception-to-status-code mapping (e.g., a
-`NotFoundException` should return 404), implement `IExceptionHandler`:
+Need custom exception-to-status mapping (e.g. `NotFoundException` → 404) → implement `IExceptionHandler`:
 
 ```csharp
 internal sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger)
@@ -349,10 +296,10 @@ internal sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger)
         };
 
         if (statusCode == 0)
-            return false; // Let the default handler deal with it
+            return false; // Let default handler process it.
 
-        // Important: returning true below suppresses the exception diagnostics middleware
-        // for this exception, so ensure it is logged/telemetrized before returning.
+        // Returning true suppresses exception diagnostics middleware for this exception.
+        // Log/telemetry must happen before returning.
         logger.LogWarning(exception, "Handled API exception: {Title}", title);
 
         httpContext.Response.StatusCode = statusCode;
@@ -360,8 +307,8 @@ internal sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger)
         {
             Status = statusCode,
             Title = title,
-            // Do not use exception.Message here — it may leak sensitive internal details.
-            // Use a safe, user-facing message instead.
+            // Never expose exception.Message; may leak internal details.
+            // Use safe, user-facing text.
             Detail = title,
             Instance = httpContext.Request.Path
         }, cancellationToken);
@@ -371,7 +318,7 @@ internal sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger)
 }
 ```
 
-Register it:
+Register handler:
 
 ```csharp
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
@@ -380,18 +327,13 @@ builder.Services.AddProblemDetails();
 app.UseExceptionHandler();
 ```
 
-**File placement:** Always place exception handler classes in a `Middleware/`
-folder to maintain consistent project organization. Do not place them at the
-project root.
+**File placement:** Put exception handler classes in `Middleware/`. Never place them at project root.
 
-### Step 6: Use a service layer
+### Step 6: Use a Service Layer
 
-Do not inject data stores directly into controllers or endpoint handlers.
-Create a service interface and a sealed implementation class that owns the
-data access logic and mapping between entities and request/response types.
+Do not inject data stores directly into controllers or endpoint handlers. Put data access and entity-to-DTO mapping in a service.
 
-Always define an interface for every service — this enables unit testing with
-mocks and follows the Dependency Inversion Principle:
+For every service, define an interface and a `sealed` implementation. Interface enables mock-based unit tests and follows Dependency Inversion Principle.
 
 ```csharp
 // Services/IProductService.cs
@@ -405,25 +347,22 @@ public interface IProductService
 // Services/ProductService.cs
 public sealed class ProductService(...) : IProductService
 {
-    // Data access logic, entity-to-DTO mapping
+    // Data access and entity-to-DTO mapping.
 }
 ```
 
-Register with the interface, not the concrete type:
+Register interface, not concrete implementation:
 
 ```csharp
-// In Program.cs
+// Program.cs
 builder.Services.AddScoped<IProductService, ProductService>();
 ```
 
-For EF Core data access patterns (migrations, Fluent API configuration,
-`AsNoTracking`, seed data), see the `optimizing-ef-core-queries` skill.
+For EF Core migrations, Fluent API, `AsNoTracking`, seed data, and data-access patterns, follow the project's EF Core guidance.
 
-### Step 7: Create a .http test file
+### Step 7: Create `.http` Test File
 
-After implementing endpoints, create a `.http` file in the project root that
-demonstrates how to call every new endpoint. This serves as living
-documentation and a quick manual test harness.
+After adding endpoints, create a `.http` file at project root. Include a request for every new endpoint. File acts as living docs and manual test harness.
 
 ```http
 @baseUrl = http://localhost:5000
@@ -448,59 +387,64 @@ Content-Type: application/json
 DELETE {{baseUrl}}/api/products/1
 ```
 
-Include at least one request per endpoint with realistic bodies. Show error
-paths (e.g., non-existent IDs). Match the port to `launchSettings.json`.
+Rules:
 
-### Step 8: Build and verify
+- At least one realistic request per endpoint.
+- Include error paths, e.g. nonexistent IDs.
+- Match port to `launchSettings.json`.
 
-1. Run `dotnet build` — confirm zero errors and zero warnings.
-2. Start the app and verify the OpenAPI document loads (default: `/openapi/v1.json`).
-3. Run the requests in the `.http` file and confirm correct status codes.
+### Step 8: Build and Verify
+
+1. Run `dotnet build`; require zero errors and zero warnings.
+2. Start app; verify OpenAPI document loads. Default route: `/openapi/v1.json`.
+3. Run `.http` requests; verify actual status codes.
 
 ## Validation
 
-- [ ] All endpoints return correct HTTP status codes per the table in Step 3
-- [ ] POST endpoints return `201 Created` with a `Location` header
-- [ ] DELETE endpoints return `204 No Content`
-- [ ] Every endpoint signature includes `CancellationToken`
-- [ ] `CancellationToken` is forwarded to all downstream async calls
-- [ ] OpenAPI document is generated and includes all new endpoints
-- [ ] Endpoints have summary/description metadata for OpenAPI
-- [ ] Enum values appear as strings in JSON responses and OpenAPI schemas (unless user explicitly requested integer serialization)
-- [ ] Error responses use RFC 7807 Problem Details format
-- [ ] Domain entities are not exposed directly in API request/response bodies
-- [ ] All API-exposed DTOs have `<summary>` XML doc comments
-- [ ] Date and time properties use `DateTimeOffset`, not `DateTime`
-- [ ] A `.http` file exists with a request for every new endpoint
-- [ ] `dotnet build` passes with zero errors and zero warnings
-- [ ] All DTOs are `sealed record` types (not mutable classes)
-- [ ] Minimal API handlers use `TypedResults` with explicit `Results<T1, T2>` return types
-- [ ] Every service has a corresponding interface registered in DI
-- [ ] Exception handlers are placed in the `Middleware/` folder
+Before completion, check every item:
+
+- [ ] All endpoints use correct HTTP status codes (Step 3 table).
+- [ ] POST returns `201 Created` and `Location` header.
+- [ ] DELETE returns `204 No Content`.
+- [ ] Every endpoint signature accepts `CancellationToken`.
+- [ ] Every downstream async call receives the token.
+- [ ] OpenAPI document generates and includes all new endpoints.
+- [ ] Endpoints have useful summary/description metadata.
+- [ ] Enums serialize as strings in JSON and OpenAPI unless integer format explicitly requested.
+- [ ] Errors use RFC 7807 Problem Details.
+- [ ] API request/response bodies expose no domain entities.
+- [ ] Every API DTO has `<summary>` XML documentation.
+- [ ] Date/time DTO properties use `DateTimeOffset`, not `DateTime`.
+- [ ] `.http` file covers every new endpoint.
+- [ ] `dotnet build` passes with zero errors and warnings.
+- [ ] Every DTO is a `sealed record`, not mutable class.
+- [ ] Minimal API handlers use `TypedResults` and explicit `Results<T1, T2>` when returning multiple result types.
+- [ ] Every service has an interface and DI registration through that interface.
+- [ ] Exception handlers live in `Middleware/`.
 
 ## Common Pitfalls
 
-| Pitfall | Solution |
-|---------|----------|
-| Exposing domain entities as API responses | Create separate `sealed record` request/response types. Entities leak navigation properties and internal fields. |
-| Forgetting `CancellationToken` | Add to every endpoint and forward through the entire async call chain. |
-| Returning `200 OK` from POST create | Return `201 Created` with a `Location` header. |
-| Missing OpenAPI metadata | Chain `.WithName()`, `.WithSummary()`, `.WithDescription()`, `.Produces<T>()` on every endpoint. |
-| Injecting data stores directly into endpoints | Use a service layer with an interface for separation and testability. |
-| Mixing controller and minimal API styles | Pick one per project and be consistent. |
-| `TypedResults` in ternary without explicit return type | `Ok<T>` and `NotFound` have no common base — annotate with `Task<Results<Ok<T>, NotFound>>` or fall back to `Results` factory. |
-| Using mutable classes for DTOs | Use `sealed record` with positional syntax (responses) or `init` properties (requests). |
-| Registering services without interfaces | Define `IService` and register with `AddScoped<IService, Service>()`. |
-| Adding any `Swashbuckle.*` package to new .NET 9+ projects | Use built-in `AddOpenApi()` + `MapOpenApi()`. Do not add `Swashbuckle.AspNetCore`, `Swashbuckle.AspNetCore.SwaggerUI`, or any other Swashbuckle package. |
-| Missing XML doc comments on DTOs | Add `<summary>` XML doc comments to every request and response type. These flow into the generated OpenAPI spec automatically. |
-| Using `DateTime` for date/time properties | Use `DateTimeOffset` instead — it preserves UTC offset, avoids timezone ambiguity, and serializes correctly in JSON. |
-| Serializing enums as integers | Configure `JsonStringEnumConverter` so enums serialize as strings by default. Only use integer serialization if the user explicitly requests it. |
+| Pitfall | Correct action |
+|---|---|
+| Expose domain entities as API responses | Use separate `sealed record` request/response DTOs. Entities may leak navigation properties and internal fields. |
+| Omit `CancellationToken` | Add it to every endpoint; forward through full async call chain. |
+| Return `200 OK` after POST create | Return `201 Created` + `Location`. |
+| Omit OpenAPI metadata | Add `.WithName()`, `.WithSummary()`, `.WithDescription()`, and `.Produces<T>()` where applicable. |
+| Inject data stores into endpoint handlers | Use service layer and interface. |
+| Mix controller and minimal API styles | Pick one style per project. Stay consistent. |
+| Use `TypedResults` ternary without explicit return type | `Ok<T>` and `NotFound` differ. Declare `Task<Results<Ok<T>, NotFound>>` or use `Results` factory for complex branches. |
+| Use mutable DTO classes | Use `sealed record`; positional properties for responses, `init` properties for requests. |
+| Register service without interface | Define `IService`; register `AddScoped<IService, Service>()`. |
+| Add Swashbuckle package to new .NET 9+ project | Use built-in `AddOpenApi()` + `MapOpenApi()`. Do not add any `Swashbuckle.*` package. |
+| Omit DTO XML docs | Add `<summary>` to each request and response type; comments flow into OpenAPI. |
+| Use `DateTime` for API date/time | Use `DateTimeOffset`; preserves offset and avoids timezone ambiguity. |
+| Serialize enums as integers | Add `JsonStringEnumConverter`; strings are default unless user requests integers. |
 
 ## More Info
 
-- [ASP.NET Core Web API overview](https://learn.microsoft.com/en-us/aspnet/core/web-api/) — fundamental concepts for building Web APIs
-- [OpenAPI in ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/openapi/overview) — built-in OpenAPI support in .NET 9+
-- [OpenAPI from XML comments](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/openapi/openapi-comments) — how XML doc comments flow into the OpenAPI spec
-- [Minimal APIs overview](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis/overview) — routing, parameter binding, and response types
-- [Handle errors in ASP.NET Core APIs](https://learn.microsoft.com/en-us/aspnet/core/web-api/handle-errors) — Problem Details and exception handling
-- [DateTimeOffset](https://learn.microsoft.com/en-us/dotnet/api/system.datetimeoffset) — preferred type for date/time values in APIs
+- [ASP.NET Core Web API overview](https://learn.microsoft.com/en-us/aspnet/core/web-api/) — Web API fundamentals.
+- [OpenAPI in ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/openapi/overview) — built-in OpenAPI, .NET 9+.
+- [OpenAPI from XML comments](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/openapi/openapi-comments) — XML docs in generated OpenAPI.
+- [Minimal APIs overview](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis/overview) — routing, binding, result types.
+- [Handle errors in ASP.NET Core APIs](https://learn.microsoft.com/en-us/aspnet/core/web-api/handle-errors) — Problem Details and exception handling.
+- [DateTimeOffset](https://learn.microsoft.com/en-us/dotnet/api/system.datetimeoffset) — preferred API date/time type.

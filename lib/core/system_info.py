@@ -125,8 +125,8 @@ def get_capabilities() -> dict:
 
     registry = getattr(getattr(_MCP, "_tool_manager", None), "_tools", {})
     if isinstance(registry, dict) and registry:
-        # The registry is authoritative for exposure; retain per-tool capability
-        # metadata where available and add a minimal entry for every registered tool.
+        # The registry is authoritative for the internal callable catalog; retain
+        # per-tool capability metadata where available and add every registration.
         tools: dict = {
             name: tools.get(name, {"available": True, "note": "registered MCP tool"})
             for name in sorted(registry)

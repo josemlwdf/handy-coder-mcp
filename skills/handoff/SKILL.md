@@ -1,17 +1,21 @@
 ---
 name: handoff
-description: Compact the current conversation into a handoff document for another agent to pick up.
-invokable: true
+description: Create a compact handoff document so another agent can continue the work.
 ---
 
-"What will the next session be used for?"
+# Handoff
 
-Write a handoff document summarising the current conversation so a fresh agent can continue the work. Save to the temporary directory (`./tmp`).
+Ask: **“What will the next session be used for?”**
 
-Include a "suggested skills" section in the document, naming which skills the next agent should call the Skill tool for.
+Create a handoff document for a fresh agent.
 
-Do not duplicate content already captured in other artifacts (specs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead.
+## Requirements
 
-Redact any sensitive information, such as API keys, passwords, or personally identifiable information.
+- Save the document under `./tmp`.
+- Summarize the current conversation for session continuity.
+- Tailor the handoff to any user-supplied focus arguments.
+- Add a **Suggested skills** section. Name skills the next agent should invoke with the Skill tool.
+- Do not repeat information already stored in artifacts (specs, plans, ADRs, issues, commits, diffs). Reference each by path or URL.
+- Redact secrets and personal data, including API keys and passwords.
 
-If the user passed arguments, treat them as a description of what the next session will focus on and tailor the doc accordingly.
+Keep the handoff concise, actionable, and sufficient to resume the work.

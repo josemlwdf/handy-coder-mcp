@@ -75,7 +75,7 @@ Alternatively, use the installed entry point:
 }
 ```
 
-The server registers `read_files`, `create_file`, `apply_edits`, `terminal_exec`, `search_text`, `find_files`, `code_get_diagnostics`, `run_tests`, `build_project`, `git_manage`, `get_capabilities`, `get_tool_details`, `skills_manage`, `orchestrator`, `web_fetch_docs`, and `subagent_manage`. Call `get_tool_details` with a tool name for its full documentation. See the [registered tool inventory](docs/TOOL_INVENTORY.md) for grouping.
+The public `tools/list` contains only `get_capabilities`, `get_tool_details`, `discover_tools`, and `invoke_tool`. Discover relevant internal tools with `discover_tools(query, limit=4)`; each result includes the full description and input schema. `get_tool_details(tool_name)` provides structured argument documentation, and `invoke_tool(tool_name, arguments)` dispatches through the selected tool's original schema validation and execution controls. Individual tools are not directly exposed to clients. See the [tool inventory](docs/TOOL_INVENTORY.md) for the complete internal catalog.
 
 Tool modules are organized by tier: Tier 1 tools live in `lib/core`, and optional Tier 2 tools live in `lib/extras`.
 
@@ -157,11 +157,11 @@ Committing is left entirely to the user or to an explicit request, and `git_mana
 
 ### Skills
 
-`skills_manage` stores and retrieves reusable skills as Markdown files with a small frontmatter block (`name`, `description`, `invokable`) at `skills/<skill-name>/SKILL.md`. Set `HANDY_CODER_SKILLS_DIR` to use a different base directory. The skills directory is not tied to `--root`.
+`skills_manage` stores and retrieves reusable skills as Markdown files with a small frontmatter block (`name` and `description`) at `skills/<skill-name>/SKILL.md`. Set `HANDY_CODER_SKILLS_DIR` to use a different base directory. The skills directory is not tied to `--root`.
 
 - `action: "list"` returns every skill's `name`, `description` and `invokable` flag, plus an `errors` array for files that could not be read.
 - `action: "get"` with `name` returns the full `content` and the `body` without frontmatter.
-- `action: "save"` with `name`, `description` and `content` creates a skill. The frontmatter is generated, so `content` must be the body only. It fails with `already_exists` unless `overwrite: true` is passed. Pass `invokable: false` for skills that should not be invoked directly. Optional `tags` is an array of strings (for example, `["python", "testing"]`); `tags` and `version` are saved as metadata; `search`, `delete`, and `export` provide discovery, removal, and full Markdown retrieval.
+- `action: "save"` with `name`, `description` and `content` creates a skill. The frontmatter is generated from `name` and `description`, so `content` must be the body only. It fails with `already_exists` unless `overwrite: true` is passed. `search`, `delete`, and `export` provide discovery, removal, and full Markdown retrieval.
 
 Names must be 1-64 characters of lowercase letters, digits and hyphens, which also prevents path traversal. Failures return an `error_code`: `missing_argument`, `invalid_name`, `invalid_description`, `content_has_frontmatter`, `skill_too_large`, `not_found`, `already_exists`, `binary_file` or `io_error`.
 

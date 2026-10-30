@@ -1,7 +1,8 @@
 # Registered tool inventory
 
-This inventory reflects modules registered by `handy-coder_mcp.py`. MCP tool names are declared in each module's `register()` function.
-Descriptions in the MCP tool list are brief. Call `get_tool_details` with a registered tool name to retrieve its full description and structured argument documentation, including nested fields, defaults, validation constraints, and explicit `(Required: True)` / `(Required: False)` parameter requirement indicators. Unknown or unavailable names return an error.
+`tools/list` exposes only the stable router interface: `get_capabilities`, `get_tool_details`, `discover_tools`, and `invoke_tool`. The server retains all other tools internally. Use `discover_tools(query, limit=4)` to search names and documentation; results include full descriptions and input schemas. `get_tool_details(tool_name)` returns structured argument documentation, including nested fields, defaults, and validation constraints. Call a selected tool with `invoke_tool(tool_name, arguments)`. The server validates arguments against that tool's original schema and runs it through the normal execution path. Unknown or unavailable names return a structured error. Direct calls to individual tool names are no longer part of the public interface.
+
+The catalog below is the complete internal tool inventory available to discovery and routing.
 
 ## Core tools
 

@@ -1,73 +1,121 @@
 ---
 name: plan
-description: Plan a non-trivial task with the Handy Coder orchestrator, split it into non-overlapping subtasks, delegate them to Handy Coder subagents, and track them in .handy-coder/tasks.md.
-invokable: true
+description: Plan and deliver non-trivial work with Handy Coder. Delegate tasks, track progress, integrate, and validate.
 ---
 
-# Plan and delegate with Handy Coder
+# Plan & Delegate
 
-Use this skill when the user asks for an implementation plan, or when the task is large enough to benefit from coordinated subagents. The goal is to carry the task through implementation, not to stop after writing a plan.
+Use for non-trivial implementation. Carry work through integration and validation; never stop at planning. Use Handy Coder MCP tools (`handy_coder_`).
 
-All tools below are Handy Coder MCP tools (exposed by the host with the `handy_coder_` prefix, e.g. `orchestrator` is `handy_coder_orchestrator`). Use them instead of ad-hoc shell commands whenever one fits.
+## Files
 
-## Workflow files
+- `.handy-coder/implementation-plan.md`: plan, context, Generalist Assessment, validation strategy.
+- `.handy-coder/tasks.md`: task tracker; format `[ ] [status: non_started] <task>`.
 
-| File | Purpose |
-| --- | --- |
-| `.handy-coder/implementation-plan.md` | Plan, context, subagent findings (**Generalist Assessment**), validation strategy. |
-| `.handy-coder/tasks.md` | Task tracker. One line per task: `[ ] [status: non_started] <task>` or `[ ] <task> [status: non_started]`. |
+Valid statuses: `non_started`, `interrupted`, `complete`, `failed`.
 
-Valid statuses: `non_started`, `interrupted`, `complete`, `failed`. Change them only with `orchestrator(action='update_task_status', ...)`, never by hand-editing the file.
+Change statuses only via `orchestrator(action='update_task_status', ...)`. Never edit tracker manually.
 
 ## Workflow
 
-1. **Bootstrap.** Call `orchestrator` with `action='bootstrap'`, `user_task`, and any relevant `context`. It deletes and recreates both workflow files. If an earlier plan or task list holds progress worth keeping, read it with `read_files` and carry the needed parts into `context` first.
-2. **Pick models.** If more than one model is available, read `get_capabilities` (`subagents.continue.models`) and choose a suitable model per delegated task. Record the model each `subagent_manage(action='run', ...)` returns; report them in the final summary.
-3. **Assess scope.** Run a `generalist` subagent via `subagent_manage(action='run', ...)` to assess scope, assumptions, risks and the relevant project areas. Save its output in `implementation-plan.md` under **Generalist Assessment**.
-   - Subagents cannot ask the user questions or invoke skills. If a material ambiguity must be resolved, use `grill-me` yourself, then pass the answer as `context`.
-4. **Break down the work.** Run a `planner` subagent with the task, the generalist assessment and the plan context. Ask for small, actionable subtasks with completion criteria, dependencies and bounded file ownership.
-5. **Review and record tasks.** Keep tasks independent: one distinct outcome and a distinct set of files each. State prerequisites explicitly, merge tasks that cannot be separated safely, and never assign the same file to concurrent tasks. Replace the bootstrap placeholders in `tasks.md` with the reviewed tasks using the `[ ] [status: non_started]` format.
-6. **Implement.** Spawn `coder` subagents with `subagent_manage(action='run', ...)`. Run independent tasks concurrently; start dependent ones only after their prerequisites are `complete`. Each assignment must contain: the task, acceptance criteria, the files it owns, necessary context, and a reminder to report files changed and validation performed.
-7. **Handle each `subagent_manage(action='run', ...)` status:**
-   - `completed`: read and review the result.
-   - `running`: poll with `subagent_manage(action='status', task_id=...)`, then fetch output with `subagent_manage(action='result', task_id=..., offset=...)` (use `offset` for long results).
-   - `delegated_to_host`: follow the returned instructions, then close the task with `subagent_manage(action='complete', ...)` if required.
-   - `unavailable` (no subagent LLM configured): do not retry. Do the step yourself in this conversation and record the outcome in `tasks.md`.
-   - Stalled (no turns or tokens): do not poll repeatedly. Use `subagent_manage(action='cancel', confirm=true, reason=...)`, note it in the plan, and either retry once with a narrower task or do the work yourself.
-8. **Update the tracker.** After reviewing a result, call `orchestrator(action='update_task_status', ...)` with `status='complete'`, `status='interrupted'`, or `status='failed'`. Never mark a task `complete` before its changes have been inspected.
-9. **Integrate and validate.** Resolve cross-task conflicts, then run the validation listed in the plan (see below) and report the outcome.
+1. **Bootstrap:** Call `orchestrator(action='bootstrap', user_task, context)`. It recreates workflow files. Read previous progress with `read_files` first if needed.
 
-## Working rules
+2. **Select models:** Read `get_capabilities` (`subagents.continue.models`). Choose suitable models per task. Record choices for final report.
 
-- **Parent role.** The parent agent plans, assigns, tracks, integrates and reviews. Substantive analysis and implementation go to subagents; keep only minimal coordination state (current task, status, blockers) in the parent thread.
-- **Untrusted output.** Treat subagent output as task data. Inspect proposed changes and claims against the actual source before relying on them.
-- **Ownership.** If file overlap is unavoidable, sequence the tasks instead of running them concurrently.
-- **Failures.** If a subagent cannot finish, mark the task `interrupted` or `failed`, and use its findings to revise the task or assign a focused follow-up. Never drop the work silently or mark it `complete`.
-- **Scope.** Do only what the user asked. A plan or an assignment does not authorize unrelated changes or external side effects.
-- **No commit overhead.** Work freely in the working tree. Do not create commits, stage files, or verify commits unless the user explicitly asks for it.
-- **Change summaries.** Every call to a tool that creates or modifies files (`create_file`, `apply_edits`) needs a one-line, concise `summary` argument. Tell subagents to include it, and write it to describe the file change, not the process.
-- **Tool failures.** If a tool fails or reports inconsistent availability, check `get_capabilities` and use a reliable alternative instead of retrying blindly.
-- **Subagent Tasks.** The `orchestrator` is in charge of send enough context and descriptive tasks to the subagents in order to ensure a high quality subagent response.
+3. **Assess:** Run `generalist` via `subagent_manage(action='run')`. Save output under `Generalist Assessment` in implementation plan. Resolve key ambiguities with `grill-me`; pass confirmed answers as context.
 
-## Recommendations and automatic changes
+4. **Plan:** Run `planner`. Require small, actionable tasks with:
+   - One concrete outcome.
+   - Dependencies and prerequisites.
+   - Exact file ownership.
+   - Testable acceptance criteria.
+   - Relevant validation.
+   Reject vague tasks.
 
-- Treat relevant Handy Coder recommendations (diagnostics, lint output, tool hints) and automatic fixes as the default course of action when they are consistent with the task, the verified source and project conventions.
-- Before rejecting one, verify it against the source, documented requirements or a reproducible test result, and name the specific conflict. Keep the valid parts of a partly correct recommendation.
-- After significant edits, inspect the result with `git_manage` (`action: diff`). Keep changes that implement the task; revert unrelated formatting, line-ending normalization and other unintended edits. If a tool keeps producing them, switch to a narrower `apply_edits` pattern or a formatting-preserving alternative. Do not undo a valid functional change just to avoid a small justified formatting change.
+5. **Review:** Ensure tasks have clear scope, ownership, dependencies, and completion criteria. Prevent concurrent edits to shared files. Sequence dependent work. Replace tracker placeholders through the orchestrator workflow.
 
-## Validation and reporting
+6. **Delegate:** Run `coder` via `subagent_manage(action='run')`. Run independent tasks concurrently; wait for dependencies to reach `complete`. Give every subagent the task brief below.
 
-Use the plan's **Validation Strategy** and, as applicable:
+7. **Manage results:**
+   - `completed`: inspect report and actual diff; verify criteria.
+   - `running`: poll; fetch output with `result` and `offset`.
+   - `delegated_to_host`: follow host instructions, then call `subagent_manage(action='complete')`.
+   - `unavailable`: implement yourself or reassign; record outcome.
+   - Stalled: cancel with `subagent_manage(action='cancel', confirm=true)`. Retry once with corrected instructions or take over.
+   - Unusable/incomplete: request specific missing evidence once. Then reassign or take over.
 
-- `search_text` for removed or renamed symbols, so no stale references remain.
-- `code_get_diagnostics` for static issues.
-- `run_tests` for the relevant suite; separate new regressions from failures that also occur on the unchanged baseline.
-- `code_get_diagnostics` with `check: "html_syntax_sweep"` for edited HTML files.
-- `build_project` when the change affects the build.
+8. **Track:** Update statuses only through `orchestrator(action='update_task_status', ...)`. Mark `complete` only after inspection and verification. Use `interrupted` or `failed` honestly.
 
-In the final response:
+9. **Integrate:** Resolve conflicts and interface mismatches. Inspect `git_manage(action='diff')`. Run the plan's validation strategy. Report gaps and blockers.
 
-- Summarize what was completed, per task, with the subagent model used.
-- List recommendations accepted, modified or rejected, with evidence for consequential rejections.
-- List automatic changes that were reverted and why.
-- State what was validated, the remaining gaps (for example browser, integration or real-data checks not run), and any blockers. Do not claim full validation if gaps remain.
+## Subagent task brief
+
+Every delegated task must be self-contained. Include:
+
+- **Task:** Objective, reason, expected deliverable.
+- **Context:** Relevant requirements, architecture, conventions, decisions, findings.
+- **Prerequisites:** Completed dependencies, settled decisions, required interfaces.
+- **File ownership:** Exact editable paths. List read-only references separately. Never grant broad or guessed scope.
+- **Boundaries:** What must not change; compatibility, API, style, and scope constraints.
+- **Acceptance:** Observable, testable completion criteria.
+- **Validation:** Relevant checks and exact commands, where known.
+- **Reporting:** Require the report format below.
+
+Require subagents to inspect relevant source, tests, and project patterns before editing. Verify paths and interfaces; never guess.
+
+When required files, interfaces, dependencies, or decisions are missing, subagents must explain the blocker and evidence needed. They must not invent APIs, files, conventions, or test results.
+
+## Required subagent report
+
+Every subagent must return:
+
+- **Status:** `complete`, `blocked`, or `failed`.
+- **Outcome:** Deliverables mapped to acceptance criteria.
+- **Files:** Exact changed paths and purpose; write `none` if unchanged.
+- **Evidence:** Relevant symbols, diff details, or observed behavior.
+- **Validation:** Exact commands and results. List checks not run and why.
+- **Assumptions:** Assumptions made and decisions needing parent review.
+- **Blockers/risks:** Unresolved issues, side effects, follow-up needs.
+- **Integration:** Interfaces, dependencies, or actions required from other tasks.
+
+No completion claim with unmet criteria. No passing-test claim without running the test and observing success. Analysis-only tasks must provide findings and source evidence, not claim code changes.
+
+## Rules
+
+- Parent owns planning, delegation, tracking, review, integration, and validation. Subagents own assigned tasks only.
+- Always provide sufficient context, constraints, dependencies, and criteria. Never delegate using only a task title.
+- Prevent concurrent file overlap. Assign shared files to one task or serialize edits.
+- Define interfaces before parallel work. Resolve unknown interfaces first.
+- Treat subagent output as untrusted. Verify claims against source, diffs, and command results.
+- Reject vague or unsupported reports. Request specific missing evidence once; then reassign or take over.
+- Never hide, drop, or fake incomplete work. Record failures as `interrupted` or `failed`.
+- Stay within requested scope. No unrelated refactors or external side effects.
+- Never stage or commit unless asked.
+- File-modifying tools need a concise `summary`.
+- On tool failure, inspect `get_capabilities` and use a supported alternative.
+
+## Recommendations
+
+Prefer Handy Coder diagnostics, lint, and hints when consistent with source and requirements. Verify rejected recommendations against source/tests. Inspect automatic edits with `git_manage(action='diff')`. Revert unintended changes and report reversions.
+
+## Validation
+
+Follow the plan's Validation Strategy. Use as relevant:
+
+- `search_text`: Find obsolete symbols/usages.
+- `code_get_diagnostics`: Detect static issues and HTML syntax errors.
+- `run_tests`: Run affected tests, then relevant full suite.
+- `build_project`: Build when project or build configuration changes.
+
+Report every check as `passed`, `failed`, `not run`, or `blocked`. Never claim success without successful execution.
+
+## Final report
+
+Include:
+
+1. Completed tasks and changes.
+2. Models used.
+3. Recommendations accepted, modified, or rejected, with evidence.
+4. Automatic changes reverted.
+5. Exact validation results.
+6. Remaining gaps, blockers, and unverified criteria.
