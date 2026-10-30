@@ -32,6 +32,6 @@ The catalog below is the complete internal tool inventory available to discovery
 
 - `subagent_manage` (unified lifecycle endpoint with `action=run|status|result|complete|cancel`)
 
-`code_intel(action='index')` runs on demand in an isolated worker process and can be called to build or refresh the index. The server starts without scanning the workspace. The index is local and incremental; see [Local C# code navigation](./SEMANTIC_SEARCH.md) for its behavior and limitations.
+`code_intel(action='index')` runs on demand in an isolated worker process and can be called to build or refresh the index. The server starts without scanning the workspace. The index is local and incremental; see [Multilingual code navigation](./SEMANTIC_SEARCH.md) for its behavior and limitations.
 
-`web_search` and `web_fetch_docs` make outbound requests and require network access when called. The C# indexer uses the installed Tree-sitter C# parser and SQLite FTS5. See [optional feature setup](./SETUP.md) for details.
+`web_search` and `web_fetch_docs` make outbound requests and require network access when called. The source index uses available Tree-sitter grammars, lexical fallback, and SQLite FTS5. See [optional feature setup](./SETUP.md) for details.

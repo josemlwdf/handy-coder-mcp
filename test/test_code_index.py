@@ -2,6 +2,7 @@
 
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from lib import code_index, support
@@ -57,6 +58,33 @@ class CodeIndexTests(unittest.TestCase):
         code_index.index_codebase()
         (self.root / "B.cs").unlink()
         self.assertEqual(code_index.index_codebase()["removed"], 1)
+
+    def test_mixed_languages_and_detected_modes(self) -> None:
+        py = self.root / "module.py"
+        py.write_text("class PythonAgent:\n    def move(self):\n        return 1\n")
+        (self.root / "module.js").write_text("class JsAgent { run() {} }")
+        result = code_index.index_codebase()
+        self.assertEqual(result["parsed"], 3)
+        py_symbol = code_index.code_navigator("get_symbol", symbol="PythonAgent")
+        self.assertEqual(py_symbol["language"], "Python")
+        self.assertEqual(py_symbol["analysis_mode"], "syntax")
+        search = code_index.code_navigator("search_code", query="JsAgent")
+        js = next(item for item in search["results"] if item["name"] == "JsAgent")
+        self.assertEqual(js["language"], "JavaScript")
+        self.assertEqual(js["analysis_mode"], "syntax")
+        refs = code_index.code_navigator("find_references", symbol="PythonAgent")
+        self.assertIn("never compiler-resolved", refs["reference_type"])
+
+    def test_lexical_fallback_is_reported(self) -> None:
+        source = self.root / "fallback.swift"
+        source.write_text("func doWork() { callTarget() }\n")
+        with patch("lib.code_index.get_parser", side_effect=ImportError, create=True):
+            with patch.dict("sys.modules", {"tree_sitter_language_pack": None}):
+                result = code_index.index_codebase()
+        self.assertEqual(result["parsed"], 2)
+        found = code_index.code_navigator("get_symbol", symbol="doWork")
+        self.assertEqual(found["language"], "Swift")
+        self.assertEqual(found["analysis_mode"], "lexical")
 
     def test_class_member_type_and_construction_references(self) -> None:
         source = self.root / "Uses.cs"

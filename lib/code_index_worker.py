@@ -19,7 +19,7 @@ def _eligible(path: str, root: Path) -> bool:
     except (OSError, ValueError):
         return False
     parts = Path(relative).parts
-    return candidate.suffix == ".cs" and not any(
+    return candidate.suffix.lower() in code_index.SOURCE_EXTENSIONS and not any(
         part.startswith(".") or part in code_index.DEFAULT_EXCLUDES for part in parts
     )
 
@@ -35,7 +35,7 @@ def run(
         from watchdog.events import FileSystemEventHandler
         from watchdog.observers import Observer
     except ImportError as exc:
-        raise RuntimeError("watchdog is required for background C# indexing") from exc
+        raise RuntimeError("watchdog is required for background source indexing") from exc
 
     support.configure(root)
     workspace = Path(support.ROOT).resolve(strict=True)

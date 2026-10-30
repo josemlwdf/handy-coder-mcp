@@ -1,6 +1,6 @@
 # Local C# Code Navigation
 
-This document describes the implemented local C# index and navigation tools in Handy Coder MCP. Despite the filename, search is lexical rather than embedding-based semantic search.
+This document describes the implemented local multilingual source index and navigation tools in Handy Coder MCP. Despite the filename, search is lexical rather than embedding-based semantic search.
 
 ## 1. Objective
 
@@ -113,7 +113,7 @@ If necessary, provide a fallback that searches parent directories for known proj
 
 All paths stored in the database should be relative to the project root. Resolve paths before file access and prevent results from referring to arbitrary paths outside the project.
 
-Index `.cs` files initially, including relevant project source and local package source where appropriate.
+Index registered source files based on each file extension. Supported languages include C#, Python, JavaScript, TypeScript, Java, C, C++, Go, Rust, PHP, Ruby, Swift, Kotlin, Scala, Dart, Lua, R, Shell, and SQL.
 
 Do not descend into any dot-prefixed directory. Also exclude irrelevant or generated directories by default, including:
 - `.git`
@@ -306,7 +306,7 @@ Add a small set of realistic search queries from actual coding-agent tasks and e
 
 ## 10. Integration and limitations
 
-The server launches a background indexing worker at startup. It incrementally scans the workspace, then watches eligible `.cs` files and refreshes after debounced create, change, rename, and delete events. The `code_intel` tool exposes `search_code`, `get_symbol`, and `find_references` directly and only reads the maintained index. The database is workspace-local at `.handy-coder/code_index.sqlite3`; indexing does not modify C# source files.
+The server launches a background indexing worker at startup. It incrementally scans the workspace, then watches eligible registered source files and refreshes after debounced create, change, rename, and delete events. The `code_intel` tool exposes `search_code`, `get_symbol`, and `find_references` directly and only reads the maintained index. The database is workspace-local at `.handy-coder/code_index.sqlite3`; indexing does not modify source files. Results expose `language` and `analysis_mode` (`syntax` or `lexical`). Missing parser grammars use lower-confidence lexical extraction; references are candidates and are never compiler-resolved.
 
 Search uses SQLite FTS5 over symbol and source text. It splits identifiers into lexical tokens, but does not use embeddings or infer concepts that are absent from the indexed text. `find_references` reports syntax-based candidates and cannot resolve overloads, inheritance, aliases, or dynamic dispatch like a C# compiler.
 

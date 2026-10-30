@@ -5,6 +5,7 @@ from __future__ import annotations
 import difflib
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -58,17 +59,21 @@ def _tool_path(name: str, root: Path) -> str | None:
 
 
 def _python_tool_path(name: str, root: Path) -> str | None:
-    """Prefer Python tools installed in this workspace's virtual environment."""
+    """Find Python tools in the workspace, MCP environment, then PATH."""
     if os.name == "nt":
-        venv_dirs: tuple = (root / ".venv" / "Scripts", root / "venv" / "Scripts")
+        venv_dirs: tuple = (
+            root / ".venv" / "Scripts",
+            root / "venv" / "Scripts",
+            Path(sys.executable).parent,
+        )
     else:
-        venv_dirs: tuple = (root / ".venv" / "bin", root / "venv" / "bin")
+        venv_dirs = (
+            root / ".venv" / "bin",
+            root / "venv" / "bin",
+            Path(sys.executable).parent,
+        )
     for directory in venv_dirs:
-        executable = directory / name
-        if executable.is_file():
-            return str(executable)
-        if os.name == "nt":
-            executable = executable.with_suffix(".exe")
+        for executable in (directory / name, directory / f"{name}.exe"):
             if executable.is_file():
                 return str(executable)
     return shutil.which(name)

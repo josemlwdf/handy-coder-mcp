@@ -37,9 +37,9 @@ class CodeIndexWorkerTests(unittest.TestCase):
 
             try:
                 wait_for(lambda paths: paths == {"A.cs"})
-                (root / "B.cs").write_text("class Beta { void Work() {} }")
-                wait_for(lambda paths: paths == {"A.cs", "B.cs"})
-                (root / "B.cs").write_text("class Gamma { void Work() {} }")
+                (root / "B.py").write_text("class Beta:\n    def work(self): pass\n")
+                wait_for(lambda paths: paths == {"A.cs", "B.py"})
+                (root / "B.py").write_text("class Gamma:\n    def work(self): pass\n")
                 deadline = time.monotonic() + 5
                 while time.monotonic() < deadline:
                     with sqlite3.connect(database) as con:
@@ -48,9 +48,9 @@ class CodeIndexWorkerTests(unittest.TestCase):
                         break
                     time.sleep(0.05)
                 self.assertIsNotNone(found)
-                (root / "B.cs").rename(root / "C.cs")
-                wait_for(lambda paths: paths == {"A.cs", "C.cs"})
-                (root / "C.cs").unlink()
+                (root / "B.py").rename(root / "C.py")
+                wait_for(lambda paths: paths == {"A.cs", "C.py"})
+                (root / "C.py").unlink()
                 wait_for(lambda paths: paths == {"A.cs"})
             finally:
                 stop.set()

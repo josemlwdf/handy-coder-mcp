@@ -1,11 +1,13 @@
 # `code_intel`
 
-Queries the automatically maintained local C# index. Its `action` is one of
-`search_code`, `get_symbol`, or `find_references`. Search uses `query`; the two
-symbol actions use `symbol`, with optional `file_path` disambiguation and `limit`.
+Queries the workspace-local source index using `search_code`, `get_symbol`, or
+`find_references`. Language is selected per file from its extension. The initial
+registry covers C#, Python, JavaScript, TypeScript, Java, C, C++, Go, Rust, PHP,
+Ruby, Swift, Kotlin, Scala, Dart, Lua, R, Shell, and SQL.
 
-An MCP child process performs an incremental scan at startup and watches eligible
-`.cs` files for create, change, rename, and delete events. Updates are debounced.
-The database is workspace-local at `.handy-coder/code_index.sqlite3`; indexing
-requires Tree-sitter C# and SQLite FTS5. Navigation only reads the maintained
-index. If it is empty or catching up, retry after the background scan completes.
+The worker incrementally scans and watches registered source extensions for
+create, change, rename, and delete events. Index data lives in
+`.handy-coder/code_index.sqlite3`. Results include `language` and `analysis_mode`
+(`syntax` or `lexical`). Search is lexical. References are syntactic candidates
+or lexical matches, never compiler-resolved. A missing parser triggers lexical
+extraction, which has lower confidence. SQLite FTS5 is required.

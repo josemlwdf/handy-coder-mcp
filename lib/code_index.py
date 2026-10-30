@@ -1,4 +1,4 @@
-"""Local, per-workspace C# symbol index backed by SQLite FTS5."""
+"""Local, per-workspace multilingual source index backed by SQLite FTS5."""
 
 from __future__ import annotations
 
@@ -12,7 +12,23 @@ from pathlib import Path
 
 from . import support
 
-SCHEMA_VERSION: int = 1
+SCHEMA_VERSION: int = 2
+LANGUAGES = {
+    ".cs": ("C#", "csharp"), ".py": ("Python", "python"),
+    ".js": ("JavaScript", "javascript"), ".jsx": ("JavaScript", "javascript"),
+    ".mjs": ("JavaScript", "javascript"), ".cjs": ("JavaScript", "javascript"),
+    ".ts": ("TypeScript", "typescript"), ".tsx": ("TypeScript", "tsx"),
+    ".java": ("Java", "java"), ".c": ("C", "c"), ".h": ("C", "c"),
+    ".cc": ("C++", "cpp"), ".cpp": ("C++", "cpp"), ".cxx": ("C++", "cpp"),
+    ".hpp": ("C++", "cpp"), ".hh": ("C++", "cpp"), ".go": ("Go", "go"),
+    ".rs": ("Rust", "rust"), ".php": ("PHP", "php"), ".rb": ("Ruby", "ruby"),
+    ".swift": ("Swift", "swift"), ".kt": ("Kotlin", "kotlin"),
+    ".kts": ("Kotlin", "kotlin"), ".scala": ("Scala", "scala"),
+    ".dart": ("Dart", "dart"), ".lua": ("Lua", "lua"),
+    ".r": ("R", "r"), ".sh": ("Shell", "bash"), ".bash": ("Shell", "bash"),
+    ".sql": ("SQL", "sql"),
+}
+SOURCE_EXTENSIONS = frozenset(LANGUAGES)
 DEFAULT_EXCLUDES = frozenset(
     {
         ".git",
@@ -71,7 +87,7 @@ def _db():
       CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS files(id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL,
         sha256 TEXT NOT NULL, size INTEGER NOT NULL, mtime REAL NOT NULL,
-        indexed_at REAL NOT NULL, error TEXT);
+        indexed_at REAL NOT NULL, error TEXT, language TEXT, analysis_mode TEXT);
       CREATE TABLE IF NOT EXISTS symbols(id INTEGER PRIMARY KEY, file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
         name TEXT NOT NULL, qualified_name TEXT NOT NULL, kind TEXT NOT NULL, namespace TEXT,
         containing_type TEXT, signature TEXT, docs TEXT, start_line INTEGER NOT NULL,
@@ -85,6 +101,11 @@ def _db():
       CREATE VIRTUAL TABLE IF NOT EXISTS symbol_fts USING fts5(name, qualified_name, signature, docs, searchable, path,
         tokenize='unicode61');
     """)
+    for table in ("files", "symbols", "references_"):
+        existing = {row[1] for row in con.execute(f"PRAGMA table_info({table})")}
+        for column in ("language", "analysis_mode"):
+            if column not in existing:
+                con.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
     con.execute("PRAGMA foreign_keys=ON")
     con.execute(
         "INSERT OR REPLACE INTO metadata VALUES('schema_version', ?)",
@@ -287,6 +308,91 @@ def _extract(source: bytes) -> tuple:
     return symbols, refs
 
 
+def _lexical_extract(source: bytes) -> tuple[list, list]:
+    """Conservative declaration and identifier extraction for missing grammars."""
+    text = source.decode("utf-8", "replace")
+    symbols, refs = [], []
+    declaration = re.compile(
+        r"(?m)^\s*(?:class|struct|interface|enum|trait|type|module|def|func|function|fn|CREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE|TABLE|VIEW))\s+([A-Za-z_$][\w$]*)"
+    )
+    callable_decl = re.compile(
+        r"(?m)^\s*(?:(?:public|private|protected|static|async|virtual|override|export|final)\s+)*(?:[\w<>?\[\].]+\s+)?([A-Za-z_$][\w$]*)\s*\([^;\n]*\)\s*(?:\{|=>|:|$)"
+    )
+    declarations = list(declaration.finditer(text))
+    existing_offsets = {m.start(1) for m in declarations}
+    declarations.extend(m for m in callable_decl.finditer(text) if m.start(1) not in existing_offsets)
+    for match in declarations:
+        name = match.group(1)
+        line = text.count("\n", 0, match.start()) + 1
+        source_line = text[match.start():].splitlines()[0].strip()
+        kind_match = re.search(r"\b(class|struct|interface|enum|function|func|def|fn|type)\b", source_line, re.I)
+        kind = kind_match.group(1).lower() if kind_match else "declaration"
+        symbols.append({"name": name, "qualified_name": name, "kind": kind,
+            "namespace": "", "containing_type": None, "signature": source_line[:240],
+            "docs": "", "start_line": line, "end_line": line,
+            "source": source_line, "searchable": _tokens(source_line)})
+    declaration_offsets = {match.start(1) for match in declarations}
+    for m in re.finditer(r"\b[A-Za-z_$][\w$]*\b", text):
+        word = m.group()
+        if m.start() in declaration_offsets:
+            continue
+        line = text.count("\n", 0, m.start()) + 1
+        snippet = text.splitlines()[line - 1].strip()[:240]
+        refs.append({"target": word, "kind": "lexical_match", "line": line,
+            "snippet": snippet, "enclosing_type": None, "enclosing_method": None})
+    return symbols, refs
+
+
+def _extract_for(path: Path, source: bytes) -> tuple[list, list, str, str]:
+    language, grammar = LANGUAGES[path.suffix.lower()]
+    if path.suffix.lower() == ".cs":
+        try:
+            symbols, refs = _extract(source)
+            return symbols, refs, language, "syntax"
+        except IndexErrorBase:
+            symbols, refs = _lexical_extract(source)
+            return symbols, refs, language, "lexical"
+    try:
+        from tree_sitter_language_pack import get_parser
+        parser = get_parser(grammar)
+    except (ImportError, LookupError, RuntimeError):
+        symbols, refs = _lexical_extract(source)
+        return symbols, refs, language, "lexical"
+    # Generic tree-sitter declaration extraction keeps grammar-specific names intact.
+    tree = parser.parse(source)
+    root = tree.root_node
+    symbols, refs = [], []
+    kinds = ("class", "struct", "interface", "enum", "function", "method", "type", "trait")
+    def visit(node):
+        typ = node.type.lower()
+        if typ in {"identifier", "name", "type_identifier", "field_identifier"}:
+            parent = node.parent
+            if parent and parent.child_by_field_name("name") == node:
+                pass
+            elif parent:
+                refs.append({"target": _node_text(node, source), "kind": "identifier_usage",
+                    "line": node.start_point.row + 1,
+                    "snippet": _node_text(parent, source).splitlines()[0][:240],
+                    "enclosing_type": None, "enclosing_method": None})
+        if any(k in typ for k in kinds):
+            name_node = node.child_by_field_name("name")
+            if name_node:
+                name = _node_text(name_node, source)
+                body = _node_text(node, source)
+                line = node.start_point.row + 1
+                symbols.append({"name": name, "qualified_name": name, "kind": typ,
+                    "namespace": "", "containing_type": None,
+                    "signature": body.splitlines()[0][:240], "docs": "",
+                    "start_line": line, "end_line": node.end_point.row + 1,
+                    "source": body, "searchable": _tokens(body)})
+        for child in node.children:
+            visit(child)
+    visit(root)
+    if root.has_error:
+        raise IndexErrorBase(f"{language} syntax tree contains parse errors; file was not replaced in the index")
+    return symbols, refs, language, "syntax"
+
+
 def _files(root: Path, exclusions: None = None) -> None:
     """Files function."""
     excluded = DEFAULT_EXCLUDES | set(exclusions or ())
@@ -299,7 +405,7 @@ def _files(root: Path, exclusions: None = None) -> None:
             and not (Path(base) / d).is_symlink()
         )
         for name in sorted(names):
-            if name.endswith(".cs"):
+            if Path(name).suffix.lower() in SOURCE_EXTENSIONS:
                 path = Path(base) / name
                 try:
                     path.resolve(strict=True).relative_to(root)
@@ -311,8 +417,6 @@ def _files(root: Path, exclusions: None = None) -> None:
 def index_codebase(exclusions: None = None) -> dict:
     """Index codebase function."""
     root = Path(support.ROOT).resolve(strict=True)
-    parser = _parser()  # fail clearly before presenting an empty index
-    del parser
     con = _db()
     stats: dict = {
         "scanned": 0,
@@ -323,7 +427,7 @@ def index_codebase(exclusions: None = None) -> dict:
         "errors": [],
         "skip_details": [],
         "capability_notes": {
-            "parser": "tree-sitter-c-sharp parser available",
+            "parser": "Tree-sitter grammar is used when available; otherwise lexical fallback is used",
             "storage": "SQLite FTS5 available",
         },
     }
@@ -338,7 +442,8 @@ def index_codebase(exclusions: None = None) -> dict:
                 data = path.read_bytes()
                 digest = hashlib.sha256(data).hexdigest()
                 st = path.stat()
-                if rel in known and known[rel]["sha256"] == digest:
+                if (rel in known and known[rel]["sha256"] == digest
+                        and known[rel]["language"] and known[rel]["analysis_mode"]):
                     con.execute(
                         "UPDATE files SET size=?,mtime=? WHERE path=?",
                         (st.st_size, st.st_mtime, rel),
@@ -352,7 +457,7 @@ def index_codebase(exclusions: None = None) -> dict:
                         }
                     )
                     continue
-                symbols, refs = _extract(data)
+                symbols, refs, language, analysis_mode = _extract_for(path, data)
                 with con:
                     con.execute(
                         "DELETE FROM symbol_fts WHERE rowid IN (SELECT s.id FROM symbols s JOIN files f ON s.file_id=f.id WHERE f.path=?)",
@@ -368,13 +473,13 @@ def index_codebase(exclusions: None = None) -> dict:
                         con.execute("DELETE FROM symbols WHERE file_id=?", (old["id"],))
                         con.execute("DELETE FROM files WHERE id=?", (old["id"],))
                     cur = con.execute(
-                        "INSERT INTO files(path,sha256,size,mtime,indexed_at) VALUES(?,?,?,?,?)",
-                        (rel, digest, st.st_size, st.st_mtime, time.time()),
+                        "INSERT INTO files(path,sha256,size,mtime,indexed_at,language,analysis_mode) VALUES(?,?,?,?,?,?,?)",
+                        (rel, digest, st.st_size, st.st_mtime, time.time(), language, analysis_mode),
                     )
                     fid = cur.lastrowid
                     for s in symbols:
                         cur = con.execute(
-                            "INSERT INTO symbols(file_id,name,qualified_name,kind,namespace,containing_type,signature,docs,start_line,end_line,source,searchable) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                            "INSERT INTO symbols(file_id,name,qualified_name,kind,namespace,containing_type,signature,docs,start_line,end_line,source,searchable,language,analysis_mode) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                             (
                                 fid,
                                 s["name"],
@@ -388,6 +493,8 @@ def index_codebase(exclusions: None = None) -> dict:
                                 s["end_line"],
                                 s["source"],
                                 s["searchable"],
+                                language,
+                                analysis_mode,
                             ),
                         )
                         sid = cur.lastrowid
@@ -404,7 +511,7 @@ def index_codebase(exclusions: None = None) -> dict:
                             ),
                         )
                     con.executemany(
-                        "INSERT INTO references_(file_id,target,line,kind,snippet,enclosing_type,enclosing_method) VALUES(?,?,?,?,?,?,?)",
+                        "INSERT INTO references_(file_id,target,line,kind,snippet,enclosing_type,enclosing_method,language,analysis_mode) VALUES(?,?,?,?,?,?,?,?,?)",
                         [
                             (
                                 fid,
@@ -414,6 +521,8 @@ def index_codebase(exclusions: None = None) -> dict:
                                 r["snippet"],
                                 r["enclosing_type"],
                                 r["enclosing_method"],
+                                language,
+                                analysis_mode,
                             )
                             for r in refs
                         ],
@@ -526,6 +635,8 @@ def code_navigator(
                     "name": r["name"],
                     "qualified_name": r["qualified_name"],
                     "kind": r["kind"],
+                    "language": r["language"],
+                    "analysis_mode": r["analysis_mode"],
                     "path": r["path"],
                     "start_line": r["start_line"],
                     "end_line": r["end_line"],
@@ -564,11 +675,16 @@ def code_navigator(
                             "snippet",
                             "enclosing_type",
                             "enclosing_method",
+                            "language",
+                            "analysis_mode",
                         )
                     },
                 )
+                unique[key]["reference_type"] = (
+                    "lexical match" if row["analysis_mode"] == "lexical" else "syntactic candidate"
+                )
             return {
-                "reference_type": "likely syntactic usages; not compiler-resolved",
+                "reference_type": "syntactic candidates or lexical matches; never compiler-resolved",
                 "symbol": symbol,
                 "references": list(unique.values())[:limit],
             }
@@ -637,6 +753,8 @@ def code_navigator(
             "signature": row["signature"],
             "source": "\n".join(lines[row["start_line"] - 1 : row["end_line"]]),
             "containing_type": row["containing_type"],
+            "language": row["language"],
+            "analysis_mode": row["analysis_mode"],
         }
     finally:
         try:

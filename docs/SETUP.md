@@ -11,11 +11,11 @@ For optional tools, each `tools.<name>` entry may include `missing_requirements`
 
 Tools blocked by missing packages, binaries, environment variables, or adapters return `status: "setup_required"` with `missing_requirements`, `remediation_commands`, and `documentation_url`. Tool-specific `error_code` values may be included for compatibility. Diagnostics and test execution responses include a `detection_trace` describing configured checks or the selected framework.
 
-## Local C# code navigation
+## Local multilingual code navigation
 
 The server stores the workspace-specific SQLite database at `.handy-coder/code_index.sqlite3`. Call `index_codebase` to index C# source files; it updates changed files and removes entries for deleted files. Every dot-prefixed directory is skipped during indexing, along with generated directories such as `Library`, `Temp`, `obj`, and `bin`. These directories remain present in the workspace and visible to file listing tools.
 
-The `index_codebase` and `code_navigator` tools use the Tree-sitter C# parser and SQLite FTS5, included in the project dependencies. No remote index, embedding service, or vector database is used. The server starts without indexing; call `index_codebase` to build or refresh the index. Indexing runs in an isolated worker process, and parser or FTS5 initialization errors are reported by that tool.
+The local source index covers registered extensions for C#, Python, JavaScript, TypeScript, Java, C, C++, Go, Rust, PHP, Ruby, Swift, Kotlin, Scala, Dart, Lua, R, Shell, and SQL. Tree-sitter grammars provide syntax-derived symbols and reference candidates where available; otherwise the index reports lexical fallback. SQLite FTS5 is used for local search. No remote index, embedding service, or vector database is used.
 
 `code_navigator` supports `search_code`, `get_symbol`, and `find_references`. Search is lexical, not embedding-based; reference results are syntactic candidates and are not compiler-resolved. See [SEMANTIC_SEARCH.md](./SEMANTIC_SEARCH.md) for tool details.
 

@@ -1,4 +1,4 @@
-"""MCP endpoint for querying the maintained local C# index."""
+"""MCP endpoint for querying the maintained local multilingual source index."""
 
 from typing import Annotated, Literal
 
@@ -25,7 +25,7 @@ def code_intel(
     ] = None,
     limit: Annotated[int, Field(ge=1, le=50, description="Maximum results (1 to 50).")]=10,
 ) -> dict:
-    """Query the automatically maintained local C# index."""
+    """Query the automatically maintained local source index."""
     try:
         return code_index.code_navigator(action, query, symbol, file_path, limit)
     except code_index.IndexErrorBase as exc:
@@ -37,7 +37,7 @@ def code_intel(
 def register(mcp) -> None:
     """Register function."""
     mcp.tool(description=describe(
-        "Query the automatically maintained C# index with action=search_code|get_symbol|find_references. "
-        "The background indexer scans on startup and refreshes after C# file changes. "
+        "Query the automatically maintained multilingual source index with action=search_code|get_symbol|find_references. "
+        "The background indexer watches registered language extensions. Each result reports its detected language and syntax or lexical analysis mode. "
         "Use query for search_code and symbol for get_symbol or find_references."
     ))(code_intel)
