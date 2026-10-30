@@ -229,7 +229,16 @@ def _extract(source: bytes) -> tuple:
         if node.type == "invocation_expression":
             target = node.child_by_field_name("function")
             if target:
-                t = _node_text(target, source)
+                # The invocation function may be a member access, a generic
+                # name, or a parenthesized expression. Prefer its terminal
+                # identifier so ``calculator.Add(2, 3)`` indexes as ``Add``.
+                name_node = target
+                while name_node.type in {"member_access_expression", "invocation_expression"}:
+                    child = name_node.child_by_field_name("name")
+                    if child is None:
+                        break
+                    name_node = child
+                t = _node_text(name_node, source)
                 refs.append(
                     {
                         "target": t.split(".")[-1],
@@ -248,8 +257,22 @@ def _extract(source: bytes) -> tuple:
                     }
                 )
         elif node.type == "member_access_expression":
+            parent = node.parent
+            is_invocation_target = (
+                parent is not None
+                and parent.type == "invocation_expression"
+                and parent.child_by_field_name("function") == node
+            )
             receiver = node.child_by_field_name("expression")
-            if receiver and receiver.type == "identifier":
+            # A bare identifier used as a member receiver is usually an
+            # instance variable (``calculator.Add``), not a reference to the
+            # receiver's type. Keep conventional type-name receivers such as
+            # ``Calculator.Create`` as syntactic type candidates.
+            if (
+                receiver
+                and receiver.type == "identifier"
+                and _node_text(receiver, source)[:1].isupper()
+            ):
                 refs.append(
                     {
                         "target": _node_text(receiver, source),
@@ -268,7 +291,9 @@ def _extract(source: bytes) -> tuple:
                     }
                 )
             name_child = node.child_by_field_name("name")
-            if name_child:
+            # The invocation node above already records this exact member
+            # access as a method_call. Keep member_access for non-call usages.
+            if name_child and not is_invocation_target:
                 refs.append(
                     {
                         "target": _node_text(name_child, source),

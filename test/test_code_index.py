@@ -121,6 +121,88 @@ class CodeIndexTests(unittest.TestCase):
         refs = code_index.code_navigator("find_references", symbol="PythonAgent")
         self.assertIn("never compiler-resolved", refs["reference_type"])
 
+    def test_multilingual_references_keep_language_and_analysis_mode(self) -> None:
+        (self.root / "calls.py").write_text(
+            "def invoke():\n    return shared_target()\n", encoding="utf-8"
+        )
+        (self.root / "calls.js").write_text(
+            "function invoke() { return shared_target(); }\n", encoding="utf-8"
+        )
+        (self.root / "Calls.cs").write_text(
+            "class Calls { void Invoke() { shared_target(); } }\n",
+            encoding="utf-8",
+        )
+        code_index.index_codebase()
+
+        result = code_index.code_navigator(
+            "find_references", symbol="shared_target", limit=10
+        )
+        references = result["references"]
+        self.assertEqual({ref["path"] for ref in references}, {
+            "calls.py", "calls.js", "Calls.cs"
+        })
+        self.assertEqual(
+            {(ref["language"], ref["analysis_mode"]) for ref in references},
+            {
+                ("Python", "syntax"),
+                ("JavaScript", "syntax"),
+                ("C#", "syntax"),
+            },
+        )
+        self.assertIn("never compiler-resolved", result["reference_type"])
+
+    def test_large_multifile_workspace_indexes_and_finds_references(self) -> None:
+        file_count = 250
+        for number in range(file_count):
+            (self.root / f"Bulk{number:03}.cs").write_text(
+                f"class Bulk{number:03} {{ void Run() {{ SharedTarget(); }} }}\n",
+                encoding="utf-8",
+            )
+
+        indexed = code_index.index_codebase()
+        self.assertEqual(indexed["parsed"], file_count + 1)
+        status = code_index.index_status()
+        self.assertEqual(status["files"], file_count + 1)
+        self.assertGreaterEqual(status["symbols"], file_count * 2)
+
+        result = code_index.code_navigator(
+            "find_references", symbol="SharedTarget", limit=50
+        )
+        references = result["references"]
+        self.assertEqual(len(references), 50)
+        self.assertEqual(len({ref["path"] for ref in references}), 50)
+        self.assertTrue(all(ref["kind"] == "method_call" for ref in references))
+
+    def test_csharp_call_site_and_standalone_member_access(self) -> None:
+        (self.root / "References.cs").write_text(
+            """class References {
+    void Run() {
+        calculator.Add(2, 3);
+        var callback = calculator.Add;
+        Calculator.Create();
+    }
+}
+""",
+            encoding="utf-8",
+        )
+        code_index.index_codebase()
+
+        add_refs = code_index.code_navigator("find_references", symbol="Add")[
+            "references"
+        ]
+        self.assertEqual(len(add_refs), 2)
+        call = next(ref for ref in add_refs if ref["kind"] == "method_call")
+        member = next(ref for ref in add_refs if ref["kind"] == "member_access")
+        self.assertEqual(call["line"], 3)
+        self.assertEqual(call["snippet"], "calculator.Add(2, 3)")
+        self.assertEqual(member["line"], 4)
+        self.assertEqual(member["snippet"], "calculator.Add")
+
+        type_refs = code_index.code_navigator(
+            "find_references", symbol="Calculator"
+        )["references"]
+        self.assertTrue(any(ref["line"] == 5 for ref in type_refs))
+
     def test_lexical_fallback_is_reported(self) -> None:
         source = self.root / "fallback.swift"
         source.write_text("func doWork() { callTarget() }\n")

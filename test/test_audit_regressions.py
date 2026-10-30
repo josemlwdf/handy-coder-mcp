@@ -376,7 +376,8 @@ class AuditRegressionTests(unittest.TestCase):
         self,
     ) -> None:
         """Test code navigator deduplicates call sites and hides database ids function."""
-        con = code_index._db()
+        code_index.index_codebase()
+        con = code_index._db(readonly=False)
         with con:
             file_id = con.execute(
                 "INSERT INTO files(path,sha256,size,mtime,indexed_at) VALUES(?,?,?,?,?)",
