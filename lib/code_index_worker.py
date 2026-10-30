@@ -68,6 +68,7 @@ def run(
     observer.start()
     try:
         try:
+            code_index._initialize_db()
             code_index.set_index_status("scanning", worker_pid=os.getpid(), scanned=0, failed=0, message="Initial workspace scan is running.")
             result = code_index.index_codebase(
                 progress=lambda stats: code_index.set_index_status(

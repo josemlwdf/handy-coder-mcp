@@ -185,6 +185,14 @@ def read_files(
             end = int(r.end_line)
             if start < 1 or end < start:
                 raise ValueError("line ranges require 1 <= start <= end")
+            if start > total_lines:
+                file_errors.append({
+                    "path": name,
+                    "error_code": "out_of_range",
+                    "message": f"Requested range starts past EOF: {name} has {total_lines} lines",
+                    "total_lines": total_lines,
+                })
+                continue
             content = "\n".join(all_lines[start - 1 : end])
             entry["content"] = content
             entry["applied_start"] = start

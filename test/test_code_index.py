@@ -47,6 +47,27 @@ class CodeIndexTests(unittest.TestCase):
         )
         self.assertIn("Move();", symbol["source"])
 
+    def test_queries_and_status_are_read_only_during_index_progress(self) -> None:
+        observations = []
+        def inspect_during_progress(stats):
+            observations.append(code_index.index_status())
+            observations.append(code_index.code_navigator(
+                "search_code", query="ClampOutOfBoundsMovement"
+            ))
+        code_index.index_codebase(progress=inspect_during_progress)
+        self.assertTrue(observations)
+        self.assertTrue(any(item.get("state") for item in observations))
+        self.assertTrue(any(item.get("results") for item in observations))
+
+    def test_unchanged_progress_runs_after_write_commit(self) -> None:
+        code_index.index_codebase()
+        observed = []
+        result = code_index.index_codebase(
+            progress=lambda stats: observed.append(code_index.index_status())
+        )
+        self.assertEqual(result["skipped"], 1)
+        self.assertEqual(len(observed), 1)
+
     def test_transient_index_and_query_locks_retry_to_usable_state(self) -> None:
         original_index = code_index._index_codebase_once
         attempts = 0

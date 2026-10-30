@@ -592,6 +592,24 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(entry["applied_end"], 4)
         self.assertEqual(entry["content"], "two\nthree\nfour")
 
+    def test_read_files_clamps_overlapping_range_and_reports_past_eof(self) -> None:
+        (self.root / "lines.txt").write_text("one\ntwo\nthree\n", encoding="utf-8")
+        result = self.mcp.tools["read_files"](
+            ["lines.txt"],
+            line_ranges=[read_files.LineRange(path="lines.txt", start=2, end=8)],
+        )
+        entry = result["files"][0]
+        self.assertEqual(entry["content"], "two\nthree")
+        self.assertEqual(entry["applied_end"], 3)
+
+        past_eof = self.mcp.tools["read_files"](
+            ["lines.txt"],
+            line_ranges=[read_files.LineRange(path="lines.txt", start=4, end=8)],
+        )
+        self.assertEqual(past_eof["files"], [])
+        self.assertEqual(past_eof["errors"][0]["error_code"], "out_of_range")
+        self.assertEqual(past_eof["errors"][0]["total_lines"], 3)
+
     def test_read_files_total_lines_without_range(self) -> None:
         """Test read files total lines without range function."""
         f = self.root / "simple.txt"

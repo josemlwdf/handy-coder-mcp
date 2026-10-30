@@ -79,15 +79,28 @@ def _parser():
         return parser
 
 
-def _db():
-    """Db function."""
+def _db(readonly: bool = True):
+    """Open a query connection (read-only by default)."""
     root = Path(support.ROOT).resolve()
     path = root / ".handy-coder" / "code_index.sqlite3"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(path, timeout=30.0)
+    if readonly:
+        con = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=30.0)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        con = sqlite3.connect(path, timeout=30.0)
     con.execute("PRAGMA busy_timeout=30000")
     con.row_factory = sqlite3.Row
+    con.execute("PRAGMA foreign_keys=ON")
+    return con
+
+
+def _initialize_db():
+    """Create and migrate the index using a writable connection."""
+    root = Path(support.ROOT).resolve()
+    path = root / ".handy-coder" / "code_index.sqlite3"
+    con = _db(readonly=False)
     try:
+        con.execute("PRAGMA journal_mode=WAL")
         con.executescript("""
       CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS files(id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL,
@@ -119,7 +132,6 @@ def _db():
         for column in ("language", "analysis_mode"):
             if column not in existing:
                 con.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
-    con.execute("PRAGMA foreign_keys=ON")
     con.execute(
         "INSERT OR REPLACE INTO metadata VALUES('schema_version', ?)",
         (str(SCHEMA_VERSION),),
@@ -128,7 +140,7 @@ def _db():
         "INSERT OR REPLACE INTO metadata VALUES('project_root', ?)", (str(root),)
     )
     con.commit()
-    return con
+    con.close()
 
 
 def _tokens(text: str) -> str:
@@ -431,7 +443,7 @@ def set_index_status(status: str, **details) -> None:
         for attempt in range(_LOCK_RETRIES + 1):
             con = None
             try:
-                con = _db()
+                con = _db(readonly=False)
                 values = {"state": status, "updated_at": time.time(), **details}
                 with con:
                     for key, value in values.items():
@@ -452,6 +464,12 @@ def set_index_status(status: str, **details) -> None:
 def index_status(con=None) -> dict:
     """Return persisted worker state and current index counts."""
     own_connection = con is None
+    db_path = Path(support.ROOT).resolve() / ".handy-coder" / "code_index.sqlite3"
+    if own_connection and not db_path.exists():
+        return {
+            "state": "unknown", "worker_pid": None, "updated_at": None,
+            "scanned": 0, "failed": 0, "message": None, "files": 0, "symbols": 0,
+        }
     con = con or _db()
     try:
         metadata = {
@@ -493,7 +511,8 @@ def _index_status_hint(status: dict) -> str:
 def _index_codebase_once(exclusions: None = None, progress=None) -> dict:
     """Index codebase function."""
     root = Path(support.ROOT).resolve(strict=True)
-    con = _db()
+    _initialize_db()
+    con = _db(readonly=False)
     stats: dict = {
         "scanned": 0,
         "parsed": 0,
@@ -520,10 +539,11 @@ def _index_codebase_once(exclusions: None = None, progress=None) -> dict:
                 st = path.stat()
                 if (rel in known and known[rel]["sha256"] == digest
                         and known[rel]["language"] and known[rel]["analysis_mode"]):
-                    con.execute(
-                        "UPDATE files SET size=?,mtime=? WHERE path=?",
-                        (st.st_size, st.st_mtime, rel),
-                    )
+                    with con:
+                        con.execute(
+                            "UPDATE files SET size=?,mtime=? WHERE path=?",
+                            (st.st_size, st.st_mtime, rel),
+                        )
                     stats["skipped"] += 1
                     stats["skip_details"].append(
                         {
@@ -711,6 +731,13 @@ def _code_navigator_once(
         return {
             "error_code": "missing_parameter",
             "message": "symbol is required and cannot be empty",
+        }
+    db_path = Path(support.ROOT).resolve() / ".handy-coder" / "code_index.sqlite3"
+    if not db_path.exists():
+        status = index_status()
+        return {
+            "results": [], "references": [],
+            "hint": _index_status_hint(status), "index_status": status,
         }
     con = _db()
     try:
