@@ -63,6 +63,22 @@ class SubagentToolTests(unittest.TestCase):
         self.assertIsNotNone(get_role("generalist"))
         self.assertIsNotNone(get_role("coder"))
 
+    def test_run_dry_run_validates_without_creating_task_or_frame(self) -> None:
+        before = len(subagent_tools._MANAGER._tasks)
+        result = subagent_tools.subagent_run(role="explorer", task="Inspect files", dry_run=True)
+        self.assertTrue(result["dry_run"])
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(len(subagent_tools._MANAGER._tasks), before)
+        with self.assertRaises(ValueError):
+            subagent_tools.subagent_run(role="bogus", task="Inspect files", dry_run=True)
+
+    def test_run_dry_run_reports_unavailable_backend_without_task(self) -> None:
+        before = len(subagent_tools._MANAGER._tasks)
+        with patch.object(subagent_tools, "_backend", return_value="unavailable"):
+            result = subagent_tools.subagent_run(role="explorer", task="Inspect files", dry_run=True)
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(len(subagent_tools._MANAGER._tasks), before)
+
     def test_roles_expose_write_tools_by_usage(self) -> None:
         """Test roles expose write tools by usage function."""
         planner = get_role("planner")

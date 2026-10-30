@@ -149,6 +149,8 @@ Unfiltered `run_tests` runs require a recognized test setup (for example, pytest
 
 ### Change summaries
 
+`orchestrator(action="bootstrap")` accepts `output_dir`, a workspace-relative destination for `implementation-plan.md` and `tasks.md` (default `.handy-coder`); paths outside the workspace are rejected. `code_polish` automatically inserts missing Python module and function docstrings, including when `all_files=true`, and reports those changes. `git_manage(action="init")` stages repository defaults and creates a `chore: add repository defaults` commit when defaults were added.
+
 `create_file` and `apply_edits` require a `summary` argument: a one-line, concise description of the change (single line, at most 200 characters). A missing, blank, or multi-line summary is rejected with `error_code: "invalid_summary"` and nothing is written.
 
 Every 10th logged tool call, dict tool responses include `status_summary_request` with a short reminder to provide a concise user update (what was found, what changed, what comes next).
@@ -170,6 +172,7 @@ Names must be 1-64 characters of lowercase letters, digits and hyphens, which al
 Subagent delegation is exposed through a single tool, `subagent_manage`, without requiring any new credentials. Use `action` = `run|status|result|complete|cancel` with the fields for that action. `get_capabilities` reports each role's allowed tools, tool-call budget, and result format. Result pages include `final_offset`, `final_total_length`, `final_next_offset`, and `trace`; cancellation requires `confirm: true`. Cooperative frames expire after five minutes. A successful `git_manage` commit by a committer closes its frame automatically; other delegated runs require explicit completion through `subagent_manage(action='complete', ...)`. Streaming and checkpoint/resume are unsupported.
 
 - `subagent_manage(action='run', role, task, ...)`: starts delegated work and returns `completed`, `running`, `delegated_to_host` (only with explicit `SUBAGENT_BACKEND=cooperative`), or `unavailable`.
+- Add `dry_run=true` to validate the role, task setup, and backend without creating a task/frame or invoking a model.
 - `subagent_manage(action='status', task_id)`: checks current state and usage.
 - `subagent_manage(action='result', task_id, offset?)`: fetches full or paged result text.
 - `subagent_manage(action='complete', task_id, result)`: closes a cooperative delegated frame.

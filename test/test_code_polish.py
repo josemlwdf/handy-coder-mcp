@@ -123,6 +123,5 @@ class CodePolishTests(unittest.TestCase):
         self.assertEqual(result.get("error_code"), None)
         self.assertEqual(result["selected_files"], ["src/a.py"])
 
-
 if __name__ == "__main__":
     unittest.main()

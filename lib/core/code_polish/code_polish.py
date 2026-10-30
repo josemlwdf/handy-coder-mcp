@@ -359,6 +359,7 @@ def register(mcp):
         description=describe(
             "Apply code polish (the same automatic formatting/fixes used by file-edit flows) to a specific file or an entire directory tree. "
             "For directories, choose one file with specific_file or all supported files with all_files=true. "
+            "Python polishing automatically inserts missing module, class, and function docstrings, including when all_files=true; reports list these changes under python_postprocess. "
             "Returns per-file transformation reports (including tool outputs such as Ruff), changed_lines counts, and unified diffs for final on-disk changes. "
             "Each response includes diff_hint explicitly noting that diffs include both LLM changes and code polish actions. "
             "When to use: run polish directly, or inspect polish output attached by create_file/apply_edits."

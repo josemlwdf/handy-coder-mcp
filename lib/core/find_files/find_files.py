@@ -24,6 +24,7 @@ _DEFAULT_EXCLUDE_DIRS = frozenset(
         ".next",
         "target",
         "out",
+        "obj",
         ".tox",
         "htmlcov",
     }

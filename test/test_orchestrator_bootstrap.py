@@ -45,6 +45,15 @@ class OrchestratorBootstrapTests(unittest.TestCase):
             self.assertIn("- [ ]", tasks_text)
             self.assertIn("status: non_started", tasks_text)
 
+    def test_bootstrap_custom_directory_and_rejects_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            support.configure(tmp)
+            result = orchestrator.orchestrator(action="bootstrap", user_task="Custom path", output_dir="coordination/run")
+            self.assertEqual(result["implementation_plan"], "coordination/run/implementation-plan.md")
+            self.assertTrue((Path(tmp) / result["tasks_file"]).exists())
+            rejected = orchestrator.orchestrator(action="bootstrap", user_task="Escape path", output_dir="../outside")
+            self.assertEqual(rejected["error_code"], "path_escape")
+
     def test_bootstrap_fails_when_artifacts_exist_without_overwrite(self) -> None:
         """Test bootstrap fails when artifacts exist without overwrite function."""
         with tempfile.TemporaryDirectory() as tmp:

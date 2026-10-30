@@ -180,9 +180,17 @@ def orchestrator_bootstrap(
             )
         ),
     ] = False,
+    output_dir: Annotated[str, Field(description="Workspace-relative directory for bootstrap files. Defaults to .handy-coder.")] = ".handy-coder",
 ) -> dict:
     """Create fresh orchestrator plan and task tracker files."""
-    state_dir = support.ensure_handy_coder_state_dir()
+    try:
+        state_dir = inside(output_dir)
+    except ValueError:
+        return _error("path_escape", support.path_escape_message(output_dir), action="bootstrap")
+    try:
+        state_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return _error("io_error", f"{exc.strerror or 'Directory creation failed'}: {output_dir}", action="bootstrap")
     plan_path = state_dir / "implementation-plan.md"
     tasks_path = state_dir / "tasks.md"
 
@@ -399,6 +407,7 @@ def orchestrator(
             )
         ),
     ] = False,
+    output_dir: Annotated[str, Field(description="Workspace-relative directory for bootstrap files. Defaults to .handy-coder. (Required: False)")] = ".handy-coder",
     status: Annotated[
         Status | None,
         Field(
@@ -452,6 +461,7 @@ def orchestrator(
             user_task=user_task,
             context=context,
             overwrite=overwrite,
+            output_dir=output_dir,
         )
 
     if status is None:

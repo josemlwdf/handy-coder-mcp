@@ -47,6 +47,8 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 ## Results
 
+Python formatting automatically inserts missing module, class, and function docstrings. This also applies to directory runs with `all_files=true`; each file report shows the `python_postprocess` transformation and its changes.
+
 Returns the structured result produced by the implementation. Error results and status fields are tool-specific; inspect the returned object and its documented fields rather than assuming that a process or operation succeeded.
 
 ## Side effects and runtime requirements

@@ -54,6 +54,15 @@ class FindFilesInvalidGlobContractTests(unittest.TestCase):
         self.assertFalse(result["incomplete"])
         self.assertEqual(result["errors"], [])
 
+    def test_obj_is_generated_but_dot_directory_filter_is_independent(self) -> None:
+        (self.root / "obj").mkdir()
+        (self.root / "obj" / "a.cs").write_text("", encoding="utf-8")
+        (self.root / ".hidden").mkdir()
+        (self.root / ".hidden" / "b.cs").write_text("", encoding="utf-8")
+        self.assertEqual(find_files.find_files(glob_pattern="**/*.cs")["files"], [])
+        self.assertEqual(find_files.find_files(glob_pattern="**/*.cs", include_generated=True)["files"], ["obj/a.cs"])
+        self.assertEqual(find_files.find_files(glob_pattern="**/*.cs", include_generated=True, include_dot_dirs=True)["files"], [".hidden/b.cs", "obj/a.cs"])
+
 
 if __name__ == "__main__":
     unittest.main()

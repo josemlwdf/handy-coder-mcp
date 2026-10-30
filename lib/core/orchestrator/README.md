@@ -43,6 +43,11 @@ The JSON Schema below is the registered input contract. Required fields appear i
       "description": "For action='bootstrap': when false (default), fail non-destructively if bootstrap files already exist; when true, replace existing `.handy-coder/implementation- (Required: False)",
       "type": "boolean"
     },
+    "output_dir": {
+      "description": "Workspace-relative directory for bootstrap files. Defaults to .handy-coder.",
+      "default": ".handy-coder",
+      "type": "string"
+    },
     "status": {
       "description": "For action='update_task_status': new task status. (Required: False)",
       "enum": [
@@ -84,6 +89,8 @@ The JSON Schema below is the registered input contract. Required fields appear i
 ```
 
 ## Results
+
+For `action="bootstrap"`, `output_dir` selects a workspace-relative destination (default `.handy-coder`). The files retain the names `implementation-plan.md` and `tasks.md`; returned paths identify the selected destination. Paths outside the workspace are rejected. `overwrite` behavior applies to those files in the selected directory.
 
 Returns the structured result produced by the implementation. Error results and status fields are tool-specific; inspect the returned object and its documented fields rather than assuming that a process or operation succeeded.
 

@@ -8,6 +8,7 @@ import re
 import sqlite3
 import sys
 import time
+import threading
 from pathlib import Path
 
 from . import support
@@ -46,6 +47,7 @@ DEFAULT_EXCLUDES = frozenset(
 )
 _LOCK_RETRIES = 4
 _LOCK_RETRY_DELAY = 0.05
+_WRITE_LOCK = threading.RLock()
 
 
 def _ignored_directory(name: str, exclusions=None) -> bool:
@@ -82,7 +84,8 @@ def _db():
     root = Path(support.ROOT).resolve()
     path = root / ".handy-coder" / "code_index.sqlite3"
     path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(path, timeout=5.0)
+    con = sqlite3.connect(path, timeout=30.0)
+    con.execute("PRAGMA busy_timeout=30000")
     con.row_factory = sqlite3.Row
     try:
         con.executescript("""
@@ -424,17 +427,26 @@ def _files(root: Path, exclusions: None = None) -> None:
 
 def set_index_status(status: str, **details) -> None:
     """Persist the background indexer's latest state for navigation responses."""
-    con = _db()
-    try:
-        values = {"state": status, "updated_at": time.time(), **details}
-        with con:
-            for key, value in values.items():
-                con.execute(
-                    "INSERT OR REPLACE INTO metadata VALUES(?,?)",
-                    (f"index_{key}", str(value)),
-                )
-    finally:
-        con.close()
+    with _WRITE_LOCK:
+        for attempt in range(_LOCK_RETRIES + 1):
+            con = None
+            try:
+                con = _db()
+                values = {"state": status, "updated_at": time.time(), **details}
+                with con:
+                    for key, value in values.items():
+                        con.execute(
+                            "INSERT OR REPLACE INTO metadata VALUES(?,?)",
+                            (f"index_{key}", str(value)),
+                        )
+                return
+            except sqlite3.OperationalError as exc:
+                if ("locked" not in str(exc).lower() and "busy" not in str(exc).lower()) or attempt == _LOCK_RETRIES:
+                    raise
+                time.sleep(_LOCK_RETRY_DELAY * (attempt + 1))
+            finally:
+                if con is not None:
+                    con.close()
 
 
 def index_status(con=None) -> dict:
@@ -645,7 +657,14 @@ def index_codebase(exclusions: None = None, progress=None) -> dict:
     """Index with bounded retries when SQLite reports transient lock errors."""
     result = None
     for attempt in range(_LOCK_RETRIES + 1):
-        result = _index_codebase_once(exclusions, progress)
+        try:
+            result = _index_codebase_once(exclusions, progress)
+        except sqlite3.OperationalError as exc:
+            locked = "locked" in str(exc).lower() or "busy" in str(exc).lower()
+            if not locked or attempt == _LOCK_RETRIES:
+                raise
+            time.sleep(_LOCK_RETRY_DELAY * (attempt + 1))
+            continue
         lock_failures = [
             error for error in result.get("errors", [])
             if "locked" in error.get("message", "").lower()

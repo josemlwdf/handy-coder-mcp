@@ -46,6 +46,31 @@ class CodeIndexTests(unittest.TestCase):
             "get_symbol", symbol="SoccerAgent.ClampOutOfBoundsMovement"
         )
         self.assertIn("Move();", symbol["source"])
+
+    def test_transient_index_and_query_locks_retry_to_usable_state(self) -> None:
+        original_index = code_index._index_codebase_once
+        attempts = 0
+        def index_with_transient_lock(*args, **kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise __import__("sqlite3").OperationalError("database is locked")
+            return original_index(*args, **kwargs)
+        with patch.object(code_index, "_index_codebase_once", side_effect=index_with_transient_lock):
+            indexed = code_index.index_codebase()
+        self.assertEqual(indexed["parsed"], 1)
+
+        original_query = code_index._code_navigator_once
+        attempts = 0
+        def query_with_transient_lock(*args, **kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise __import__("sqlite3").OperationalError("database is locked")
+            return original_query(*args, **kwargs)
+        with patch.object(code_index, "_code_navigator_once", side_effect=query_with_transient_lock):
+            result = code_index.code_navigator("search_code", query="ClampOutOfBoundsMovement")
+        self.assertTrue(result["results"])
         refs = code_index.code_navigator("find_references", symbol="Move")
         self.assertTrue(refs["references"])
 

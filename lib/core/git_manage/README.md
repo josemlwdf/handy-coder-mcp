@@ -85,6 +85,8 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 ## Results
 
+`action="init"` creates `test/` and `tmp/`, updates `.gitignore`, stages the repository defaults, and creates a `chore: add repository defaults` commit when there are defaults to record.
+
 Returns the structured result produced by the implementation. Error results and status fields are tool-specific; inspect the returned object and its documented fields rather than assuming that a process or operation succeeded.
 
 ## Side effects and runtime requirements

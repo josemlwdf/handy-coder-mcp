@@ -82,6 +82,11 @@ The JSON Schema below is the registered input contract. Required fields appear i
       "description": "For action='run': alias for verification_policy='strict'. (Required: False)",
       "type": "boolean"
     },
+    "dry_run": {
+      "description": "For action='run': validate role, task, and backend without creating a task/frame or invoking a model. (Required: False)",
+      "default": false,
+      "type": "boolean"
+    },
     "task_id": {
       "description": "For actions status|result|complete|cancel: task identifier returned by subagent_manage(action='run'). (Required: False)",
       "type": [
@@ -126,6 +131,8 @@ The JSON Schema below is the registered input contract. Required fields appear i
 ```
 
 ## Results
+
+For `action="run"`, `dry_run=true` validates the role, non-empty task, and resolved backend without creating a task, opening a cooperative frame, or making a model request. It returns `status="ready"` when a backend is available and `status="unavailable"` otherwise.
 
 Returns a structured status/result object. Check the returned status before assuming delegated work completed.
 

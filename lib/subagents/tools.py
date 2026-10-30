@@ -878,6 +878,7 @@ def subagent_run(
             description="Alias for action='run': when true, behaves like verification_policy='strict'. verification_policy remains canonical. (Required: False)"
         ),
     ] = False,
+    dry_run: Annotated[bool, Field(description="Validate the role, task, and selected backend without creating a task, opening a cooperative frame, or invoking a model. (Required: False)")] = False,
 ) -> dict:
     """Subagent run function."""
     selected_continue_model: None = None
@@ -914,6 +915,21 @@ def subagent_run(
             f"Unknown role '{role}'. Available roles: {_available_roles_text()}"
         )
     tooling_warning = _role_tooling_warning(role_obj)
+
+    if not task or not task.strip():
+        raise ValueError("task must not be empty")
+
+    if dry_run:
+        available = selected_backend not in {None, "", "unavailable"}
+        return {
+            "status": "ready" if available else "unavailable",
+            "dry_run": True,
+            "role": role_obj.name,
+            "backend": selected_backend or "unavailable",
+            "message": "Run setup is valid; no task or model request was created." if available else "No subagent backend is available; no task was created.",
+            **({"model": selected_continue_model.model.safe_summary()} if selected_continue_model else {}),
+            **({"tooling_warning": tooling_warning} if tooling_warning else {}),
+        }
 
     if selected_backend == "cooperative" and not _COOP_EXPLICIT:
         return {
