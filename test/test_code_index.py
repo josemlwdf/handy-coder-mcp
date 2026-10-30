@@ -47,6 +47,67 @@ class CodeIndexTests(unittest.TestCase):
         )
         self.assertIn("Move();", symbol["source"])
 
+    def test_search_prioritizes_symbol_names_and_labels_text_and_path_matches(self) -> None:
+        (self.root / "py-app").mkdir()
+        (self.root / "py-app" / "maths.py").write_text(
+            'def calculate(a, b): """Add two values."""; return a + b\n',
+            encoding="utf-8",
+        )
+        (self.root / "csharp").mkdir()
+        (self.root / "csharp" / "Calculator.cs").write_text(
+            "class Calculator {\n    public int Add(int a, int b) => a + b;\n}\n",
+            encoding="utf-8",
+        )
+        code_index.index_codebase()
+
+        add_results = code_index.code_navigator("search_code", query="Add")["results"]
+        self.assertEqual(add_results[0]["name"], "Add")
+        self.assertEqual(add_results[0]["match_reason"], "symbol-name")
+        python_add = next(item for item in add_results if item["name"] == "calculate")
+        self.assertEqual(python_add["match_reason"], "source-text")
+
+        fixture_dir = self.root / "audit-fixtures"
+        fixture_dir.mkdir()
+        for number in range(3):
+            (fixture_dir / f"sample{number}.py").write_text(
+                f"class Sample{number}:\n    pass\n", encoding="utf-8"
+            )
+        code_index.index_codebase()
+        fixture_results = code_index.code_navigator(
+            "search_code", query="AuditFixture", limit=50
+        )["results"]
+        audit_results = [
+            item
+            for item in fixture_results
+            if item["path"].startswith("audit-fixtures/")
+        ]
+        self.assertEqual(len(audit_results), 3)
+        self.assertTrue(all(item["match_reason"] == "path" for item in audit_results))
+
+    def test_get_symbol_normalizes_windows_relative_paths_and_sanitizes_errors(self) -> None:
+        nested = self.root / "audit-fixtures" / "csharp"
+        nested.mkdir(parents=True)
+        (nested / "Calculator.cs").write_text(
+            "class Calculator {\n    public int Add() => 1;\n}\n", encoding="utf-8"
+        )
+        code_index.index_codebase()
+
+        found = code_index.code_navigator(
+            "get_symbol", symbol="Add", file_path="audit-fixtures\\csharp\\Calculator.cs"
+        )
+        self.assertEqual(found["path"], "audit-fixtures/csharp/Calculator.cs")
+
+        inaccessible = code_index.code_navigator(
+            "get_symbol", symbol="Add", file_path=str(self.root / "missing.cs")
+        )
+        self.assertEqual(inaccessible["error_code"], "inaccessible_file")
+        self.assertNotIn(str(self.root), inaccessible["message"])
+
+        (nested / "Calculator.cs").unlink()
+        stale = code_index.code_navigator("get_symbol", symbol="Add")
+        self.assertEqual(stale["error_code"], "inaccessible_file")
+        self.assertNotIn(str(self.root), stale["message"])
+
     def test_queries_and_status_are_read_only_during_index_progress(self) -> None:
         observations = []
         def inspect_during_progress(stats):

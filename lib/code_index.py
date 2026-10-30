@@ -768,7 +768,9 @@ def _code_navigator_once(
     try:
         if action == "search_code":
             status = index_status(con)
-            expr = _fts_query(query or "")
+            search_text = (query or "").strip()
+            query_tokens = set(_tokens(search_text).split())
+            expr = _fts_query(search_text)
             if not expr:
                 count = con.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
                 return {
@@ -783,12 +785,38 @@ def _code_navigator_once(
                     ),
                 }
             rows = con.execute(
-                "SELECT s.*,f.path,bm25(symbol_fts,8.0,6.0,5.0,2.0,1.0,0.7) rank FROM symbol_fts JOIN symbols s ON s.id=symbol_fts.rowid JOIN files f ON f.id=s.file_id WHERE symbol_fts MATCH ? ORDER BY CASE WHEN lower(s.name)=lower(?) THEN 0 WHEN lower(s.qualified_name)=lower(?) THEN 1 ELSE 2 END, rank LIMIT ?",
-                (expr, query.strip().split(".")[-1], query.strip(), limit),
+                "SELECT s.*,f.path,bm25(symbol_fts,8.0,6.0,5.0,2.0,1.0,0.7) rank FROM symbol_fts JOIN symbols s ON s.id=symbol_fts.rowid JOIN files f ON f.id=s.file_id WHERE symbol_fts MATCH ?",
+                (expr,),
             ).fetchall()
-            count = con.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
-            results: list = [
-                {
+            ranked_results = []
+            for r in rows:
+                name_tokens = set(_tokens(r["name"]).split())
+                qualified_tokens = set(_tokens(r["qualified_name"]).split())
+                source_tokens = set(
+                    _tokens(
+                        " ".join(
+                            (r["signature"] or "", r["docs"] or "", r["searchable"] or "")
+                        )
+                    ).split()
+                )
+                path_tokens = set(_tokens(r["path"]).split())
+                if r["name"] == search_text:
+                    priority, reason = 0, "symbol-name"
+                elif r["qualified_name"] == search_text:
+                    priority, reason = 1, "qualified-name"
+                elif r["name"].lower() == search_text.lower():
+                    priority, reason = 2, "symbol-name"
+                elif r["qualified_name"].lower() == search_text.lower():
+                    priority, reason = 3, "qualified-name"
+                elif query_tokens & name_tokens:
+                    priority, reason = 4, "symbol-name"
+                elif query_tokens & qualified_tokens:
+                    priority, reason = 5, "qualified-name"
+                elif query_tokens & source_tokens:
+                    priority, reason = 6, "source-text"
+                else:
+                    priority, reason = 7, "path"
+                item = {
                     "name": r["name"],
                     "qualified_name": r["qualified_name"],
                     "kind": r["kind"],
@@ -799,9 +827,11 @@ def _code_navigator_once(
                     "end_line": r["end_line"],
                     "signature": r["signature"],
                     "snippet": r["source"][:300],
+                    "match_reason": reason,
                 }
-                for r in rows
-            ]
+                ranked_results.append((priority, r["rank"], item))
+            ranked_results.sort(key=lambda match: (match[0], match[1]))
+            results = [item for _, _, item in ranked_results[:limit]]
             return {
                 "results": results,
                 "index_status": status,
@@ -877,13 +907,17 @@ def _code_navigator_once(
             params: list = [exact]
         if file_path:
             try:
+                normalized_file_path = file_path.replace("\\", "/")
                 rel = (
-                    support.inside(file_path, must_exist=True)
+                    support.inside(normalized_file_path, must_exist=True)
                     .relative_to(Path(support.ROOT).resolve())
                     .as_posix()
                 )
-            except (ValueError, OSError) as exc:
-                return {"error_code": "inaccessible_file", "message": str(exc)}
+            except (ValueError, OSError):
+                return {
+                    "error_code": "inaccessible_file",
+                    "message": "file_path must name an accessible file inside the workspace",
+                }
             sql += " AND f.path=?"
             params.append(rel)
         rows = con.execute(sql + " ORDER BY f.path,s.start_line", params).fetchall()
@@ -913,8 +947,11 @@ def _code_navigator_once(
             source_path = support.inside(row["path"], must_exist=True)
             data = source_path.read_bytes()
             digest = hashlib.sha256(data).hexdigest()
-        except (OSError, ValueError) as exc:
-            return {"error_code": "inaccessible_file", "message": str(exc)}
+        except (OSError, ValueError):
+            return {
+                "error_code": "inaccessible_file",
+                "message": f"Indexed workspace file is inaccessible: {row['path']}",
+            }
         indexed_digest = con.execute(
             "SELECT sha256 FROM files WHERE id=?", (row["file_id"],)
         ).fetchone()[0]
