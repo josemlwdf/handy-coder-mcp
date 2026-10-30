@@ -250,12 +250,48 @@ def _nested_detail(
 ) -> dict:
     """Nested detail function."""
     prop = resolve(prop)
+    schema_type = prop.get("type")
+    alternatives = next(
+        (prop.get(key) for key in ("anyOf", "oneOf") if key in prop), None
+    )
+    concrete_object: dict | None = None
+    if isinstance(alternatives, list):
+        expanded = [
+            resolve(branch) for branch in alternatives if isinstance(branch, dict)
+        ]
+        concrete_object = next(
+            (
+                branch
+                for branch in expanded
+                if branch.get("type") == "object"
+                or isinstance(branch.get("properties"), dict)
+            ),
+            None,
+        )
+        if schema_type is None or schema_type == "null":
+            # Keep concrete alternatives visible in the summary and constraints.
+            # Nullable nested models must not appear to accept only null to
+            # clients that ignore JSON Schema combinators.
+            alternative_types = [
+                branch_type
+                for branch in expanded
+                for branch_type in (
+                    branch.get("type")
+                    if isinstance(branch.get("type"), list)
+                    else [
+                        branch.get(
+                            "type",
+                            "object" if isinstance(branch.get("properties"), dict) else None,
+                        )
+                    ]
+                )
+                if isinstance(branch_type, str)
+            ]
+            schema_type = list(dict.fromkeys(alternative_types)) or None
+    if concrete_object and not isinstance(prop.get("properties"), dict):
+        prop = {**concrete_object, **prop}
     item: dict = {
-        "type": prop.get("type")
-        or next(
-            (key for key in ("anyOf", "oneOf", "allOf") if key in prop),
-            prop.get("$ref", "object"),
-        ),
+        "type": schema_type or prop.get("$ref", "object"),
         "required": name in required,
         "description": prop.get("description", ""),
     }

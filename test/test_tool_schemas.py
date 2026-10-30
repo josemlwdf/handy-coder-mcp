@@ -191,6 +191,35 @@ class ToolSchemaTests(unittest.TestCase):
         self.assertIn("expand_groups", signature.parameters)
         self.assertIn("expand_groups=true", self.mcp.descriptions["apply_edits"])
 
+    def test_tool_details_preserves_nullable_nested_object_types(self) -> None:
+        """Tool details should expose an object's type alongside its null alternative."""
+        schema = {
+            "$defs": {
+                "Position": {
+                    "type": "object",
+                    "properties": {
+                        "line": {"type": "integer"},
+                        "col": {"type": "integer"},
+                    },
+                    "required": ["line", "col"],
+                }
+            },
+            "properties": {
+                "position": {
+                    "anyOf": [
+                        {"$ref": "#/$defs/Position"},
+                        {"type": "null"},
+                    ]
+                }
+            }
+        }
+        tool_details._normalize_schema_types(schema)
+        details = tool_details._arguments(schema)
+        self.assertEqual(details["position"]["type"], ["object", "null"])
+        self.assertEqual(
+            details["position"]["properties"]["line"]["type"], "integer"
+        )
+
     def test_fastmcp_registered_apply_edits_schema_accepts_expand_groups(self) -> None:
         """Test fastmcp registered apply edits schema accepts expand groups function."""
         try:

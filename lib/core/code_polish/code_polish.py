@@ -8,9 +8,9 @@ from typing import Annotated, Any
 
 from pydantic import Field
 
-from ..support import describe, inside, iter_workspace_files, path_escape_message
-from ..utils.change_summary import SUMMARY_DESCRIPTION, validate_summary
-from ..utils import html_prettify, python_postprocess
+from ...support import describe, inside, iter_workspace_files, path_escape_message
+from ...utils.change_summary import SUMMARY_DESCRIPTION, validate_summary
+from ...utils import html_prettify, python_postprocess
 
 _SUPPORTED_SUFFIXES: frozenset[str] = frozenset(
     {
@@ -181,7 +181,7 @@ def polish_paths(
     apply_line_endings: bool = True,
 ) -> dict[str, Any]:
     """Apply code polish operations to explicit workspace-relative files."""
-    from ..extras.code_format_lint import code_format_lint
+    from ...extras.code_format_lint.code_format_lint import code_format_lint
 
     file_reports: list[dict[str, Any]] = []
     written_files: list[str] = []

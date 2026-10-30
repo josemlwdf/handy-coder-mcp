@@ -43,22 +43,23 @@ def _load_fastmcp():
 # Imports below intentionally follow _load_fastmcp(); E402 is suppressed per line.
 from lib import error_handler  # noqa: E402
 from lib import project_logs, support, tool_details, worker_supervisor  # noqa: E402
-from lib.core import code_navigator  # noqa: E402
-from lib.core import gowitness_screenshot, web_search_tool  # noqa: E402
 from lib.core import (  # noqa: E402
     apply_edits,
     build_project,
     code_polish,
-    code_search,
+    web_search,
+    capture_url_screenshot,
+    search_text,
     create_file,
-    diagnostics,
+    code_get_diagnostics,
     find_files,
     git_manage,
     orchestrator,
     read_files,
     run_tests,
-    skills,
-    system_info,
+    skills_manage,
+    get_capabilities,
+    code_intel,
     terminal_exec,
 )
 from lib.extras import web_fetch  # noqa: E402
@@ -254,21 +255,21 @@ def main() -> None:
         create_file,
         apply_edits,
         code_polish,
+        web_search,
+        capture_url_screenshot,
         terminal_exec,
-        code_search,
+        search_text,
         find_files,
-        diagnostics,
+        code_get_diagnostics,
         run_tests,
         git_manage,
         build_project,
         web_fetch,
-        web_search_tool,
-        gowitness_screenshot,
-        system_info,
-        skills,
+        get_capabilities,
+        code_intel,
+        skills_manage,
         orchestrator,
         subagent_tools,
-        code_navigator,
     ):
         module.register(mcp)
     _sort_registered_tools(mcp)
