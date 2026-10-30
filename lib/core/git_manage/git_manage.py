@@ -222,7 +222,7 @@ def _tool_description() -> str:
     return describe(
         "Run a validated workspace Git action: status, diff, log, add, commit, push, pull, merge, rebase, checkout, branch, stash, blame, or init. For add, pass one or more repository-relative paths to stage those paths, or args=['all'] to stage every change. For commit, provide a meaningful -m message that accurately summarizes the staged changes. Successful init creates test/ and tmp/ and maintains the repository .gitignore; add updates .gitignore before staging. These updates preserve existing content, add .handy-coder/ and tmp/, and ignore generated directories from the common exclusion list when present. status returns structured staged/working-tree and untracked summaries; diff preserves raw text and accepts mode unstaged/staged/both plus repository-relative file_paths; log includes recent commit history. pull accepts an optional remote and branch; merge/rebase require one or more refs. These three actions require a clean worktree (including untracked files). "
         "Pass action-specific Git options as separate strings in args. "
-        f"{state} Use workspace-relative repo_path when selecting a repository. "
+        f"{state} init may target the workspace root or a subdirectory alongside other repositories, but cannot target a directory inside an existing repository. Use workspace-relative repo_path when selecting a repository. "
         "When repo_path is given and has a .git marker, workspace scan is bypassed for faster execution. "
         "When git exits non-zero, any output it printed to stdout is returned in stderr and stdout is empty. "
         "When to use: Review or manage local changes."
@@ -637,9 +637,14 @@ def git_manage(
                 "hint": "Retry after narrowing --root or fixing unreadable directories, then run git_manage status.",
                 "exit_code": 1,
             }
-        if _REPOSITORIES:
+        for repository in _REPOSITORIES or ():
+            repo_abs = inside(repository).resolve()
+            try:
+                init_path.resolve().relative_to(repo_abs)
+            except ValueError:
+                continue
             raise ValueError(
-                "A Git repository is already available; init is only allowed when none are found"
+                f"Cannot initialize inside existing repository '{repository}'"
             )
         result = run_process([git, "init"], cwd=init_path)
         if result["exit_code"] == 0:

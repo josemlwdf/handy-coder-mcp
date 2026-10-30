@@ -58,6 +58,26 @@ class CodeIndexTests(unittest.TestCase):
         (self.root / "B.cs").unlink()
         self.assertEqual(code_index.index_codebase()["removed"], 1)
 
+    def test_class_member_type_and_construction_references(self) -> None:
+        source = self.root / "Uses.cs"
+        source.write_text(
+            """class Greeter { public static string Message() => \"hi\"; }
+class Uses {
+    Greeter field;
+    void Run() { Greeter.Message(); Greeter value = new Greeter(); }
+}
+""",
+            encoding="utf-8",
+        )
+        result = code_index.index_codebase()
+        self.assertEqual(result["parsed"], 2)
+        refs = code_index.code_navigator("find_references", symbol="Greeter")["references"]
+        self.assertEqual(len(refs), 4)
+        self.assertEqual({ref["path"] for ref in refs}, {"Uses.cs"})
+        self.assertEqual(
+            len({(ref["path"], ref["line"], ref["snippet"]) for ref in refs}), 4
+        )
+
     def test_skips_virtualenv_variants_and_generated_directories(self) -> None:
         """Test skips virtualenv variants and generated directories function."""
         for rel in (

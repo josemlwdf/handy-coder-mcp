@@ -458,6 +458,7 @@ class CoreFeedbackTests(unittest.TestCase):
         (self.root / "node_modules").mkdir()
         (self.root / "custom").mkdir()
         (self.root / "custom" / "__pycache__").mkdir()
+        (self.root / "fixture" / ".git").mkdir(parents=True)
         (self.root / ".gitignore").write_text(
             "# keep me\ncustom-rule\n", encoding="utf-8"
         )
@@ -497,6 +498,12 @@ class CoreFeedbackTests(unittest.TestCase):
             (self.root / ".gitignore").read_text(encoding="utf-8"), ignore_text
         )
 
+    def test_init_inside_existing_repository_is_rejected(self):
+        (self.root / ".git").mkdir()
+        with patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"):
+            with self.assertRaisesRegex(ValueError, "inside existing repository"):
+                self.mcp.tools["git_manage"]("init", repo_path="nested")
+
     @unittest.skipUnless(shutil.which("git"), "Git is not installed")
     def test_add_creates_ignore_file_before_staging(self) -> None:
         """Test add creates ignore file before staging function."""
@@ -521,15 +528,15 @@ class CoreFeedbackTests(unittest.TestCase):
         )
         self.assertEqual(staged.stdout.strip(), "new.txt")
 
-    def test_init_is_rejected_when_a_repository_is_already_available(self) -> None:
-        """Test init is rejected when a repository is already available function."""
+    def test_init_is_rejected_inside_a_nested_repository(self) -> None:
+        """Test init is rejected inside a nested repository function."""
         (self.root / "project" / ".git").mkdir(parents=True)
         mcp = FakeMCP()
         git_manage.register(mcp)
 
         with patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"):
-            with self.assertRaisesRegex(ValueError, "already available"):
-                mcp.tools["git_manage"]("init")
+            with self.assertRaisesRegex(ValueError, "inside existing repository"):
+                mcp.tools["git_manage"]("init", repo_path="project/subdir")
 
     @unittest.skipUnless(shutil.which("git"), "Git is not installed")
     def test_git_status_still_runs_inside_a_repository(self) -> None:

@@ -202,6 +202,25 @@ def _extract(source: bytes) -> tuple:
                     }
                 )
         elif node.type == "member_access_expression":
+            receiver = node.child_by_field_name("expression")
+            if receiver and receiver.type == "identifier":
+                refs.append(
+                    {
+                        "target": _node_text(receiver, source),
+                        "kind": "identifier_usage",
+                        "line": receiver.start_point.row + 1,
+                        "snippet": _node_text(node, source)[:240],
+                        "enclosing_type": ".".join(owners) or None,
+                        "enclosing_method": next(
+                            (
+                                n
+                                for k, n in reversed(active)
+                                if k in ("method", "constructor")
+                            ),
+                            None,
+                        ),
+                    }
+                )
             name_child = node.child_by_field_name("name")
             if name_child:
                 refs.append(
