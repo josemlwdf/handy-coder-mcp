@@ -116,6 +116,15 @@ class IdeDetectorTests(unittest.TestCase):
                     str(p2.resolve()),
                 )
 
+            # An invalid environment root is ignored and normal detection continues.
+            with patch.dict(os.environ, {"HANDY-CODER_ROOT": str(tmp_path / "missing")}):
+                with patch("lib.ide_detector.recover_workspace_roots", return_value=[]):
+                    with patch("pathlib.Path.cwd", return_value=tmp_path):
+                        self.assertEqual(
+                            ide_detector.detect_working_dir(script_dir=p1),
+                            str(tmp_path.resolve()),
+                        )
+
             # Unexpanded variable is ignored, falls back to IDE settings or script_dir
             with patch.dict(os.environ, {"HANDY-CODER_ROOT": "${workspaceFolder}"}):
                 with patch("lib.ide_detector.recover_workspace_roots", return_value=[]):

@@ -25,7 +25,7 @@ Run against the current directory or select a workspace root:
 .venv/bin/handy-coder-mcp --root /home/user/my-app --shell /bin/bash
 ```
 
-`HANDY-CODER_ROOT` can provide the root when `--root` is omitted. `--shell` retains the shell override behavior. The server uses the configured root as its working directory and reports the authorized root in every tool description. Only the command-execution tool reports the working directory.
+`HANDY-CODER_ROOT` can provide the root when `--root` is omitted. A valid CLI `--root` takes precedence; invalid environment paths are ignored by normal detection. `--shell` retains the shell override behavior. The server uses the configured root as its working directory and reports the authorized root in every tool description. Only the command-execution tool reports the working directory.
 
 ## MCP client configuration
 
@@ -191,7 +191,8 @@ Optional overrides:
 - `SUBAGENT_BACKEND=cooperative|sampling|direct|local|continue` chooses the backend family. `continue` forces Continue discovery even when `SUBAGENT_CONTINUE=0`; if no Continue model is usable it resolves to no backend.
 - `SUBAGENT_CONTINUE=0` (also `false`, `no` or `off`) stops `auto` selection from reading your Continue config (see below). Unset or any other value leaves discovery on.
 - `SUBAGENT_CONTINUE_MODEL` picks a Continue model by `name` or `model` (case-insensitive). An unknown value selects nothing; it never falls back to another model.
-- `SUBAGENT_CONTINUE_CONFIG` points at a specific Continue config file and is searched first.
+- `SUBAGENT_CONTINUE_CONFIG` points at a specific Continue config file and is searched first among discovered Continue configs, after `SUBAGENT_CONFIG_FILE`.
+- `SUBAGENT_CONFIG_FILE` points at a standalone Continue-format JSON or YAML model config. It is tried before Continue config discovery and works without a Continue installation. It remains active when `SUBAGENT_CONTINUE=0`; if missing, malformed, or without a supported usable model, selection continues with the normal discovery and fallback behavior.
 - `SUBAGENT_WAIT_SECONDS` controls the synchronous wait budget for `subagent_manage(action='run')` (default 15).
 - `SUBAGENT_MODEL_OPENAI`, `SUBAGENT_MODEL_ANTHROPIC`, `SUBAGENT_MODEL_LOCAL` override default model ids per backend.
 - `SUBAGENT_SAMPLING_URL` (plus optional `SUBAGENT_SAMPLING_MODEL` and `SUBAGENT_SAMPLING_API_KEY`) enables HTTP sampling in runtimes without a native sampling bridge.
@@ -200,7 +201,7 @@ Use subagents for broad searches, independent reviews, and large-input summaries
 
 #### Continue backend
 
-By default (unless `SUBAGENT_CONTINUE=0`) the server reuses a chat model from your [Continue](https://continue.dev) config, so you do not configure a second set of credentials. Config files are searched in this order: `SUBAGENT_CONTINUE_CONFIG`, `$CONTINUE_GLOBAL_DIR/config.yaml`, `~/.continue/config.yaml`, `~/.continue/config.json`, `/mnt/c/Users/<profile>/.continue/` for every Windows profile visible under WSL (current user first; `Public`, `Default`, `Default User` and `All Users` are skipped, symlinked profiles are ignored, at most 32 profiles), `%USERPROFILE%\.continue\`, then `<workspace>/.continue/config.yaml`. Files over 1 MiB are skipped.
+By default (unless `SUBAGENT_CONTINUE=0`) the server reuses a chat model from your [Continue](https://continue.dev) config, so you do not configure a second set of credentials. `SUBAGENT_CONFIG_FILE`, when set, is checked first independently of Continue installation and discovery settings. Remaining config files are searched in this order: `SUBAGENT_CONTINUE_CONFIG`, `$CONTINUE_GLOBAL_DIR/config.yaml`, `~/.continue/config.yaml`, `~/.continue/config.json`, `/mnt/c/Users/<profile>/.continue/` for every Windows profile visible under WSL (current user first; `Public`, `Default`, `Default User` and `All Users` are skipped, symlinked profiles are ignored, at most 32 profiles), `%USERPROFILE%\.continue\`, then `<workspace>/.continue/config.yaml`. Files over 1 MiB are skipped.
 
 Only models with a chat role, a key (literal `apiKey`, an `Authorization` header or a `${{ secrets.X }}` reference resolved from the environment or a `.env` next to the config) and a supported provider are used; local providers such as Ollama need no key. The workspace config is untrusted and cannot resolve secret references. Keys are never logged or returned; `get_capabilities` reports only provider, model name and config path.
 

@@ -55,6 +55,38 @@ class ResolveContinueTests(unittest.TestCase):
         with self.env():
             self.assertEqual(resolve_backend({}), 'continue:openai')
 
+    def test_standalone_file_works_without_continue_discovery(self):
+        with self.env(SUBAGENT_CONFIG_FILE=str(self.config), SUBAGENT_CONTINUE='0'):
+            self.assertEqual(resolve_backend({}), 'continue:openai')
+
+    def test_standalone_precedes_discovered_config(self):
+        other = self.root / 'other.json'
+        other.write_text(json.dumps({'models': [
+            {'name': 'other', 'provider': 'anthropic', 'model': 'claude', 'apiKey': KEY},
+        ]}), encoding='utf-8')
+        with self.env(SUBAGENT_CONFIG_FILE=str(self.config), SUBAGENT_CONTINUE_CONFIG=str(other)):
+            self.assertEqual(resolve_backend({}), 'continue:openai')
+            self.assertEqual(resolve_continue().model.name, 'main')
+
+    def test_standalone_missing_or_invalid_falls_back_to_continue_discovery(self):
+        with self.env(SUBAGENT_CONFIG_FILE=str(self.root / 'missing.json'), SUBAGENT_CONTINUE_CONFIG=str(self.config)):
+            self.assertEqual(resolve_backend({}), 'continue:openai')
+        bad = self.root / 'bad.json'
+        bad.write_text('{bad', encoding='utf-8')
+        continue_config.clear_cache()
+        with self.env(SUBAGENT_CONFIG_FILE=str(bad), SUBAGENT_CONTINUE_CONFIG=str(self.config)):
+            self.assertEqual(resolve_backend({}), 'continue:openai')
+
+    def test_standalone_secret_reference_uses_adjacent_dotenv(self):
+        cfg = self.root / 'standalone.json'
+        cfg.write_text(json.dumps({'models': [
+            {'name': 'secret', 'provider': 'openai', 'model': 'gpt-secret', 'apiKey': '${{ secrets.API_TOKEN }}'},
+        ]}), encoding='utf-8')
+        (self.root / '.env').write_text('API_TOKEN=from-dotenv-secret', encoding='utf-8')
+        with self.env(SUBAGENT_CONFIG_FILE=str(cfg), SUBAGENT_CONTINUE='0'):
+            resolved = resolve_continue()
+            self.assertEqual(resolved.model.api_key, 'from-dotenv-secret')
+
     def test_auto_with_opt_in_uses_continue(self):
         with self.env(SUBAGENT_CONTINUE='1'):
             self.assertEqual(resolve_backend({}), 'continue:openai')

@@ -82,7 +82,9 @@ Or set the workspace explicitly:
 .venv/bin/handy-coder-mcp --root /path/to/project
 ```
 
-`--root` selects the authorized workspace used by file tools and the default command directory. If omitted, `HANDY-CODER_ROOT` can set the same value; otherwise the server detects a working directory or uses its installation directory. `--shell` optionally selects the shell for command execution.
+`--root` selects the authorized workspace used by file tools and the default command directory. If omitted, `HANDY-CODER_ROOT` can set the same value; a valid `--root` takes precedence, and an invalid environment path is ignored during normal root detection. Otherwise the server detects a working directory or uses its installation directory. `--shell` optionally selects the shell for command execution.
+
+Set `SUBAGENT_CONFIG_FILE` to a standalone Continue-format JSON or YAML file to configure a subagent model without installing Continue. The file is checked before Continue config discovery and uses the same provider support, secret references, and adjacent `.env` handling. If it has no usable model, normal Continue discovery and backend fallback continue. Sampling and configured direct provider keys retain their existing automatic-selection precedence. `SUBAGENT_CONTINUE=0` disables automatic Continue discovery but does not disable this explicit standalone file.
 
 ## Connect an MCP client
 

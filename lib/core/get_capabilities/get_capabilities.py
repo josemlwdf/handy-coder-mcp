@@ -181,6 +181,7 @@ def get_capabilities() -> dict:
             "SUBAGENT_BACKEND": bool(os.environ.get("SUBAGENT_BACKEND", "").strip()),
             "SUBAGENT_LOCAL": bool(os.environ.get("SUBAGENT_LOCAL", "").strip()),
             "SUBAGENT_CONTINUE": bool(os.environ.get("SUBAGENT_CONTINUE", "").strip()),
+            "SUBAGENT_CONFIG_FILE": bool(os.environ.get("SUBAGENT_CONFIG_FILE", "").strip()),
         },
         "subagents": {
             "backend": subagent_backend,

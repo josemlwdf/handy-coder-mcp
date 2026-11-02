@@ -213,7 +213,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Workspace-confined Handy Coder MCP server"
     )
-    parser.add_argument("-r", "--root", default=None, help="Authorized workspace root")
+    parser.add_argument(
+        "-r",
+        "--root",
+        default=None,
+        help="Authorized workspace root (overrides HANDY-CODER_ROOT)",
+    )
     parser.add_argument("-s", "--shell", default=None, help="Override command shell")
     parser.add_argument(
         "--enforce-clean-worktree-child",

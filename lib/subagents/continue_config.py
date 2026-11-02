@@ -112,6 +112,12 @@ def _candidates(
     """
     out: list[tuple[Path, bool]] = []
 
+    # An explicitly supplied standalone Continue-format config is independent
+    # of Continue's installation and is always considered before discovery.
+    standalone = (env.get("SUBAGENT_CONFIG_FILE") or "").strip()
+    if standalone:
+        out.append((Path(standalone).expanduser(), True))
+
     override = (env.get("SUBAGENT_CONTINUE_CONFIG") or "").strip()
     if override:
         out.append((Path(override).expanduser(), True))

@@ -119,7 +119,7 @@ def resolve_backend(client_capabilities: dict | None = None) -> str:
     for env_name, provider in EXISTING_LLM_ENV:
         if os.environ.get(env_name, "").strip():
             return f"direct:{provider}"
-    if _continue_enabled():
+    if _continue_enabled() or os.environ.get("SUBAGENT_CONFIG_FILE", "").strip():
         found = _continue_backend()
         if found != "cooperative":
             return found
