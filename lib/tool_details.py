@@ -11,6 +11,20 @@ from typing import Annotated, Any
 from pydantic import Field
 
 
+# Curated capability vocabulary supplements each tool's own name and docs.
+_TOOL_TAGS: dict[str, tuple[str, ...]] = {
+    "find_files": (
+        "filesystem",
+        "files",
+        "directory",
+        "list",
+        "workspace",
+        "root",
+        "discovery",
+    ),
+}
+
+
 def _brief(description: str) -> str:
     """Return a compact first sentence suitable for tools/list."""
     text = " ".join((description or "").split())
@@ -449,7 +463,7 @@ def install(mcp: Any) -> None:
         query: Annotated[
             str,
             Field(
-                description="Tool name or capability terms to search. (Required: True)"
+                description="Tool name or capability terms to search; use the '*' wildcard to list all registered tools. (Required: True)"
             ),
         ],
         limit: Annotated[
@@ -506,6 +520,7 @@ def install(mcp: Any) -> None:
                 result.append({
                     "name": name,
                     "description": _brief(entry.get("description", "")),
+                    "tags": list(_TOOL_TAGS.get(name, ())),
                     "parameters": parameters,
                 })
             return {"tools": result, "count": len(result)}
@@ -515,23 +530,41 @@ def install(mcp: Any) -> None:
                 continue
             description = entry.get("description", "")
             summary = _brief(description)
-            haystack = f"{name} {summary} {description}".casefold()
-            matched = sum(term in haystack for term in terms)
-            if matched != len(terms):
+            tags = _TOOL_TAGS.get(name, ())
+            name_text = name.casefold()
+            summary_text = summary.casefold()
+            description_text = description.casefold()
+            tags_text = " ".join(tags).casefold()
+            matched = sum(
+                term in name_text
+                or term in summary_text
+                or term in description_text
+                or term in tags_text
+                for term in terms
+            )
+            if not matched:
                 continue
-            exact = name.casefold() == query_text
-            # Weight names above summaries and full documentation; lexical order breaks ties.
-            name_hits = sum(term in name.casefold() for term in terms)
-            summary_hits = sum(term in summary.casefold() for term in terms)
-            doc_hits = sum(term in description.casefold() for term in terms)
-            score = name_hits * 10 + summary_hits * 3 + doc_hits
-            candidates.append((not exact, -score, name.casefold(), name, entry))
-        candidates.sort(key=lambda item: item[:4])
+            exact = name_text == query_text
+            # Score each term by its strongest field so repeated wording does not inflate rank.
+            score = 0
+            for term in terms:
+                if term in name_text:
+                    score += 10
+                elif term in tags_text:
+                    score += 6
+                elif term in summary_text:
+                    score += 3
+                elif term in description_text:
+                    score += 1
+            # Partial matches are useful; matching more query terms ranks higher.
+            candidates.append((not exact, -matched, -score, name.casefold(), name, entry))
+        candidates.sort(key=lambda item: item[:5])
         result = []
-        for _, _, _, name, entry in candidates[: max(0, min(int(limit), 4))]:
+        for _, _, _, _, name, entry in candidates[: max(0, min(int(limit), 4))]:
             result.append({
                 "name": name,
                 "description": entry.get("description", ""),
+                "tags": list(_TOOL_TAGS.get(name, ())),
                 "inputSchema": copy.deepcopy(entry.get("inputSchema", {})),
             })
         return {"tools": result, "count": len(result)}
@@ -543,7 +576,7 @@ def install(mcp: Any) -> None:
 
     register_meta(
         "discover_tools",
-        "Search by name or capability to get matching tools and their full schemas. Use query='*' once to list every registered tool (except discover_tools) with short descriptions and parameter types and descriptions; call get_tool_details only when expanded argument documentation is needed.",
+        "Search by name or capability to get matching tools and their full schemas. The '*' wildcard (query='*') lists every registered tool except discover_tools, with short descriptions and parameter types and descriptions; call get_tool_details only when expanded argument documentation is needed.",
         discover_tools,
     )
 

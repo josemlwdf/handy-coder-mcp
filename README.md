@@ -9,7 +9,7 @@ The server uses MCP's **stdio transport** and confines workspace file operations
 Handy Coder MCP uses a **router-based, just-in-time (JIT) tool discovery and invocation pattern** to reduce the tool definitions and schema context sent to an MCP client, which can lower prompt token usage. Internally, the server registers its tool catalog at startup, while MCP `tools/list` publishes only four stable router tools:
 
 - `get_capabilities` reports runtime capabilities and optional tool availability.
-- `discover_tools(query, limit=4)` searches tool names and documentation and returns matching tools with their full input schemas. The result limit is capped at four.
+- `discover_tools(query, limit=4)` searches tool names and documentation and returns matching tools with their full input schemas. The `*` wildcard (`query="*"`) lists all registered tools (except `discover_tools`); regular search results are capped at four.
 - `get_tool_details(tool_name)` returns full argument documentation, including nested fields, defaults, and validation constraints, for one registered tool.
 - `invoke_tool(tool_name, arguments)` dispatches a selected tool through its normal execution path.
 

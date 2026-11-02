@@ -60,6 +60,12 @@ def test_public_list_is_router_only_and_discovery_is_stable() -> None:
     ]
     assert len(file_matches) == 4
     assert discover("read_files")["tools"][0]["name"] == "read_files"
+    assert discover("filesystem list directory root workspace")["tools"][0]["name"] == "find_files"
+    assert discover("authorized")["tools"][0]["name"] == "find_files"
+    assert discover("filesystem")["tools"][0]["tags"]
+    assert discover("runtime capabilities")["tools"][0]["name"] == "get_capabilities"
+    assert discover("files workspace")["tools"][0]["name"] == "find_files"
+    assert discover("contents")["tools"][0]["name"] == "read_files"
     assert len(discover("files", limit=20)["tools"]) == 4
     assert len(discover("files", limit=2)["tools"]) == 2
     assert discover("no-such-capability")["tools"] == []
@@ -77,6 +83,7 @@ def test_wildcard_discovery_returns_compact_full_catalog() -> None:
     assert "discover_tools" not in {tool["name"] for tool in result["tools"]}
     read_files = next(tool for tool in result["tools"] if tool["name"] == "read_files")
     assert read_files["description"] == "Read files and return their contents."
+    assert read_files["tags"] == []
     assert read_files["parameters"]["paths"]["type"] == "array"
     assert "description" in read_files["parameters"]["paths"]
     assert "inputSchema" not in read_files
