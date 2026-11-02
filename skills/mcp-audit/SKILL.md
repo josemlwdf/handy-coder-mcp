@@ -7,6 +7,16 @@ description: Audit handy-coder-mcp tools for behavioral failures and usability p
 
 Act as senior QA and DevEx reviewer. Audit selected tools or all tools exposed by running `handy-coder-mcp` server.
 
+## Related tools
+
+- `discover_tools`, `get_tool_details`, and `get_capabilities` inspect the registered catalog and runtime support.
+- `invoke_tool` exercises a registered tool with supplied arguments; `read_files` can inspect source to explain observed behavior.
+
+## Related skills
+
+- `plan` is for non-trivial implementation; `diagnosing-bugs` investigates specific software failures.
+- `troubleshoot` covers chat-agent and session-log behavior rather than MCP tool audits.
+
 IMPORTANT: Tools already exposed. Begin testing immediately. Do not restart/reconnect server. Do not ask permission for safe tests.
 
 ## Discovery

@@ -1,14 +1,19 @@
 ---
 name: dotnet-webapi
-description: >-
-  Builds and modifies ASP.NET Core Web API endpoints with correct HTTP
-  semantics, OpenAPI metadata, and error handling. Use for controllers,
-  minimal APIs, DTOs, OpenAPI/Swagger, .http tests, and global error handling.
-  Not for general C# style, EF Core data/query optimization, frontend/Blazor,
-  gRPC, or SignalR.
+description: Build and modify ASP.NET Core Web API endpoints with correct HTTP semantics, OpenAPI metadata, and error handling. Use for controllers, minimal APIs, DTOs, OpenAPI, endpoint tests, and global error handling.
 ---
 
 # ASP.NET Core Web API
+
+## Related tools
+
+- `find_files`, `search_text`, and `read_files` inspect endpoints and project configuration.
+- `code_get_diagnostics`, `run_tests`, and `build_project` help validate API changes; `terminal_exec` runs focused commands.
+
+## Related skills
+
+- `implement` carries out feature work; `dotnet-tests` covers .NET test workflows.
+- `diagnosing-bugs` is for investigating broken endpoint behavior.
 
 Build or modify ASP.NET Core HTTP APIs. Match project style. Use correct HTTP status codes, documented contracts, safe errors, and verifiable tests.
 

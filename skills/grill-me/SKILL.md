@@ -7,6 +7,16 @@ description: Stress-test a plan, decision, or idea through a structured intervie
 
 Interview the user until you reach shared understanding. Build a **decision tree**: each decision branches into dependent decisions.
 
+## Related tools
+
+- `read_files`, `search_text`, and `find_files` can establish facts from workspace artifacts before asking about decisions.
+- `get_capabilities` and `discover_tools` identify available MCP capabilities when a decision depends on them.
+
+## Related skills
+
+- `plan` turns settled requirements into implementation work; `handoff` summarizes context for a later session.
+- `implement` is for executing an agreed task.
+
 ## Process
 
 1. Work in rounds.

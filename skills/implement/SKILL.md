@@ -7,6 +7,16 @@ description: Implement features, fixes, or tasks from a plan or user prompt. Use
 
 Deliver the requested change. Work incrementally; verify continuously.
 
+## Related tools
+
+- `read_files`, `find_files`, `search_text`, and `code_intel` help inspect the codebase; confirm navigation candidates against source.
+- `code_get_diagnostics`, `run_tests`, `build_project`, and `terminal_exec` support applicable checks and execution.
+
+## Related skills
+
+- `plan` structures non-trivial work; `diagnosing-bugs` is for evidence-led failure investigation.
+- `dotnet-tests`, `dotnet-webapi`, and `python-fact-grounded-coding` provide language or task-specific guidance.
+
 ## Workflow
 
 1. **Understand**

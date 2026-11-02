@@ -1,12 +1,19 @@
 ---
 name: diagnosing-bugs
-description: >-
-  Autonomous diagnosis loop for hard bugs and performance regressions. Use when
-  user asks to diagnose, debug, or fix, or reports broken, throwing, failing,
-  or slow behavior.
+description: Diagnose hard bugs and performance regressions with an evidence-based workflow. Use when the user asks to debug or fix broken, throwing, failing, or slow behavior.
 ---
 
 # Diagnosing Bugs
+
+## Related tools
+
+- `search_text`, `find_files`, and `read_files` gather code evidence; `code_intel` supplies syntactic or lexical navigation candidates.
+- `code_get_diagnostics`, `run_tests`, `terminal_exec`, and `build_project` help reproduce and validate findings.
+
+## Related skills
+
+- `implement` is for carrying out a confirmed fix; `troubleshoot` diagnoses chat-agent behavior from session logs.
+- `analyzing-dotnet-performance` reviews .NET performance patterns.
 
 Systematic workflow for hard bugs. Follow phases in order. Skip a phase only with an explicit, evidence-based reason.
 

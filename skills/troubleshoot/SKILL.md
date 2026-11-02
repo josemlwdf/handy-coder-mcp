@@ -7,6 +7,16 @@ description: Diagnose chat-agent behavior from session logs. Use for delays, too
 
 Use session debug logs to explain behavior and find fixes. Base conclusions on evidence. Separate facts from hypotheses. Never guess.
 
+## Related tools
+
+- `find_files`, `search_text`, and `read_files` locate and inspect the relevant session logs and snapshots.
+- `web_search` and `web_fetch_docs` support the documented product-diagnostics step when official information is needed.
+
+## Related skills
+
+- `diagnosing-bugs` investigates application bugs; `mcp-audit` reviews Handy Coder tool behavior.
+- `handoff` packages findings for another session.
+
 ## Find session
 
 1. Use log paths from conversation/runtime context.

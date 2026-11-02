@@ -1,14 +1,19 @@
 ---
 name: dotnet-tests
-description: >-
-  Runs and filters .NET tests with `dotnet test`. Detects VSTest or
-  Microsoft.Testing.Platform (MTP), SDK version, and MSTest/xUnit/NUnit/TUnit.
-  Selects correct command syntax, filters, TRX reporting, and crash/hang
-  collection. Use for full or partial runs, single-TFM runs, and test-run
-  troubleshooting.
+description: Run and filter .NET tests with the registered test runner, detecting the test platform and framework and selecting suitable commands and reporting. Use for full or partial runs and test troubleshooting.
 ---
 
 # Run .NET Tests
+
+## Related tools
+
+- `find_files` locates solution and test projects; `read_files` inspects their configuration.
+- `run_tests`, `terminal_exec`, and `build_project` provide test, command, and build execution when suited to the repository.
+
+## Related skills
+
+- `diagnosing-bugs` investigates failures; `implement` delivers fixes.
+- `dotnet-webapi` provides API implementation guidance for tests covering ASP.NET Core endpoints.
 
 Detect test platform, SDK, and framework. Build correct `dotnet test` command. Run requested tests. Report results.
 

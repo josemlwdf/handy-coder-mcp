@@ -9,6 +9,16 @@ Ask: **“What will the next session be used for?”**
 
 Create a handoff document for a fresh agent.
 
+## Related tools
+
+- `read_files` and `search_text` help verify workspace artifacts and references before writing the handoff.
+- `create_file` saves the document in the required temporary directory when available.
+
+## Related skills
+
+- `plan` tracks ongoing implementation; `implement` carries out a task.
+- `troubleshoot` is relevant when the handoff concerns agent behavior or session logs.
+
 ## Requirements
 
 - Save the document under `./tmp`.

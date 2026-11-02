@@ -1,10 +1,6 @@
 ---
 name: analyzing-dotnet-performance
-description: >-
-  Scans .NET code for ~50 performance anti-patterns across async, memory,
-  strings, collections, LINQ, regex, serialization, and I/O. Classifies
-  findings by severity. Use for .NET optimization reviews, hot-path audits,
-  and allocation-heavy code scans.
+description: Scan .NET code for performance anti-patterns across async, memory, strings, collections, LINQ, regex, serialization, and I/O. Classify findings by severity for optimization reviews and hot-path audits.
 ---
 
 # .NET Performance Patterns
@@ -179,6 +175,16 @@ End with summary table and disclaimer:
 | ℹ️ Info | N | ... |
 
 > ⚠️ **Disclaimer:** AI-generated results are non-deterministic. Findings may include false positives, miss real issues, or recommend changes that do not fit the specific codebase. Verify recommendations with benchmarks and human review before applying changes to production code.
+
+## Related tools
+
+- `find_files` and `search_text` locate candidate code; `read_files` provides source evidence.
+- `terminal_exec` can run targeted scans or benchmarks when appropriate; `code_get_diagnostics` reports configured diagnostics.
+
+## Related skills
+
+- `diagnosing-bugs` investigates a specific performance regression.
+- `implement` applies a confirmed optimization; `dotnet-tests` handles .NET test execution.
 ```
 
 ## Validation

@@ -7,6 +7,16 @@ description: Plan and deliver non-trivial work with Handy Coder. Delegate tasks,
 
 Use for non-trivial implementation. Carry work through integration and validation; never stop at planning. Use Handy Coder MCP tools (`handy_coder_`).
 
+## Related tools
+
+- `orchestrator` bootstraps plans and updates task status; `subagent_manage` runs and tracks delegated work.
+- `read_files`, `search_text`, `code_get_diagnostics`, `run_tests`, and `build_project` support scoped investigation and validation.
+
+## Related skills
+
+- `grill-me` resolves unsettled decisions; `implement` covers direct implementation.
+- `diagnosing-bugs`, `dotnet-tests`, and `python-fact-grounded-coding` add task-specific workflows.
+
 ## Files
 
 - `.handy-coder/implementation-plan.md`: plan, context, Generalist Assessment, validation strategy.

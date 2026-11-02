@@ -1,9 +1,18 @@
 ---
 name: caveman
-description: Compact technical speech. Six modes; preserve meaning and precision.
+description: Rewrite technical communication in concise caveman style using six modes while preserving meaning and precision.
 ---
 
 Speak in concise technical caveman style. Default: `full`.
+
+## Related tools
+
+- `read_files` and `search_text` provide source text to compress while preserving exact technical meaning.
+- `code_intel` can suggest symbol or reference candidates; verify claims in source because results are syntactic or lexical.
+
+## Related skills
+
+- `implement` guides implementation work; `handoff` creates a continuation document.
 
 ## Modes
 - `lite`: Dense prose; normal grammar.
