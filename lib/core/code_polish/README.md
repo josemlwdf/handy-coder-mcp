@@ -51,6 +51,8 @@ Python formatting automatically inserts missing module, class, and function docs
 
 Returns the structured result produced by the implementation. Error results and status fields are tool-specific; inspect the returned object and its documented fields rather than assuming that a process or operation succeeded.
 
+Each selected supported text file is checked for a leading UTF-8 BOM. When present, it is removed and reported as the `utf8_bom` transformation with `found`, `removed`, and `changed` fields. The removal is included in the file's unified diff.
+
 ## Side effects and runtime requirements
 
 May modify workspace files or other local project state. File access is confined to the configured workspace.

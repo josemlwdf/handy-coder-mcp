@@ -221,10 +221,23 @@ def polish_paths(
         transformations: list[dict[str, Any]] = []
         tool_outputs: list[dict[str, Any]] = []
 
+        bom_found = before.startswith("\ufeff")
+        working_text = before[1:] if bom_found else before
+        transformations.append(
+            {
+                "name": "utf8_bom",
+                "found": bom_found,
+                "removed": bom_found,
+                "changed": bom_found,
+            }
+        )
+        if bom_found:
+            p.write_text(working_text, encoding="utf-8")
+
         if apply_line_endings:
-            normalized_text, newline_report = _normalize_line_endings(before)
+            normalized_text, newline_report = _normalize_line_endings(working_text)
             transformations.append(newline_report)
-            if normalized_text != before:
+            if normalized_text != working_text:
                 p.write_text(normalized_text, encoding="utf-8")
 
         if suffix == ".py" and apply_python_postprocess:
@@ -361,6 +374,7 @@ def register(mcp):
             "For directories, choose one file with specific_file or all supported files with all_files=true. "
             "Python polishing automatically inserts missing module, class, and function docstrings, including when all_files=true; reports list these changes under python_postprocess. "
             "Returns per-file transformation reports (including tool outputs such as Ruff), changed_lines counts, and unified diffs for final on-disk changes. "
+            "Detects and removes a leading UTF-8 BOM from each selected supported text file, reporting the result under the utf8_bom transformation. "
             "Each response includes diff_hint explicitly noting that diffs include both LLM changes and code polish actions. "
             "When to use: run polish directly, or inspect polish output attached by create_file/apply_edits."
         )
