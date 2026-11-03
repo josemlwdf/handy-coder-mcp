@@ -178,26 +178,27 @@ def _list_skills() -> dict:
 
 
 def _query_skills(query: str | None) -> dict:
-    """Return up to five metadata matches ranked by query term coverage."""
+    """Return skills matching any query term across metadata and Markdown."""
     listed = _list_skills()
-    terms = re.findall(r"[a-z0-9]+", (query or "").lower())
-    if not terms:
-        listed["skills"] = []
-        listed["count"] = 0
-        return listed
-
-    ranked: list[tuple[int, str, dict]] = []
-    for skill in listed["skills"]:
-        searchable = " ".join(
-            [skill["name"], skill["description"], *skill["tags"]]
-        ).lower()
-        score = sum(1 for term in terms if term in searchable)
-        if score:
-            ranked.append((score, skill["name"], skill))
-    ranked.sort(key=lambda item: (-item[0], item[1]))
-    listed["skills"] = [item[2] for item in ranked[:5]]
+    listed["skills"] = [
+        skill for skill in listed["skills"] if _skill_matches(skill, query)
+    ]
     listed["count"] = len(listed["skills"])
     return listed
+
+
+def _skill_matches(skill: dict, query: str | None) -> bool:
+    """Match any case-insensitive lexical query term against skill content."""
+    terms = re.findall(r"[a-z0-9]+", (query or "").casefold())
+    if not terms:
+        return False
+    searchable_parts = [skill["name"], skill["description"], *skill["tags"]]
+    try:
+        searchable_parts.append(_skill_file(skill["name"]).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        pass
+    searchable = " ".join(searchable_parts).casefold()
+    return any(term in searchable for term in terms)
 
 
 def _get_skill(name: str | None) -> dict:
@@ -363,7 +364,7 @@ def skills_manage(
             "get_reference",
         ],
         Field(
-            description="list: return all skill metadata, or rank up to five matches when query is supplied. search: filter by query. get/export: retrieve full skill Markdown. list_references: list Markdown references for a skill from references/. get_reference: read one reference Markdown file. save: create/update a skill using its name and description. delete: remove a skill. built-in defaults: grill-me, handoff, mcp-tools-only, plan. (Required: True)"
+            description="list: return all skill metadata, or all skills matching any query term in name, description, tags, or full SKILL.md content. search: same uncapped full-content search. get/export: retrieve full skill Markdown. list_references: list Markdown references for a skill from references/. get_reference: read one reference Markdown file. save: create/update a skill using its name and description. delete: remove a skill. built-in defaults: grill-me, handoff, mcp-tools-only, plan. (Required: True)"
         ),
     ],
     name: Annotated[
@@ -393,7 +394,7 @@ def skills_manage(
     query: Annotated[
         str | None,
         Field(
-            description="For list, rank up to five skills by matching metadata; for search, filter by matching metadata. (Required: False)"
+            description="Case-insensitive lexical search terms; list and search return every skill where any term appears in its name, description, tags, or full SKILL.md Markdown. (Required: False)"
         ),
     ] = None,
     reference: Annotated[
@@ -423,17 +424,7 @@ def skills_manage(
     if action == "get_reference":
         return _get_skill_reference(name, reference)
     if action == "search":
-        needle = (query or "").lower()
-        listed = _list_skills()
-        listed["skills"] = [
-            s
-            for s in listed["skills"]
-            if needle in s["name"].lower()
-            or needle in s["description"].lower()
-            or any(needle in t.lower() for t in s["tags"])
-        ]
-        listed["count"] = len(listed["skills"])
-        return listed
+        return _query_skills(query)
     if action == "delete":
         problem = _validate_name(name)
         if problem:
@@ -511,16 +502,7 @@ def register(mcp):
         if action in {"list", "search"}:
             items = list(session_skills)
             if query is not None:
-                needle = query.lower()
-                items: list = [
-                    item
-                    for item in items
-                    if needle in item["name"].lower()
-                    or needle in item["description"].lower()
-                    or any(needle in tag.lower() for tag in item["tags"])
-                ]
-                if action == "list":
-                    items = items[:5]
+                items = [item for item in items if _skill_matches(item, query)]
             return {**result, "skills": items, "count": len(items)}
         if (
             action in {"get", "export"}
@@ -544,7 +526,7 @@ def register(mcp):
     return mcp.tool(
         description=describe(
             "Manage reusable skills stored as Markdown files at skills/<name>/SKILL.md. "
-            "Actions: list returns metadata for all skills or ranks up to five matches by name, description and tags when query is supplied; search filters those fields; get/export returns full Markdown; list_references lists available files from skills/<name>/references/*.md; get_reference reads one reference file by reference name; delete requires confirm=true, protects baseline skills, and keeps a .bak backup; "
+            "Actions: list returns metadata for all skills or every match on any case-insensitive query term in name, description, tags, or full SKILL.md Markdown; search uses the same uncapped full-content matching; get/export returns full Markdown; list_references lists available files from skills/<name>/references/*.md; get_reference reads one reference file by reference name; delete requires confirm=true, protects baseline skills, and keeps a .bak backup; "
             "save creates a skill from name, description and content; fails with already_exists "
             "unless overwrite=true). Failures return error_code (missing_argument, invalid_name, invalid_reference_name, "
             "invalid_description, content_has_frontmatter, skill_too_large, not_found, already_exists, "

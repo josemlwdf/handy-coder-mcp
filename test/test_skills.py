@@ -79,15 +79,15 @@ class SkillsToolTests(unittest.TestCase):
         self.assertFalse(result["skills"][0]["invokable"])
         self.assertEqual(result["skills"][1]["description"], "Second.")
 
-    def test_list_query_ranks_metadata_matches_and_limits_results(self) -> None:
+    def test_list_query_matches_any_term_without_limit(self) -> None:
         for name in ["e-match", "d-match", "c-match", "b-match", "a-match", "z-match"]:
             self.save(name, description="testing helper", tags=["unit"])
         self.save("top-match", description="python testing task", tags=["python"])
         result = skills.skills_manage(action="list", query="python testing")
-        self.assertEqual(result["count"], 5)
+        self.assertEqual(result["count"], 7)
         self.assertEqual(
             [skill["name"] for skill in result["skills"]],
-            ["top-match", "a-match", "b-match", "c-match", "d-match"],
+            ["a-match", "b-match", "c-match", "d-match", "e-match", "top-match", "z-match"],
         )
 
     def test_list_query_returns_empty_for_unmatched_query(self) -> None:
@@ -96,11 +96,34 @@ class SkillsToolTests(unittest.TestCase):
         self.assertEqual(result["count"], 0)
         self.assertEqual(result["skills"], [])
 
-    def test_search_remains_substring_filter(self) -> None:
+    def test_search_matches_case_insensitive_terms_in_metadata_and_body(self) -> None:
         self.save("first", description="Python helper")
         self.save("second", description="Java helper")
-        result = skills.skills_manage(action="search", query="python")
-        self.assertEqual([skill["name"] for skill in result["skills"]], ["first"])
+        self.save("body-only", description="Other helper", content="Special Quasar protocol.")
+        self.assertEqual(
+            [s["name"] for s in skills.skills_manage(action="search", query="pYtHoN")["skills"]],
+            ["first"],
+        )
+        self.assertEqual(
+            [s["name"] for s in skills.skills_manage(action="search", query="QUASAR absent")["skills"]],
+            ["body-only"],
+        )
+
+    def test_query_on_empty_string_returns_no_matches(self) -> None:
+        self.save()
+        for action in ("search", "list"):
+            result = skills.skills_manage(action=action, query="")
+            self.assertEqual(result["count"], 0)
+            self.assertEqual(result["skills"], [])
+
+    def test_registered_wrapper_uses_full_content_match_without_cap(self) -> None:
+        for index in range(7):
+            self.save(f"skill-{index}", description="Ordinary helper", content="Needle in body.")
+        mcp = FakeMCP()
+        registered = skills.register(mcp)
+        for action in ("search", "list"):
+            result = registered(action=action, query="NEEDLE nowhere")
+            self.assertEqual(result["count"], 7)
 
     def test_save_refuses_overwrite_by_default(self) -> None:
         """Test save refuses overwrite by default function."""
@@ -278,7 +301,7 @@ class BaselineSkillsTests(unittest.TestCase):
             "action"
         ]
         action_field = get_args(action_hint)[1]
-        self.assertIn("query is supplied", action_field.description)
+        self.assertIn("full SKILL.md content", action_field.description)
 
     def test_baseline_skills_are_listed(self) -> None:
         """Test baseline skills are listed function."""

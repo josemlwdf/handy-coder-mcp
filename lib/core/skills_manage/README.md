@@ -56,7 +56,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
       "type": "boolean"
     },
     "query": {
-      "description": "For list, rank up to five skills by matching metadata; for search, filter by matching metadata. (Required: False)",
+      "description": "Case-insensitive lexical search terms; list and search return every skill where any term appears in its name, description, tags, or full SKILL.md Markdown. (Required: False)",
       "type": [
         "string",
         "null"
