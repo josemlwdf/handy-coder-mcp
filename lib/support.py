@@ -15,8 +15,8 @@ from pathlib import Path
 ROOT = os.environ.get("PWD")
 WORKING_DIRECTORY = ""
 SHELL = os.environ.get("SHELL") or ("powershell.exe" if os.name == "nt" else "/bin/sh")
-MAX_READ_BYTES = 2 * 1024 * 1024
-MAX_OUTPUT_BYTES = 1024 * 1024
+MAX_READ_BYTES = 256 * 1024
+MAX_OUTPUT_BYTES = 4_000
 DEFAULT_TIMEOUT_MS = 30_000
 # Generated/build/cache directories skipped by default in workspace scans.
 GENERATED_DIRS = frozenset(
@@ -370,14 +370,18 @@ def run_process(
 
     def decode(key):
         """Decode function."""
-        return bytes(captured[key]).decode("utf-8", "replace") + (
-            "\n...[truncated]" if truncated[key] else ""
-        )
+        text = bytes(captured[key]).decode("utf-8", "replace")
+        if truncated[key]:
+            marker: str = "\n...[truncated]"
+            text = text[: MAX_OUTPUT_BYTES - len(marker)] + marker
+        return text
 
     stderr_text = decode("stderr")
     timeout_reason = f"Process exceeded {timeout_ms}ms." if timed_out else None
     if timed_out:
         stderr_text += f"\n[TIMEOUT] Process exceeded {timeout_ms}ms."
+    if len(stderr_text) > MAX_OUTPUT_BYTES:
+        stderr_text = stderr_text[: MAX_OUTPUT_BYTES - 20] + "\n...[truncated]"
     return {
         "stdout": decode("stdout"),
         "stderr": stderr_text,

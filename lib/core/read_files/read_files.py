@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ... import support
 from ...support import inside, MAX_READ_BYTES, describe
 
+MAX_FILE_CONTENT_CHARS = 16_000
+
 
 class LineRange(BaseModel):
     """LineRange class."""
@@ -25,10 +27,14 @@ class LineRange(BaseModel):
         description="Last line to include, using 1-based numbering; must be greater than or equal to start_line. Required unless the deprecated end alias is supplied. (Required: False)",
     )
     start: int | None = Field(
-        default=None, ge=1, description="Deprecated alias for start_line. (Required: False)"
+        default=None,
+        ge=1,
+        description="Deprecated alias for start_line. (Required: False)",
     )
     end: int | None = Field(
-        default=None, ge=1, description="Deprecated alias for end_line. (Required: False)"
+        default=None,
+        ge=1,
+        description="Deprecated alias for end_line. (Required: False)",
     )
 
     @model_validator(mode="after")
@@ -152,7 +158,7 @@ def read_files(
                 {
                     "path": name,
                     "error_code": "file_too_large",
-                    "message": f"File exceeds 2 MiB read limit: {name}",
+                    "message": f"File exceeds 256 KiB read limit: {name}",
                 }
             )
             continue
@@ -186,12 +192,14 @@ def read_files(
             if start < 1 or end < start:
                 raise ValueError("line ranges require 1 <= start <= end")
             if start > total_lines:
-                file_errors.append({
-                    "path": name,
-                    "error_code": "out_of_range",
-                    "message": f"Requested range starts past EOF: {name} has {total_lines} lines",
-                    "total_lines": total_lines,
-                })
+                file_errors.append(
+                    {
+                        "path": name,
+                        "error_code": "out_of_range",
+                        "message": f"Requested range starts past EOF: {name} has {total_lines} lines",
+                        "total_lines": total_lines,
+                    }
+                )
                 continue
             content = "\n".join(all_lines[start - 1 : end])
             entry["content"] = content
@@ -199,6 +207,12 @@ def read_files(
             entry["applied_end"] = min(end, total_lines)
         else:
             entry["content"] = full_content
+        if len(entry["content"]) > MAX_FILE_CONTENT_CHARS:
+            original_length = len(entry["content"])
+            entry["content"] = entry["content"][:MAX_FILE_CONTENT_CHARS]
+            entry["content_truncated"] = True
+            entry["content_total_length"] = original_length
+            entry["content_omitted_chars"] = original_length - MAX_FILE_CONTENT_CHARS
         output.append(entry)
     return {"files": output, "errors": file_errors}
 
@@ -207,7 +221,7 @@ def register(mcp):
     """Register function."""
     return mcp.tool(
         description=describe(
-            "Read UTF-8 workspace files (max 2 MiB each), optionally by 1-based line range. "
+            "Read UTF-8 workspace files (max 256 KiB each; full content is limited to 16,000 characters per file), optionally by 1-based line range. Use line ranges to retrieve later content. "
             "line_ranges is a list of {path, start_line, end_line} objects, for example [{path: 'src/app.py', start_line: 4, end_line: 6}]; legacy start/end keys are accepted. Files without a range are read in full. "
             "Missing, unreadable, or binary (non-UTF-8) files are returned in errors (with error_code) "
             "alongside successful reads in files. "

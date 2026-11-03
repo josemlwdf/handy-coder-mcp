@@ -223,9 +223,9 @@ def _fetch(url: str, offset: int = 0) -> dict:
             "offset": offset,
             "http_status": http_status,
         }
-    content = raw_text[offset : offset + 20000]
-    has_more = (offset + 20000) < total_length
-    next_offset = offset + 20000 if has_more else None
+    content = raw_text[offset : offset + 4000]
+    has_more = (offset + 4000) < total_length
+    next_offset = offset + 4000 if has_more else None
     return {
         "supported": True,
         "url": final_url,
@@ -251,7 +251,7 @@ def web_fetch_docs(
         int,
         Field(
             ge=0,
-            description="Character offset into the extracted text to start reading from; use to page through content beyond the initial 20 000-character window. (Required: False)",
+            description="Character offset into the extracted text to start reading from; use to page through content later 4,000-character pages. (Required: False)",
         ),
     ] = 0,
 ) -> dict:
@@ -275,7 +275,7 @@ def register(mcp):
         description=describe(
             "Fetch public HTTP(S) text; private targets are blocked. "
             "Response includes http_status, final_url, total_length, and truncated flag. "
-            "Use offset to page through content beyond the initial 20 000-character window; "
+            "Pages contain up to 4,000 characters. Use offset/next_offset to retrieve later content; "
             "next_offset in the response is the value to pass on the next call (null when no more content). "
             "HTML <pre> blocks are preserved as fenced Markdown code blocks and inline <code> as `backticks`; "
             "whitespace outside code is collapsed. "

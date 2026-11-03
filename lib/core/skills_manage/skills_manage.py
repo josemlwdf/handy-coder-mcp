@@ -294,9 +294,7 @@ def _save_skill(
             "content must be the skill body only; frontmatter is generated from name and description.",
         )
 
-    document = (
-        f"---\nname: {name}\ndescription: {description}\n---\n\n{body}\n"
-    )
+    document = f"---\nname: {name}\ndescription: {description}\n---\n\n{body}\n"
     encoded = document.encode("utf-8")
     if len(encoded) > MAX_SKILL_BYTES:
         return _error(
@@ -494,10 +492,11 @@ def register(mcp):
     # Markdown body live for get/export, while descriptions and membership stay
     # fixed until the next server session.
     session_skills = _list_skills()["skills"]
-    session_by_name = {item["name"]: item for item in session_skills}
+    session_by_name: dict = {item["name"]: item for item in session_skills}
 
     @functools.wraps(skills_manage)
     def session_skills_manage(*args, **kwargs):
+        """Session skills manage function."""
         result = skills_manage(*args, **kwargs)
         action = kwargs.get("action", args[0] if args else None)
         query = kwargs.get("query")
@@ -505,8 +504,9 @@ def register(mcp):
             items = list(session_skills)
             if query is not None:
                 needle = query.lower()
-                items = [
-                    item for item in items
+                items: list = [
+                    item
+                    for item in items
                     if needle in item["name"].lower()
                     or needle in item["description"].lower()
                     or any(needle in tag.lower() for tag in item["tags"])
@@ -514,18 +514,30 @@ def register(mcp):
                 if action == "list":
                     items = items[:5]
             return {**result, "skills": items, "count": len(items)}
-        if action in {"get", "export"} and isinstance(result, dict) and "name" in result:
+        if (
+            action in {"get", "export"}
+            and isinstance(result, dict)
+            and "name" in result
+        ):
             item = session_by_name.get(result["name"])
             if item is None:
-                return _error("not_found", f"Skill not found in this session: {result['name']}")
-            return {**result, "description": item["description"], "tags": item["tags"], "version": item["version"], "invokable": item["invokable"]}
+                return _error(
+                    "not_found", f"Skill not found in this session: {result['name']}"
+                )
+            return {
+                **result,
+                "description": item["description"],
+                "tags": item["tags"],
+                "version": item["version"],
+                "invokable": item["invokable"],
+            }
         return result
 
     return mcp.tool(
         description=describe(
             "Manage reusable skills stored as Markdown files at skills/<name>/SKILL.md. "
             "Actions: list returns metadata for all skills or ranks up to five matches by name, description and tags when query is supplied; search filters those fields; get/export returns full Markdown; list_references lists available files from skills/<name>/references/*.md; get_reference reads one reference file by reference name; delete requires confirm=true, protects baseline skills, and keeps a .bak backup; "
-            'save creates a skill from name, description and content; fails with already_exists '
+            "save creates a skill from name, description and content; fails with already_exists "
             "unless overwrite=true). Failures return error_code (missing_argument, invalid_name, invalid_reference_name, "
             "invalid_description, content_has_frontmatter, skill_too_large, not_found, already_exists, "
             "io_error, confirmation_required, protected_skill, backup_exists, path_escape, binary_file). "

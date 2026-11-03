@@ -340,7 +340,7 @@ def apply_edits(
     # Phase 2: Write all staged changes to disk; roll back on failure.
     # Skipped entirely when dry_run=True.
     written: list[str] = []
-    diff_hint = "Diffs include both LLM changes and code polish actions."
+    diff_hint: str = "Diffs include both LLM changes and code polish actions."
     if not dry_run:
         try:
             for resolved_key, new_text in staged_contents.items():
@@ -365,7 +365,7 @@ def apply_edits(
                 apply_line_endings=True,
             )
         except Exception as exc:
-            rollback_errors = []
+            rollback_errors: list = []
             for key in reversed(written):
                 try:
                     Path(key).write_bytes(original_contents[key].encode("utf-8"))
@@ -383,9 +383,14 @@ def apply_edits(
                 "dry_run": False,
             }
         if not isinstance(polish_report, dict):
-            polish_report = {"ok": True, "files": [], "written_files": [], "errors": []}
+            polish_report: dict = {
+                "ok": True,
+                "files": [],
+                "written_files": [],
+                "errors": [],
+            }
         if polish_report.get("ok") is False or polish_report.get("errors"):
-            rollback_errors = []
+            rollback_errors: list = []
             for key in reversed(written):
                 try:
                     Path(key).write_bytes(original_contents[key].encode("utf-8"))
@@ -444,9 +449,7 @@ def apply_edits(
                 "transformations": polished.get("transformations", []),
                 "tool_outputs": polished.get("tool_outputs", []),
                 "code_polish": {
-                    key: value
-                    for key, value in polished.items()
-                    if key != "path"
+                    key: value for key, value in polished.items() if key != "path"
                 },
             }
         )
@@ -471,7 +474,7 @@ def apply_edits(
     written_files: list = [Path(key).relative_to(root).as_posix() for key in written]
     # Per-file polish details live beside the corresponding file changes.
     # Keep only run-level status here to avoid an unassociated files array.
-    polish_summary = {
+    polish_summary: dict = {
         key: value for key, value in polish_report.items() if key != "files"
     }
     response: dict = {

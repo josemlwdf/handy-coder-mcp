@@ -67,7 +67,7 @@ def _python_tool_path(name: str, root: Path) -> str | None:
             Path(sys.executable).parent,
         )
     else:
-        venv_dirs = (
+        venv_dirs: tuple = (
             root / ".venv" / "bin",
             root / "venv" / "bin",
             Path(sys.executable).parent,
@@ -209,9 +209,7 @@ def code_format_lint(
     ] = None,
     ignore: Annotated[
         list[str] | None,
-        Field(
-            description="Optional rule codes to ignore for Ruff. (Required: False)"
-        ),
+        Field(description="Optional rule codes to ignore for Ruff. (Required: False)"),
     ] = None,
     severity: Annotated[
         Literal["all", "error", "warning"],
@@ -401,7 +399,12 @@ def code_format_lint(
                     "tool": "eslint",
                     **_run(
                         eslint,
-                        ["--config", eslint_config_path, *(["--fix"] if fix else []), *args],
+                        [
+                            "--config",
+                            eslint_config_path,
+                            *(["--fix"] if fix else []),
+                            *args,
+                        ],
                         root,
                     ),
                 }

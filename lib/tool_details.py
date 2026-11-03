@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import functools
 import inspect
+import json
 import re
 from typing import Annotated, Any
 
@@ -23,6 +24,105 @@ _TOOL_TAGS: dict[str, tuple[str, ...]] = {
         "discovery",
     ),
 }
+
+_ROUTER_RESULT_CHAR_LIMIT = 16_000
+
+
+def _serialized_length(value: Any) -> int:
+    """Serialized length function."""
+    return len(
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+    )
+
+
+def _trim_routed_result(value: Any) -> Any:
+    """Bound serialized tool results while preserving their JSON structure."""
+    if _serialized_length(value) <= _ROUTER_RESULT_CHAR_LIMIT:
+        return value
+    result = copy.deepcopy(value)
+    changes: list[dict[str, Any]] = []
+
+    def collect(node: Any, path: str = "$") -> list[tuple[int, str, Any]]:
+        """Collect function."""
+        found: list[tuple[int, str, Any]] = []
+        if isinstance(node, dict):
+            for key, child in node.items():
+                child_path = f"{path}.{key}"
+                if isinstance(child, str) and len(child) > 80:
+                    found.append((len(child), child_path, (node, key, child)))
+                else:
+                    found.extend(collect(child, child_path))
+        elif isinstance(node, list):
+            for index, child in enumerate(node):
+                child_path = f"{path}[{index}]"
+                if isinstance(child, str) and len(child) > 80:
+                    found.append((len(child), child_path, (node, index, child)))
+                else:
+                    found.extend(collect(child, child_path))
+        return found
+
+    while _serialized_length(result) > _ROUTER_RESULT_CHAR_LIMIT - 250:
+        candidates = collect(result)
+        if candidates:
+            _, path, (parent, key, original) = max(
+                candidates, key=lambda item: (item[0], item[1])
+            )
+            excess = _serialized_length(result) - (_ROUTER_RESULT_CHAR_LIMIT - 250)
+            keep = max(40, len(original) - excess - 48)
+            keep = min(keep, len(original) - 1)
+            omitted = len(original) - keep
+            parent[key] = original[:keep] + f"…[truncated {omitted} chars]"
+            changes.append({"path": path, "omitted_chars": omitted})
+            continue
+        lists: list[tuple[int, str, list]] = []
+
+        def find_lists(node: Any, path: str = "$") -> None:
+            """Find lists function."""
+            if isinstance(node, dict):
+                for k, child in node.items():
+                    find_lists(child, f"{path}.{k}")
+            elif isinstance(node, list):
+                lists.append((len(node), path, node))
+                for i, child in enumerate(node):
+                    find_lists(child, f"{path}[{i}]")
+
+        find_lists(result)
+        lists: list = [item for item in lists if item[0] > 0]
+        if not lists:
+            break
+        _, path, target = max(lists, key=lambda item: (item[0], item[1]))
+        count = max(
+            1,
+            min(
+                len(target),
+                (_serialized_length(result) - (_ROUTER_RESULT_CHAR_LIMIT - 250)) // 2,
+            ),
+        )
+        del target[-count:]
+        if (
+            changes
+            and changes[-1].get("path") == path
+            and "omitted_items" in changes[-1]
+        ):
+            changes[-1]["omitted_items"] += count
+        else:
+            changes.append({"path": path, "omitted_items": count})
+
+    if not isinstance(result, dict):
+        result: dict = {"result": result}
+    metadata: dict = {
+        "reason": "router_result_limit",
+        "limit_chars": _ROUTER_RESULT_CHAR_LIMIT,
+        "affected": changes,
+    }
+    if result.get("truncation") is not None:
+        metadata["previous_truncation"] = result["truncation"]
+    result["truncated"] = True
+    result["truncation"] = metadata
+    while _serialized_length(result) > _ROUTER_RESULT_CHAR_LIMIT and changes:
+        changes.pop(0)
+        metadata["affected"] = changes
+    return result
 
 
 def _brief(description: str) -> str:
@@ -270,7 +370,7 @@ def _nested_detail(
     )
     concrete_object: dict | None = None
     if isinstance(alternatives, list):
-        expanded = [
+        expanded: list = [
             resolve(branch) for branch in alternatives if isinstance(branch, dict)
         ]
         concrete_object = next(
@@ -286,7 +386,7 @@ def _nested_detail(
             # Keep concrete alternatives visible in the summary and constraints.
             # Nullable nested models must not appear to accept only null to
             # clients that ignore JSON Schema combinators.
-            alternative_types = [
+            alternative_types: list = [
                 branch_type
                 for branch in expanded
                 for branch_type in (
@@ -295,7 +395,9 @@ def _nested_detail(
                     else [
                         branch.get(
                             "type",
-                            "object" if isinstance(branch.get("properties"), dict) else None,
+                            "object"
+                            if isinstance(branch.get("properties"), dict)
+                            else None,
                         )
                     ]
                 )
@@ -303,7 +405,7 @@ def _nested_detail(
             ]
             schema_type = list(dict.fromkeys(alternative_types)) or None
     if concrete_object and not isinstance(prop.get("properties"), dict):
-        prop = {**concrete_object, **prop}
+        prop: dict = {**concrete_object, **prop}
     item: dict = {
         "type": schema_type or prop.get("$ref", "object"),
         "required": name in required,
@@ -441,9 +543,7 @@ def install(mcp: Any) -> None:
         }
 
     # Register through the original FastMCP method so this meta-tool is not shortened.
-    meta_description: str = (
-        "Get a tool's full docs and arguments."
-    )
+    meta_description: str = "Get a tool's full docs and arguments."
     original_tool(name="get_tool_details", description=meta_description)(
         get_tool_details
     )
@@ -479,19 +579,19 @@ def install(mcp: Any) -> None:
             }
         terms = re.findall(r"[\w.-]+", query_text)
         manager_tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
-        candidates = []
+        candidates: list = []
         if query_text == "*":
-            result = []
+            result: list = []
             ordered_catalog = sorted(
                 catalog.items(), key=lambda item: item[0].casefold()
             )
             for name, entry in ordered_catalog:
                 if name == "discover_tools" or name not in manager_tools:
                     continue
-                parameters = {}
+                parameters: dict = {}
                 details = _arguments(entry.get("inputSchema", {}))
                 for parameter_name, detail in details.items():
-                    parameter = {
+                    parameter: dict = {
                         "type": detail["type"],
                         "description": _brief(detail["description"]),
                         "required": detail["required"],
@@ -513,12 +613,14 @@ def install(mcp: Any) -> None:
                             "required": item["required"],
                         }
                     parameters[parameter_name] = parameter
-                result.append({
-                    "name": name,
-                    "description": _brief(entry.get("description", "")),
-                    "tags": list(_TOOL_TAGS.get(name, ())),
-                    "parameters": parameters,
-                })
+                result.append(
+                    {
+                        "name": name,
+                        "description": _brief(entry.get("description", "")),
+                        "tags": list(_TOOL_TAGS.get(name, ())),
+                        "parameters": parameters,
+                    }
+                )
             return {"tools": result, "count": len(result)}
 
         for name, entry in catalog.items():
@@ -542,7 +644,7 @@ def install(mcp: Any) -> None:
                 continue
             exact = name_text == query_text
             # Score each term by its strongest field so repeated wording does not inflate rank.
-            score = 0
+            score: int = 0
             for term in terms:
                 if term in name_text:
                     score += 10
@@ -553,19 +655,24 @@ def install(mcp: Any) -> None:
                 elif term in description_text:
                     score += 1
             # Partial matches are useful; matching more query terms ranks higher.
-            candidates.append((not exact, -matched, -score, name.casefold(), name, entry))
+            candidates.append(
+                (not exact, -matched, -score, name.casefold(), name, entry)
+            )
         candidates.sort(key=lambda item: item[:5])
-        result = []
+        result: list = []
         for _, _, _, _, name, entry in candidates[: max(0, min(int(limit), 4))]:
-            result.append({
-                "name": name,
-                "description": entry.get("description", ""),
-                "tags": list(_TOOL_TAGS.get(name, ())),
-                "inputSchema": copy.deepcopy(entry.get("inputSchema", {})),
-            })
+            result.append(
+                {
+                    "name": name,
+                    "description": entry.get("description", ""),
+                    "tags": list(_TOOL_TAGS.get(name, ())),
+                    "inputSchema": copy.deepcopy(entry.get("inputSchema", {})),
+                }
+            )
         return {"tools": result, "count": len(result)}
 
     def register_meta(name: str, description: str, function: Any) -> None:
+        """Register meta function."""
         original_tool(name=name, description=description)(function)
         runtime = getattr(getattr(mcp, "_tool_manager", None), "_tools", {}).get(name)
         catalog[name] = {"description": description, "inputSchema": _schema(runtime)}
@@ -595,18 +702,35 @@ def install(mcp: Any) -> None:
         canonical = _canonical_tool_name(requested_name)
         manager = getattr(mcp, "_tool_manager", None)
         runtime_tools = getattr(manager, "_tools", {})
-        if canonical not in catalog or canonical not in runtime_tools or canonical == "invoke_tool":
-            return {"error_code": "unknown_tool", "message": f"Unknown or unavailable tool: {requested_name}"}
+        if (
+            canonical not in catalog
+            or canonical not in runtime_tools
+            or canonical == "invoke_tool"
+        ):
+            return {
+                "error_code": "unknown_tool",
+                "message": f"Unknown or unavailable tool: {requested_name}",
+            }
         if not isinstance(arguments, dict):
-            return {"error_code": "invalid_arguments", "message": "arguments must be a JSON object"}
+            return {
+                "error_code": "invalid_arguments",
+                "message": "arguments must be a JSON object",
+            }
         try:
-            return await manager.call_tool(canonical, arguments)
-        except Exception as exc:  # manager errors are returned as structured router errors
-            return {"error_code": "tool_invocation_failed", "tool_name": canonical, "message": str(exc)}
+            result = await manager.call_tool(canonical, arguments)
+            return _trim_routed_result(result)
+        except (
+            Exception
+        ) as exc:  # manager errors are returned as structured router errors
+            return {
+                "error_code": "tool_invocation_failed",
+                "tool_name": canonical,
+                "message": str(exc),
+            }
 
     register_meta(
         "invoke_tool",
-        "Call a registered tool by name with JSON args.",
+        "Call a registered tool by name with JSON args. Results are capped at 16,000 JSON-serialized characters and oversized values include truncated=true and truncation metadata; use tool paging options to retrieve omitted content. Discovery and tool details are not routed through this cap.",
         invoke_tool,
     )
 
@@ -615,10 +739,18 @@ def install(mcp: Any) -> None:
     if manager is not None and callable(getattr(manager, "list_tools", None)):
         original_list_tools = manager.list_tools
 
-        def public_list_tools(*args, **kwargs):
+        def public_list_tools(*args, **kwargs) -> list:
+            """Public list tools function."""
             listed = original_list_tools(*args, **kwargs)
-            public_names = {"get_capabilities", "get_tool_details", "discover_tools", "invoke_tool"}
-            return [tool for tool in listed if getattr(tool, "name", None) in public_names]
+            public_names: set = {
+                "get_capabilities",
+                "get_tool_details",
+                "discover_tools",
+                "invoke_tool",
+            }
+            return [
+                tool for tool in listed if getattr(tool, "name", None) in public_names
+            ]
 
         manager.list_tools = public_list_tools
 

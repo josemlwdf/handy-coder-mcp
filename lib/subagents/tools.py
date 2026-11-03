@@ -878,7 +878,12 @@ def subagent_run(
             description="Alias for action='run': when true, behaves like verification_policy='strict'. verification_policy remains canonical. (Required: False)"
         ),
     ] = False,
-    dry_run: Annotated[bool, Field(description="Validate the role, task, and selected backend without creating a task, opening a cooperative frame, or invoking a model. (Required: False)")] = False,
+    dry_run: Annotated[
+        bool,
+        Field(
+            description="Validate the role, task, and selected backend without creating a task, opening a cooperative frame, or invoking a model. (Required: False)"
+        ),
+    ] = False,
 ) -> dict:
     """Subagent run function."""
     selected_continue_model: None = None
@@ -926,8 +931,14 @@ def subagent_run(
             "dry_run": True,
             "role": role_obj.name,
             "backend": selected_backend or "unavailable",
-            "message": "Run setup is valid; no task or model request was created." if available else "No subagent backend is available; no task was created.",
-            **({"model": selected_continue_model.model.safe_summary()} if selected_continue_model else {}),
+            "message": "Run setup is valid; no task or model request was created."
+            if available
+            else "No subagent backend is available; no task was created.",
+            **(
+                {"model": selected_continue_model.model.safe_summary()}
+                if selected_continue_model
+                else {}
+            ),
             **({"tooling_warning": tooling_warning} if tooling_warning else {}),
         }
 
@@ -986,9 +997,7 @@ def subagent_run(
 def subagent_status(
     task_id: Annotated[
         str,
-        Field(
-            description="Task identifier returned by subagent_run. (Required: True)"
-        ),
+        Field(description="Task identifier returned by subagent_run. (Required: True)"),
     ],
 ) -> dict:
     """Subagent status function."""
@@ -1021,15 +1030,13 @@ def subagent_status(
 def subagent_result(
     task_id: Annotated[
         str,
-        Field(
-            description="Task identifier returned by subagent_run. (Required: True)"
-        ),
+        Field(description="Task identifier returned by subagent_run. (Required: True)"),
     ],
     offset: Annotated[
         int | None,
         Field(
             ge=0,
-            description="Optional 0-based character offset for paging long results. (Required: False)",
+            description="Optional 0-based character offset for paging long results; each page contains at most 4,000 characters. (Required: False)",
         ),
     ] = None,
 ) -> dict:
@@ -1747,7 +1754,7 @@ def register(mcp):
         "subagent_manage(action='run') accepts an optional Continue model name or model identifier; explicit selection uses that model's direct API provider regardless of automatic backend precedence. get_capabilities lists safe model choices, and subagent responses/status include the chosen model summary when known. Report selected models when summarizing delegated work to the user. "
         "Loop backends let write-capable roles (planner, coder, committer) create and edit files within the workspace. Use subagents for broad searches, independent reviews and summaries of large inputs when available. "
         "When status is completed, consume result and review verification metadata; when running, poll subagent_manage(action='status'); "
-        "when unavailable, do the work yourself in this conversation and do not retry; when delegated_to_host (explicit SUBAGENT_BACKEND=cooperative only, scoped role mode), follow instructions then call subagent_manage(action='complete'). Cooperative tasks expire after five minutes; successful git_manage commits by a committer close that frame automatically, while skipped or unsuccessful commits and other roles require explicit completion via subagent_manage(action='complete'). Streaming and checkpoint/resume are unsupported. Roles: generalist/explorer are read-only, reviewer adds diagnostics/tests, planner can also create/edit, coder can create/edit plus diagnostics/tests. Result pages include final_offset, final_total_length, final_next_offset, and trace metadata. An open frame blocks tools outside its role allowlist; recover with subagent_manage(action='complete') or subagent_manage(action='cancel', confirm=true)."
+        "when unavailable, do the work yourself in this conversation and do not retry; when delegated_to_host (explicit SUBAGENT_BACKEND=cooperative only, scoped role mode), follow instructions then call subagent_manage(action='complete'). Cooperative tasks expire after five minutes; successful git_manage commits by a committer close that frame automatically, while skipped or unsuccessful commits and other roles require explicit completion via subagent_manage(action='complete'). Streaming and checkpoint/resume are unsupported. Roles: generalist/explorer are read-only, reviewer adds diagnostics/tests, planner can also create/edit, coder can create/edit plus diagnostics/tests. Result pages contain at most 4,000 final-text characters and include final_offset, final_total_length, final_next_offset, and trace metadata. An open frame blocks tools outside its role allowlist; recover with subagent_manage(action='complete') or subagent_manage(action='cancel', confirm=true)."
     )
     mcp.tool(
         description=describe(

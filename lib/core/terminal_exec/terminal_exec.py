@@ -66,7 +66,7 @@ def register(mcp):
     return mcp.tool(
         description=describe(
             "Run a shell command in the workspace or a confined subdirectory. "
-            "Output is limited to 1 MiB per stream; timeout defaults to 30 seconds (up to 600s). "
+            "Stdout and stderr are each limited to 4,000 characters; timeout defaults to 30 seconds (up to 600s). "
             'Accepts optional env as an object of string values (for example {"MODE": "test"}) and stdin; response exit_code is the process exit status (124 on timeout). Uses heuristic lexical checks to prevent recognizable path escapes, but this is not a complete sandbox; checks can be bypassed and are not OS isolation. Shell selection defaults to configured shell.',
             include_working_directory=True,
         )

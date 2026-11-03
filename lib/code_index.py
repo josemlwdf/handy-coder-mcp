@@ -15,18 +15,35 @@ from . import support
 
 SCHEMA_VERSION: int = 2
 LANGUAGES = {
-    ".cs": ("C#", "csharp"), ".py": ("Python", "python"),
-    ".js": ("JavaScript", "javascript"), ".jsx": ("JavaScript", "javascript"),
-    ".mjs": ("JavaScript", "javascript"), ".cjs": ("JavaScript", "javascript"),
-    ".ts": ("TypeScript", "typescript"), ".tsx": ("TypeScript", "tsx"),
-    ".java": ("Java", "java"), ".c": ("C", "c"), ".h": ("C", "c"),
-    ".cc": ("C++", "cpp"), ".cpp": ("C++", "cpp"), ".cxx": ("C++", "cpp"),
-    ".hpp": ("C++", "cpp"), ".hh": ("C++", "cpp"), ".go": ("Go", "go"),
-    ".rs": ("Rust", "rust"), ".php": ("PHP", "php"), ".rb": ("Ruby", "ruby"),
-    ".swift": ("Swift", "swift"), ".kt": ("Kotlin", "kotlin"),
-    ".kts": ("Kotlin", "kotlin"), ".scala": ("Scala", "scala"),
-    ".dart": ("Dart", "dart"), ".lua": ("Lua", "lua"),
-    ".r": ("R", "r"), ".sh": ("Shell", "bash"), ".bash": ("Shell", "bash"),
+    ".cs": ("C#", "csharp"),
+    ".py": ("Python", "python"),
+    ".js": ("JavaScript", "javascript"),
+    ".jsx": ("JavaScript", "javascript"),
+    ".mjs": ("JavaScript", "javascript"),
+    ".cjs": ("JavaScript", "javascript"),
+    ".ts": ("TypeScript", "typescript"),
+    ".tsx": ("TypeScript", "tsx"),
+    ".java": ("Java", "java"),
+    ".c": ("C", "c"),
+    ".h": ("C", "c"),
+    ".cc": ("C++", "cpp"),
+    ".cpp": ("C++", "cpp"),
+    ".cxx": ("C++", "cpp"),
+    ".hpp": ("C++", "cpp"),
+    ".hh": ("C++", "cpp"),
+    ".go": ("Go", "go"),
+    ".rs": ("Rust", "rust"),
+    ".php": ("PHP", "php"),
+    ".rb": ("Ruby", "ruby"),
+    ".swift": ("Swift", "swift"),
+    ".kt": ("Kotlin", "kotlin"),
+    ".kts": ("Kotlin", "kotlin"),
+    ".scala": ("Scala", "scala"),
+    ".dart": ("Dart", "dart"),
+    ".lua": ("Lua", "lua"),
+    ".r": ("R", "r"),
+    ".sh": ("Shell", "bash"),
+    ".bash": ("Shell", "bash"),
     ".sql": ("SQL", "sql"),
 }
 SOURCE_EXTENSIONS = frozenset(LANGUAGES)
@@ -50,7 +67,7 @@ _LOCK_RETRY_DELAY = 0.05
 _WRITE_LOCK = threading.RLock()
 
 
-def _ignored_directory(name: str, exclusions=None) -> bool:
+def _ignored_directory(name: str, exclusions: None = None) -> bool:
     """Return whether a directory name is hidden or explicitly excluded."""
     return name.startswith(".") or name in (DEFAULT_EXCLUDES | set(exclusions or ()))
 
@@ -94,7 +111,7 @@ def _db(readonly: bool = True):
     return con
 
 
-def _initialize_db():
+def _initialize_db() -> None:
     """Create and migrate the index using a writable connection."""
     root = Path(support.ROOT).resolve()
     path = root / ".handy-coder" / "code_index.sqlite3"
@@ -128,7 +145,7 @@ def _initialize_db():
             raise IndexErrorBase(f"SQLite FTS5 is unavailable: {exc}") from exc
         raise
     for table in ("files", "symbols", "references_"):
-        existing = {row[1] for row in con.execute(f"PRAGMA table_info({table})")}
+        existing: set = {row[1] for row in con.execute(f"PRAGMA table_info({table})")}
         for column in ("language", "analysis_mode"):
             if column not in existing:
                 con.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
@@ -233,7 +250,10 @@ def _extract(source: bytes) -> tuple:
                 # name, or a parenthesized expression. Prefer its terminal
                 # identifier so ``calculator.Add(2, 3)`` indexes as ``Add``.
                 name_node = target
-                while name_node.type in {"member_access_expression", "invocation_expression"}:
+                while name_node.type in {
+                    "member_access_expression",
+                    "invocation_expression",
+                }:
                     child = name_node.child_by_field_name("name")
                     if child is None:
                         break
@@ -369,31 +389,57 @@ def _lexical_extract(source: bytes) -> tuple[list, list]:
         r"(?m)^\s*(?:(?:public|private|protected|static|async|virtual|override|export|final)\s+)*(?:[\w<>?\[\].]+\s+)?([A-Za-z_$][\w$]*)\s*\([^;\n]*\)\s*(?:\{|=>|:|$)"
     )
     declarations = list(declaration.finditer(text))
-    existing_offsets = {m.start(1) for m in declarations}
-    declarations.extend(m for m in callable_decl.finditer(text) if m.start(1) not in existing_offsets)
+    existing_offsets: set = {m.start(1) for m in declarations}
+    declarations.extend(
+        m for m in callable_decl.finditer(text) if m.start(1) not in existing_offsets
+    )
     for match in declarations:
         name = match.group(1)
         line = text.count("\n", 0, match.start()) + 1
-        source_line = text[match.start():].splitlines()[0].strip()
-        kind_match = re.search(r"\b(class|struct|interface|enum|function|func|def|fn|type)\b", source_line, re.I)
+        source_line = text[match.start() :].splitlines()[0].strip()
+        kind_match = re.search(
+            r"\b(class|struct|interface|enum|function|func|def|fn|type)\b",
+            source_line,
+            re.I,
+        )
         kind = kind_match.group(1).lower() if kind_match else "declaration"
-        symbols.append({"name": name, "qualified_name": name, "kind": kind,
-            "namespace": "", "containing_type": None, "signature": source_line[:240],
-            "docs": "", "start_line": line, "end_line": line,
-            "source": source_line, "searchable": _tokens(source_line)})
-    declaration_offsets = {match.start(1) for match in declarations}
+        symbols.append(
+            {
+                "name": name,
+                "qualified_name": name,
+                "kind": kind,
+                "namespace": "",
+                "containing_type": None,
+                "signature": source_line[:240],
+                "docs": "",
+                "start_line": line,
+                "end_line": line,
+                "source": source_line,
+                "searchable": _tokens(source_line),
+            }
+        )
+    declaration_offsets: set = {match.start(1) for match in declarations}
     for m in re.finditer(r"\b[A-Za-z_$][\w$]*\b", text):
         word = m.group()
         if m.start() in declaration_offsets:
             continue
         line = text.count("\n", 0, m.start()) + 1
         snippet = text.splitlines()[line - 1].strip()[:240]
-        refs.append({"target": word, "kind": "lexical_match", "line": line,
-            "snippet": snippet, "enclosing_type": None, "enclosing_method": None})
+        refs.append(
+            {
+                "target": word,
+                "kind": "lexical_match",
+                "line": line,
+                "snippet": snippet,
+                "enclosing_type": None,
+                "enclosing_method": None,
+            }
+        )
     return symbols, refs
 
 
 def _extract_for(path: Path, source: bytes) -> tuple[list, list, str, str]:
+    """Extract for function."""
     language, grammar = LANGUAGES[path.suffix.lower()]
     if path.suffix.lower() == ".cs":
         try:
@@ -404,6 +450,7 @@ def _extract_for(path: Path, source: bytes) -> tuple[list, list, str, str]:
             return symbols, refs, language, "lexical"
     try:
         from tree_sitter_language_pack import get_parser
+
         parser = get_parser(grammar)
     except (ImportError, LookupError, RuntimeError):
         symbols, refs = _lexical_extract(source)
@@ -412,38 +459,70 @@ def _extract_for(path: Path, source: bytes) -> tuple[list, list, str, str]:
     tree = parser.parse(source)
     root = tree.root_node
     symbols, refs = [], []
-    kinds = ("class", "struct", "interface", "enum", "function", "method", "type", "trait")
-    def visit(node):
+    kinds: tuple = (
+        "class",
+        "struct",
+        "interface",
+        "enum",
+        "function",
+        "method",
+        "type",
+        "trait",
+    )
+
+    def visit(node) -> None:
+        """Visit function."""
         typ = node.type.lower()
         if typ in {"identifier", "name", "type_identifier", "field_identifier"}:
             parent = node.parent
             target = _node_text(node, source)
-            reference_kind = "identifier_usage"
+            reference_kind: str = "identifier_usage"
             if language == "PHP" and parent and parent.type == "variable_name":
                 target = _node_text(parent, source)
-                reference_kind = "variable"
+                reference_kind: str = "variable"
             elif language == "SQL":
-                reference_kind = "unquoted_identifier"
-            if language != "SQL" and parent and parent.child_by_field_name("name") == node:
+                reference_kind: str = "unquoted_identifier"
+            if (
+                language != "SQL"
+                and parent
+                and parent.child_by_field_name("name") == node
+            ):
                 pass
             elif parent:
-                refs.append({"target": target, "kind": reference_kind,
-                    "line": node.start_point.row + 1,
-                    "snippet": _node_text(parent, source).splitlines()[0][:240],
-                    "enclosing_type": None, "enclosing_method": None})
+                refs.append(
+                    {
+                        "target": target,
+                        "kind": reference_kind,
+                        "line": node.start_point.row + 1,
+                        "snippet": _node_text(parent, source).splitlines()[0][:240],
+                        "enclosing_type": None,
+                        "enclosing_method": None,
+                    }
+                )
         if any(k in typ for k in kinds):
             name_node = node.child_by_field_name("name")
             if name_node:
                 name = _node_text(name_node, source)
                 body = _node_text(node, source)
                 line = node.start_point.row + 1
-                symbols.append({"name": name, "qualified_name": name, "kind": typ,
-                    "namespace": "", "containing_type": None,
-                    "signature": body.splitlines()[0][:240], "docs": "",
-                    "start_line": line, "end_line": node.end_point.row + 1,
-                    "source": body, "searchable": _tokens(body)})
+                symbols.append(
+                    {
+                        "name": name,
+                        "qualified_name": name,
+                        "kind": typ,
+                        "namespace": "",
+                        "containing_type": None,
+                        "signature": body.splitlines()[0][:240],
+                        "docs": "",
+                        "start_line": line,
+                        "end_line": node.end_point.row + 1,
+                        "source": body,
+                        "searchable": _tokens(body),
+                    }
+                )
         for child in node.children:
             visit(child)
+
     visit(root)
     if language == "SQL":
         # The bundled SQL grammar treats double-quoted field names as string
@@ -452,11 +531,20 @@ def _extract_for(path: Path, source: bytes) -> tuple[list, list, str, str]:
         text = source.decode("utf-8", "replace")
         for match in re.finditer(r'"(?:""|[^"\\])*"', text):
             line = text.count("\n", 0, match.start()) + 1
-            refs.append({"target": match.group(), "kind": "quoted_identifier",
-                "line": line, "snippet": text.splitlines()[line - 1].strip()[:240],
-                "enclosing_type": None, "enclosing_method": None})
+            refs.append(
+                {
+                    "target": match.group(),
+                    "kind": "quoted_identifier",
+                    "line": line,
+                    "snippet": text.splitlines()[line - 1].strip()[:240],
+                    "enclosing_type": None,
+                    "enclosing_method": None,
+                }
+            )
     if root.has_error:
-        raise IndexErrorBase(f"{language} syntax tree contains parse errors; file was not replaced in the index")
+        raise IndexErrorBase(
+            f"{language} syntax tree contains parse errors; file was not replaced in the index"
+        )
     return symbols, refs, language, "syntax"
 
 
@@ -483,10 +571,10 @@ def set_index_status(status: str, **details) -> None:
     """Persist the background indexer's latest state for navigation responses."""
     with _WRITE_LOCK:
         for attempt in range(_LOCK_RETRIES + 1):
-            con = None
+            con: None = None
             try:
                 con = _db(readonly=False)
-                values = {"state": status, "updated_at": time.time(), **details}
+                values: dict = {"state": status, "updated_at": time.time(), **details}
                 with con:
                     for key, value in values.items():
                         con.execute(
@@ -495,7 +583,9 @@ def set_index_status(status: str, **details) -> None:
                         )
                 return
             except sqlite3.OperationalError as exc:
-                if ("locked" not in str(exc).lower() and "busy" not in str(exc).lower()) or attempt == _LOCK_RETRIES:
+                if (
+                    "locked" not in str(exc).lower() and "busy" not in str(exc).lower()
+                ) or attempt == _LOCK_RETRIES:
                     raise
                 time.sleep(_LOCK_RETRY_DELAY * (attempt + 1))
             finally:
@@ -503,31 +593,43 @@ def set_index_status(status: str, **details) -> None:
                     con.close()
 
 
-def index_status(con=None) -> dict:
+def index_status(con: None = None) -> dict:
     """Return persisted worker state and current index counts."""
     own_connection = con is None
     db_path = Path(support.ROOT).resolve() / ".handy-coder" / "code_index.sqlite3"
     if own_connection and not db_path.exists():
         return {
-            "state": "unknown", "worker_pid": None, "updated_at": None,
-            "scanned": 0, "failed": 0, "message": None, "files": 0, "symbols": 0,
+            "state": "unknown",
+            "worker_pid": None,
+            "updated_at": None,
+            "scanned": 0,
+            "failed": 0,
+            "message": None,
+            "files": 0,
+            "symbols": 0,
         }
     con = con or _db()
     try:
-        metadata = {
+        metadata: dict = {
             row["key"]: row["value"]
-            for row in con.execute("SELECT key,value FROM metadata WHERE key LIKE 'index_%'")
+            for row in con.execute(
+                "SELECT key,value FROM metadata WHERE key LIKE 'index_%'"
+            )
         }
         return {
             "state": metadata.get("index_state", "unknown"),
             "worker_pid": int(metadata["index_worker_pid"])
-            if metadata.get("index_worker_pid") else None,
+            if metadata.get("index_worker_pid")
+            else None,
             "updated_at": float(metadata["index_updated_at"])
-            if metadata.get("index_updated_at") else None,
+            if metadata.get("index_updated_at")
+            else None,
             "scanned": int(metadata.get("index_scanned", 0)),
             "failed": int(metadata.get("index_failed", 0)),
             "message": metadata.get("index_message"),
-            "files": con.execute("SELECT COUNT(*) FROM files WHERE error IS NULL").fetchone()[0],
+            "files": con.execute(
+                "SELECT COUNT(*) FROM files WHERE error IS NULL"
+            ).fetchone()[0],
             "symbols": con.execute("SELECT COUNT(*) FROM symbols").fetchone()[0],
         }
     finally:
@@ -536,6 +638,7 @@ def index_status(con=None) -> dict:
 
 
 def _index_status_hint(status: dict) -> str:
+    """Index status hint function."""
     state = status["state"]
     if state in {"scanning", "refreshing"}:
         return f"The workspace index is {state} ({status['scanned']} files scanned so far)."
@@ -550,7 +653,7 @@ def _index_status_hint(status: dict) -> str:
     return "No indexing status is available yet; run code_intel(action='index') to start indexing. The background indexer may not have started, or the index may still be building or refreshing."
 
 
-def _index_codebase_once(exclusions: None = None, progress=None) -> dict:
+def _index_codebase_once(exclusions: None = None, progress: None = None) -> dict:
     """Index codebase function."""
     root = Path(support.ROOT).resolve(strict=True)
     _initialize_db()
@@ -579,8 +682,12 @@ def _index_codebase_once(exclusions: None = None, progress=None) -> dict:
                 data = path.read_bytes()
                 digest = hashlib.sha256(data).hexdigest()
                 st = path.stat()
-                if (rel in known and known[rel]["sha256"] == digest
-                        and known[rel]["language"] and known[rel]["analysis_mode"]):
+                if (
+                    rel in known
+                    and known[rel]["sha256"] == digest
+                    and known[rel]["language"]
+                    and known[rel]["analysis_mode"]
+                ):
                     with con:
                         con.execute(
                             "UPDATE files SET size=?,mtime=? WHERE path=?",
@@ -614,7 +721,15 @@ def _index_codebase_once(exclusions: None = None, progress=None) -> dict:
                         con.execute("DELETE FROM files WHERE id=?", (old["id"],))
                     cur = con.execute(
                         "INSERT INTO files(path,sha256,size,mtime,indexed_at,language,analysis_mode) VALUES(?,?,?,?,?,?,?)",
-                        (rel, digest, st.st_size, st.st_mtime, time.time(), language, analysis_mode),
+                        (
+                            rel,
+                            digest,
+                            st.st_size,
+                            st.st_mtime,
+                            time.time(),
+                            language,
+                            analysis_mode,
+                        ),
                     )
                     fid = cur.lastrowid
                     for s in symbols:
@@ -715,9 +830,9 @@ def _index_codebase_once(exclusions: None = None, progress=None) -> dict:
         con.close()
 
 
-def index_codebase(exclusions: None = None, progress=None) -> dict:
+def index_codebase(exclusions: None = None, progress: None = None) -> dict:
     """Index with bounded retries when SQLite reports transient lock errors."""
-    result = None
+    result: None = None
     for attempt in range(_LOCK_RETRIES + 1):
         try:
             result = _index_codebase_once(exclusions, progress)
@@ -727,8 +842,9 @@ def index_codebase(exclusions: None = None, progress=None) -> dict:
                 raise
             time.sleep(_LOCK_RETRY_DELAY * (attempt + 1))
             continue
-        lock_failures = [
-            error for error in result.get("errors", [])
+        lock_failures: list = [
+            error
+            for error in result.get("errors", [])
             if "locked" in error.get("message", "").lower()
             or "busy" in error.get("message", "").lower()
         ]
@@ -778,8 +894,10 @@ def _code_navigator_once(
     if not db_path.exists():
         status = index_status()
         return {
-            "results": [], "references": [],
-            "hint": _index_status_hint(status), "index_status": status,
+            "results": [],
+            "references": [],
+            "hint": _index_status_hint(status),
+            "index_status": status,
         }
     con = _db()
     try:
@@ -805,25 +923,29 @@ def _code_navigator_once(
                 "SELECT s.*,f.path,bm25(symbol_fts,8.0,6.0,5.0,2.0,1.0,0.7) rank FROM symbol_fts JOIN symbols s ON s.id=symbol_fts.rowid JOIN files f ON f.id=s.file_id WHERE symbol_fts MATCH ?",
                 (expr,),
             ).fetchall()
-            ranked_results = []
+            ranked_results: list = []
             for r in rows:
                 name_tokens = set(_tokens(r["name"]).split())
                 qualified_tokens = set(_tokens(r["qualified_name"]).split())
                 source_tokens = set(
                     _tokens(
                         " ".join(
-                            (r["signature"] or "", r["docs"] or "", r["searchable"] or "")
+                            (
+                                r["signature"] or "",
+                                r["docs"] or "",
+                                r["searchable"] or "",
+                            )
                         )
                     ).split()
                 )
                 path_tokens = set(_tokens(r["path"]).split())
                 signature_tokens = set(_tokens(r["signature"] or "").split())
                 docs_tokens = set(_tokens(r["docs"] or "").split())
-                body_text = (r["source"] or "")
+                body_text = r["source"] or ""
                 if r["signature"]:
                     body_text = body_text.replace(r["signature"], "", 1)
                 body_tokens = set(_tokens(body_text).split()) - signature_tokens
-                matched_fields = []
+                matched_fields: list = []
                 if query_tokens & name_tokens:
                     matched_fields.append("name")
                 if query_tokens & qualified_tokens:
@@ -856,7 +978,7 @@ def _code_navigator_once(
                     priority, reason = 7, "source-text"
                 else:
                     priority, reason = 8, "path"
-                item = {
+                item: dict = {
                     "name": r["name"],
                     "qualified_name": r["qualified_name"],
                     "kind": r["kind"],
@@ -870,10 +992,20 @@ def _code_navigator_once(
                     "match_reason": reason,
                     "matched_fields": matched_fields,
                 }
-                coverage = len(query_tokens & (name_tokens | qualified_tokens | signature_tokens | docs_tokens | body_tokens | path_tokens))
+                coverage = len(
+                    query_tokens
+                    & (
+                        name_tokens
+                        | qualified_tokens
+                        | signature_tokens
+                        | docs_tokens
+                        | body_tokens
+                        | path_tokens
+                    )
+                )
                 ranked_results.append((priority, -coverage, r["rank"], item))
             ranked_results.sort(key=lambda match: (match[0], match[1], match[2]))
-            results = [item for _, _, _, item in ranked_results[:limit]]
+            results: list = [item for _, _, _, item in ranked_results[:limit]]
             return {
                 "results": results,
                 "index_status": status,
@@ -884,7 +1016,9 @@ def _code_navigator_once(
                 "SELECT r.*,f.path,f.language,f.analysis_mode FROM references_ r JOIN files f ON f.id=r.file_id ORDER BY f.path,r.line"
             ).fetchall()
             requested = symbol.split(".")[-1]
+
             def ref_matches(row):
+                """Ref matches function."""
                 target = row["target"]
                 language = row["language"] or ""
                 if row["analysis_mode"] != "syntax":
@@ -897,14 +1031,21 @@ def _code_navigator_once(
                     return target.lower() == requested.lower()
                 if language == "SQL":
                     # PostgreSQL folds unquoted identifiers; quoted names retain case.
-                    quoted = row["kind"] == "quoted_identifier" or requested.startswith('"')
-                    return target == requested if quoted else target.lower() == requested.lower()
+                    quoted = row["kind"] == "quoted_identifier" or requested.startswith(
+                        '"'
+                    )
+                    return (
+                        target == requested
+                        if quoted
+                        else target.lower() == requested.lower()
+                    )
                 return target == requested
-            rows = [row for row in rows if ref_matches(row)][:limit * 3]
+
+            rows = [row for row in rows if ref_matches(row)][: limit * 3]
             unique: dict = {}
             for row in rows:
                 key: tuple = (row["file_id"], row["line"], row["snippet"])
-                item = {
+                item: dict = {
                     name: row[name]
                     for name in (
                         "path",
@@ -919,13 +1060,15 @@ def _code_navigator_once(
                     )
                 }
                 item["reference_type"] = (
-                    "lexical match" if row["analysis_mode"] == "lexical" else "syntactic candidate"
+                    "lexical match"
+                    if row["analysis_mode"] == "lexical"
+                    else "syntactic candidate"
                 )
                 # Older indexes can contain both a method_call and a
                 # member_access for the same target within the call snippet.
                 # Prefer the call, while retaining distinct calls on a line
                 # because each has its own full call-site snippet.
-                overlap = None
+                overlap: None = None
                 if row["kind"] == "member_access":
                     overlap = next(
                         (
@@ -1042,7 +1185,13 @@ def _code_navigator_once(
             pass
 
 
-def code_navigator(action, query=None, symbol=None, file_path=None, limit=10):
+def code_navigator(
+    action,
+    query: None = None,
+    symbol: None = None,
+    file_path: None = None,
+    limit: int = 10,
+):
     """Run navigation with bounded retries for transient SQLite locks."""
     for attempt in range(_LOCK_RETRIES + 1):
         try:
@@ -1062,7 +1211,7 @@ def code_navigator(action, query=None, symbol=None, file_path=None, limit=10):
             try:
                 status = index_status()
             except Exception:
-                status = {"state": "unavailable", "message": None}
+                status: dict = {"state": "unavailable", "message": None}
             return {
                 "error_code": "index_locked",
                 "message": "The code index remained locked after bounded retries; try again shortly.",

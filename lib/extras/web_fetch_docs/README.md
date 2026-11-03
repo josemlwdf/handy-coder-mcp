@@ -22,7 +22,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
     },
     "offset": {
       "default": 0,
-      "description": "Character offset into the extracted text to start reading from; use to page through content beyond the initial 20 000-character window. (Required: False)",
+      "description": "Character offset into the extracted text to start reading from; use to page through content beyond the initial 4,000-character page. (Required: False)",
       "minimum": 0,
       "title": "Offset",
       "type": "integer"

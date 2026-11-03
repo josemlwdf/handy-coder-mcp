@@ -35,3 +35,8 @@ The catalog below is the complete internal tool inventory available to discovery
 `code_intel(action='index')` runs on demand in an isolated worker process and can be called to build or refresh the index. The server starts without scanning the workspace. The index is local and incremental; see [Multilingual code navigation](./SEMANTIC_SEARCH.md) for its behavior and limitations.
 
 `web_search` and `web_fetch_docs` make outbound requests and require network access when called. The source index uses available Tree-sitter grammars, lexical fallback, and SQLite FTS5. See [optional feature setup](./SETUP.md) for details.
+
+
+### Result size limits
+
+`invoke_tool` caps every dispatched result at 16,000 JSON-serialized characters. Oversized results retain their JSON structure and include `truncated: true` plus `truncation` metadata describing affected paths and omitted content. Tool errors and status fields are preserved. Source limits are 4,000 characters each for terminal stdout/stderr, 16,000 characters per returned file (files up to 256 KiB; use `read_files` line ranges for later lines), 4,000 characters per web page (continue with `offset`/`next_offset`), and 4,000 characters per subagent result page (continue with `offset`/`final_next_offset`). Discovery and tool-detail responses are outside the invoke result cap.

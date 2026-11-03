@@ -92,7 +92,7 @@ def _pending_change_summaries_for_paths(
         repo_prefix = Path()
     if str(repo_prefix) != ".":
         untracked_paths.update((repo_prefix / path).as_posix() for path in paths)
-    summaries = []
+    summaries: list = []
     for item in raw_summaries:
         if not isinstance(item, dict):
             continue
@@ -104,10 +104,13 @@ def _pending_change_summaries_for_paths(
             or not isinstance(summary_paths, list)
         ):
             continue
-        clean_paths = [path for path in summary_paths if isinstance(path, str) and path]
+        clean_paths: list = [
+            path for path in summary_paths if isinstance(path, str) and path
+        ]
         if any(path in untracked_paths for path in clean_paths):
             summaries.append({"summary": summary.strip(), "paths": clean_paths})
     return summaries
+
 
 _LOG_REGEX_FLAG: str = "--path-regex"
 _LOG_MAX_CANDIDATES_FLAG: str = "--max-candidates"
@@ -926,7 +929,11 @@ def git_manage(
     if action == "add":
         _maintain_gitignore(selected_path)
         # Include maintained defaults explicitly; Git stages only these paths.
-        if not add_all and ".gitignore" not in git_args and str(selected_path / ".gitignore") not in git_args:
+        if (
+            not add_all
+            and ".gitignore" not in git_args
+            and str(selected_path / ".gitignore") not in git_args
+        ):
             git_args.append(str(selected_path / ".gitignore"))
     if action == "diff":
         if mode == "both":

@@ -43,7 +43,11 @@ def get_capabilities() -> dict:
         else:
             indexer["worker_alive"] = None
     except Exception as exc:
-        indexer = {"state": "unavailable", "worker_alive": None, "message": str(exc)}
+        indexer: dict = {
+            "state": "unavailable",
+            "worker_alive": None,
+            "message": str(exc),
+        }
     # Only non-secret identifiers: provider, model name and config path. Never the key.
     continue_info: None = None
     continue_models = resolve_continue_models()
@@ -181,7 +185,9 @@ def get_capabilities() -> dict:
             "SUBAGENT_BACKEND": bool(os.environ.get("SUBAGENT_BACKEND", "").strip()),
             "SUBAGENT_LOCAL": bool(os.environ.get("SUBAGENT_LOCAL", "").strip()),
             "SUBAGENT_CONTINUE": bool(os.environ.get("SUBAGENT_CONTINUE", "").strip()),
-            "SUBAGENT_CONFIG_FILE": bool(os.environ.get("SUBAGENT_CONFIG_FILE", "").strip()),
+            "SUBAGENT_CONFIG_FILE": bool(
+                os.environ.get("SUBAGENT_CONFIG_FILE", "").strip()
+            ),
         },
         "subagents": {
             "backend": subagent_backend,

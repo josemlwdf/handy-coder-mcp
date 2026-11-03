@@ -284,7 +284,7 @@ def main() -> None:
     # Publish one session-stable tool catalog after all registrations are complete.
     mcp._tool_details_freeze()
 
-    index_worker = None
+    index_worker: None = None
     try:
         index_worker = subprocess.Popen(
             [

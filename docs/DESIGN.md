@@ -37,7 +37,7 @@ The Python modules for these Tier 1 tools are in `lib/core`; optional Tier 2 too
 
 * **MCP Tool Name:** `read_files`
 * **Input Schema:** `{ paths: string[], line_ranges?: { path: string, start: number, end: number }[] }`
-* **Implementation:** Read workspace files directly from disk with UTF-8 encoding. Cap maximum file read size (e.g., 2MB) to prevent context window blowouts.
+* **Implementation:** Read workspace files directly from disk with UTF-8 encoding. Cap file reads at 256 KiB and returned file content at 16,000 characters to prevent context window blowouts.
 
 ### 2. `edit_files`
 

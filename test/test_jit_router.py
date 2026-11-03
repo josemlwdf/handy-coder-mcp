@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from mcp.server.fastmcp import FastMCP
 
@@ -120,3 +121,29 @@ def test_router_dispatch_validates_original_schema_and_unknown_names() -> None:
         call("invoke_tool", {"tool_name": "not_registered", "arguments": {}})
     )
     assert unknown["error_code"] == "unknown_tool"
+
+
+def test_router_caps_nested_results_and_preserves_small_results() -> None:
+    server = _server()
+
+    @server.tool(description="Return a large nested result.")
+    def large_result() -> dict:
+        return {"status": "ok", "files": [{"content": "x" * 20_000}], "items": ["y" * 5_000]}
+
+    @server.tool(description="Return a small result.")
+    def small_result() -> dict:
+        return {"status": "ok", "items": [1, 2]}
+
+    async def call(name: str):
+        return await server._tool_manager.call_tool(
+            "invoke_tool", {"tool_name": name, "arguments": {}}
+        )
+
+    small = asyncio.run(call("small_result"))
+    assert small == {"status": "ok", "items": [1, 2]}
+    large = asyncio.run(call("large_result"))
+    assert len(json.dumps(large, ensure_ascii=False, separators=(",", ":"))) <= 16_000
+    assert large["status"] == "ok"
+    assert large["truncated"] is True
+    assert large["truncation"]["reason"] == "router_result_limit"
+    assert large["truncation"]["affected"]

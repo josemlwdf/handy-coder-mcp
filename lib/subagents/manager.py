@@ -60,7 +60,7 @@ class SubagentLimits:
     tasks_per_session: int = 20
     task_ttl_seconds: int = 1200
     frame_ttl_seconds: int = 300
-    result_page_chars: int = 8000
+    result_page_chars: int = 4_000
 
 
 class SubagentManager:
@@ -257,8 +257,9 @@ class SubagentManager:
                 raise ValueError("offset must be >= 0")
             if offset > len(text):
                 raise ValueError(f"offset {offset} exceeds result length {len(text)}")
-            page = text[offset : offset + self.limits.result_page_chars]
-            next_offset = offset + self.limits.result_page_chars
+            page_size = min(self.limits.result_page_chars, 4_000)
+            page = text[offset : offset + page_size]
+            next_offset = offset + page_size
             if next_offset >= len(text):
                 next_offset: None = None
             return {

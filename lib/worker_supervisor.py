@@ -192,6 +192,7 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
         original_signature = inspect.signature(original_fn)
 
         if inspect.iscoroutinefunction(original_fn):
+
             @functools.wraps(original_fn)
             async def supervised_async_wrapper(
                 *args,
@@ -210,20 +211,44 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
                     return await _target_fn(*args, **kwargs)
                 scope_block = subagent_tools.before_tool_call(_tool_name, bound_args)
                 if scope_block is not None:
-                    project_logs.log_internal_event("warning", "subagent_scope_violation", {"tool_name": _tool_name, "args": bound_args, "result": scope_block})
-                    log_path = project_logs.log_tool_call(_tool_name, bound_args, scope_block)
+                    project_logs.log_internal_event(
+                        "warning",
+                        "subagent_scope_violation",
+                        {
+                            "tool_name": _tool_name,
+                            "args": bound_args,
+                            "result": scope_block,
+                        },
+                    )
+                    log_path = project_logs.log_tool_call(
+                        _tool_name, bound_args, scope_block
+                    )
                     return project_logs.attach_tool_log_path(scope_block, log_path)
                 try:
                     result = await _target_fn(*args, **kwargs)
-                    wrapped = subagent_tools.after_tool_call(_tool_name, result, bound_args)
-                    log_path = project_logs.log_tool_call(_tool_name, bound_args, wrapped)
+                    wrapped = subagent_tools.after_tool_call(
+                        _tool_name, result, bound_args
+                    )
+                    log_path = project_logs.log_tool_call(
+                        _tool_name, bound_args, wrapped
+                    )
                     return project_logs.attach_tool_log_path(wrapped, log_path)
                 except Exception as exc:
-                    project_logs.log_internal_event("error", "tool_execution_exception", {"tool_name": _tool_name, "args": bound_args, "error": f"{type(exc).__name__}: {exc}"})
+                    project_logs.log_internal_event(
+                        "error",
+                        "tool_execution_exception",
+                        {
+                            "tool_name": _tool_name,
+                            "args": bound_args,
+                            "error": f"{type(exc).__name__}: {exc}",
+                        },
+                    )
                     raise
 
             supervised_async_wrapper.__signature__ = original_signature
-            supervised_async_wrapper.__annotations__ = getattr(original_fn, "__annotations__", {})
+            supervised_async_wrapper.__annotations__ = getattr(
+                original_fn, "__annotations__", {}
+            )
             tool.fn = supervised_async_wrapper
             continue
 

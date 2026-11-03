@@ -116,12 +116,18 @@ def _build_command(
     config_path = directory / candidate["configuration"]
     if not executable:
         if not _running_under_wsl():
-            return None, ".NET build tool unavailable: dotnet is not installed (WSL fallback is only available under WSL)."
+            return (
+                None,
+                ".NET build tool unavailable: dotnet is not installed (WSL fallback is only available under WSL).",
+            )
         windows_dotnet = shutil.which("dotnet.exe")
         wslpath = shutil.which("wslpath")
         if not windows_dotnet or not wslpath:
             missing = "dotnet.exe" if not windows_dotnet else "wslpath"
-            return None, f".NET build tool unavailable: dotnet is not installed and the WSL fallback requires {missing}."
+            return (
+                None,
+                f".NET build tool unavailable: dotnet is not installed and the WSL fallback requires {missing}.",
+            )
         try:
             converted = subprocess.run(
                 [wslpath, "-w", str(config_path)],
@@ -134,7 +140,10 @@ def _build_command(
             if not windows_path:
                 raise ValueError("wslpath returned an empty path")
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
-            return None, f".NET build tool unavailable: could not convert the project path with wslpath -w: {exc}"
+            return (
+                None,
+                f".NET build tool unavailable: could not convert the project path with wslpath -w: {exc}",
+            )
         return [windows_dotnet, "build", windows_path], None
     return [executable, "build", str(config_path)], None
 
@@ -273,7 +282,7 @@ def build_project(
     result = run_process(command, cwd=directory, timeout_ms=timeout_ms)
     raw = result.get("stdout", "") + result.get("stderr", "")
     errors, warnings = _diagnostics(raw, "error"), _diagnostics(raw, "warning")
-    response = {
+    response: dict = {
         "success": result["exit_code"] == 0 and not result.get("timed_out", False),
         "supported": True,
         "exit_code": result["exit_code"],
