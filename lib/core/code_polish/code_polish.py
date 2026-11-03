@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import difflib
+import re
+import unicodedata
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -66,6 +68,37 @@ def _normalize_line_endings(text: str) -> tuple[str, dict[str, Any]]:
         "before": before,
         "after": after,
         "changed": normalized != text,
+    }
+
+
+def _collapse_excess_blank_lines(text: str) -> tuple[str, dict[str, Any]]:
+    """Limit runs of whitespace-only lines to one empty line."""
+    def is_blank_line_character(character: str) -> bool:
+        return character.isspace() or unicodedata.category(character) in {
+            "Cc",  # control characters
+            "Cf",  # format characters, including zero-width marks
+            "Cs",  # surrogate code points
+            "Zl",  # line separator
+            "Zp",  # paragraph separator
+            "Zs",  # space separators
+        }
+
+    collapsed_lines: list[str] = []
+    empty_line_seen = False
+    for line in text.splitlines(keepends=True):
+        content = line.rstrip("\r\n")
+        is_empty = all(is_blank_line_character(char) for char in content)
+        if is_empty:
+            if empty_line_seen:
+                continue
+            empty_line_seen = True
+        else:
+            empty_line_seen = False
+        collapsed_lines.append(line)
+    collapsed = "".join(collapsed_lines)
+    return collapsed, {
+        "name": "consecutive_newlines",
+        "changed": collapsed != text,
     }
 
 
@@ -291,6 +324,13 @@ def polish_paths(
                 tool_outputs.append(
                     {"name": "code_format_lint", "report": formatter_report}
                 )
+
+        # Run this last so formatters cannot reintroduce excessive blank lines.
+        current = p.read_text(encoding="utf-8")
+        collapsed_text, blank_line_report = _collapse_excess_blank_lines(current)
+        transformations.append(blank_line_report)
+        if collapsed_text != current:
+            p.write_text(collapsed_text, encoding="utf-8")
 
         after = p.read_text(encoding="utf-8")
         changed = after != before

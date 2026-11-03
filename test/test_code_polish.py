@@ -26,6 +26,50 @@ class CodePolishTests(unittest.TestCase):
         support.ROOT = self._saved_root
         support.WORKING_DIRECTORY = self._saved_wd
 
+    def test_collapses_excess_blank_lines_for_whitespace_and_nonprintables(self) -> None:
+        """Reduce runs of empty lines while preserving visible text and line endings."""
+        cases = [
+            ("a\n\n\nb", "a\n\nb"),
+            ("a\nb", "a\nb"),
+            ("a\n\nb", "a\n\nb"),
+            ("a\n\n\n\nb", "a\n\nb"),
+            ("a\n\t\n   \nb", "a\n\t\nb"),
+            ("a\n\u00a0\n\u2003\nb", "a\n\u00a0\nb"),
+            ("a\n\u200b\n\u200d\nb", "a\n\u200b\nb"),
+            ("a\n\x00\n\x1f\nb", "a\n\x00\nb"),
+            ("\n\n\nstart", "\nstart"),
+            ("end\n\n\n", "end\n\n"),
+            ("a\r\n\r\n\r\nb", "a\r\n\r\nb"),
+            ("a\n \n\nvisible\n\n\n", "a\n \nvisible\n\n"),
+        ]
+        for source, expected in cases:
+            with self.subTest(source=repr(source)):
+                actual, report = code_polish._collapse_excess_blank_lines(source)
+                self.assertEqual(actual, expected)
+                self.assertEqual(report["changed"], actual != source)
+
+    def test_polish_applies_blank_line_collapse_and_reports_it(self) -> None:
+        """Apply the blank-line pass after other polish operations and report it."""
+        target = self.root / "notes.md"
+        target.write_text("first\n\t\n   \nsecond\n", encoding="utf-8")
+
+        result = code_polish.polish_paths(
+            ["notes.md"],
+            "test change",
+            apply_formatting=False,
+            apply_line_endings=False,
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(target.read_text(encoding="utf-8"), "first\n\t\nsecond\n")
+        transform = next(
+            item
+            for item in result["files"][0]["transformations"]
+            if item["name"] == "consecutive_newlines"
+        )
+        self.assertTrue(transform["changed"])
+        self.assertEqual(result["written_files"], ["notes.md"])
+
     def test_directory_requires_specific_file_or_all_files(self) -> None:
         """Test directory requires specific file or all files function."""
         (self.root / "src").mkdir()
