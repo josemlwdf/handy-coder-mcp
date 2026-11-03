@@ -11,7 +11,6 @@ from typing import Annotated, Any
 
 from pydantic import Field
 
-
 # Curated capability vocabulary supplements each tool's own name and docs.
 _TOOL_TAGS: dict[str, tuple[str, ...]] = {
     "find_files": (
@@ -27,13 +26,11 @@ _TOOL_TAGS: dict[str, tuple[str, ...]] = {
 
 _ROUTER_RESULT_CHAR_LIMIT = 16_000
 
-
 def _serialized_length(value: Any) -> int:
     """Serialized length function."""
     return len(
         json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
     )
-
 
 def _trim_routed_result(value: Any) -> Any:
     """Bound serialized tool results while preserving their JSON structure."""
@@ -124,7 +121,6 @@ def _trim_routed_result(value: Any) -> Any:
         metadata["affected"] = changes
     return result
 
-
 def _brief(description: str) -> str:
     """Return a compact first sentence suitable for tools/list."""
     text = " ".join((description or "").split())
@@ -135,7 +131,6 @@ def _brief(description: str) -> str:
     if end >= 0:
         text = text[: end + 1]
     return text[:160].rstrip()
-
 
 def _published_description(name: str, description: str) -> str:
     """Keep editing guidance visible in the regular tool listing."""
@@ -150,7 +145,6 @@ def _published_description(name: str, description: str) -> str:
             return f"{_brief(description)} {note}"
     return _brief(description)
 
-
 def _schema(tool: Any) -> dict:
     """Schema function."""
     schema = getattr(tool, "parameters", None)
@@ -159,7 +153,6 @@ def _schema(tool: Any) -> dict:
     if schema is None:
         return {}
     return copy.deepcopy(schema)
-
 
 def _strip_descriptions(value: Any) -> None:
     """Strip descriptions function."""
@@ -177,7 +170,6 @@ def _strip_descriptions(value: Any) -> None:
     elif isinstance(value, list):
         for child in value:
             _strip_descriptions(child)
-
 
 def _normalize_union_types(value: Any) -> None:
     """Rewrite simple anyOf/oneOf nullable unions to explicit JSON Schema type lists.
@@ -228,7 +220,6 @@ def _normalize_union_types(value: Any) -> None:
         for child in value:
             _normalize_union_types(child)
 
-
 def _ensure_schema_has_explicit_types(value: Any) -> None:
     """Populate missing ``type`` from simple combiners where possible."""
     if isinstance(value, dict):
@@ -259,12 +250,10 @@ def _ensure_schema_has_explicit_types(value: Any) -> None:
         for child in value:
             _ensure_schema_has_explicit_types(child)
 
-
 def _normalize_schema_types(schema: dict) -> None:
     """Normalize schema types function."""
     _normalize_union_types(schema)
     _ensure_schema_has_explicit_types(schema)
-
 
 def _inline_local_refs(schema: dict) -> None:
     """Inline local ``#/$defs/...`` references for clients that do not dereference refs."""
@@ -295,7 +284,6 @@ def _inline_local_refs(schema: dict) -> None:
         schema.clear()
         schema.update(inlined)
 
-
 def _schema_has_unknown_argument_types(schema: Any) -> bool:
     """Return True when any argument property has no concrete type information."""
     if not isinstance(schema, dict):
@@ -314,7 +302,6 @@ def _schema_has_unknown_argument_types(schema: Any) -> bool:
         ):
             return True
     return False
-
 
 def _fallback_argument_schema(function: Any) -> dict:
     """Build a schema from Python type hints when runtime schema omits argument types."""
@@ -339,7 +326,6 @@ def _fallback_argument_schema(function: Any) -> dict:
         "additionalProperties": False,
     }
 
-
 def _arguments(schema: dict) -> dict:
     """Arguments function."""
     required = set(schema.get("required", []))
@@ -357,7 +343,6 @@ def _arguments(schema: dict) -> dict:
         name: _nested_detail(resolve(prop), name, required, resolve)
         for name, prop in schema.get("properties", {}).items()
     }
-
 
 def _nested_detail(
     prop: dict, name: str, required: set[str], resolve=lambda value: value
@@ -430,7 +415,6 @@ def _nested_detail(
         item["items"] = _nested_detail(prop["items"], "item", set(), resolve)
     return item
 
-
 def _canonical_tool_name(tool_name: str) -> str:
     """Normalize external tool-name aliases to this server's canonical registry name."""
     canonical = (tool_name or "").strip()
@@ -441,7 +425,6 @@ def _canonical_tool_name(tool_name: str) -> str:
     if canonical.startswith("mcp__") and "__" in canonical:
         canonical = canonical.rsplit("__", 1)[-1]
     return canonical
-
 
 def install(mcp: Any) -> None:
     """Wrap FastMCP registration, retaining original details and publishing brief schemas."""
@@ -559,14 +542,12 @@ def install(mcp: Any) -> None:
         query: Annotated[
             str,
             Field(
-                description="Tool name or capability terms to search; use the '*' wildcard to list all registered tools. (Required: True)"
+                description="Tool name or capability terms to search. (Required: True)"
             ),
         ],
         limit: Annotated[
             int,
-            Field(
-                description="Max search matches, capped at 4; ignored for query='*'. (Required: False)"
-            ),
+            Field(description="Max search matches, capped at 4. (Required: False)"),
         ] = 4,
     ) -> dict:
         """Search tools or list a compact catalog with query='*'."""
@@ -617,7 +598,6 @@ def install(mcp: Any) -> None:
                     {
                         "name": name,
                         "description": _brief(entry.get("description", "")),
-                        "tags": list(_TOOL_TAGS.get(name, ())),
                         "parameters": parameters,
                     }
                 )
@@ -665,7 +645,6 @@ def install(mcp: Any) -> None:
                 {
                     "name": name,
                     "description": entry.get("description", ""),
-                    "tags": list(_TOOL_TAGS.get(name, ())),
                     "inputSchema": copy.deepcopy(entry.get("inputSchema", {})),
                 }
             )
@@ -679,7 +658,7 @@ def install(mcp: Any) -> None:
 
     register_meta(
         "discover_tools",
-        "Search by name or capability to get matching tools and their full schemas. The '*' wildcard (query='*') lists every registered tool except discover_tools, with short descriptions and parameter types and descriptions; call get_tool_details only when expanded argument documentation is needed.",
+        "Search tools by name or capability.",
         discover_tools,
     )
 
@@ -730,7 +709,7 @@ def install(mcp: Any) -> None:
 
     register_meta(
         "invoke_tool",
-        "Call a registered tool by name with JSON args. Results are capped at 16,000 JSON-serialized characters and oversized values include truncated=true and truncation metadata; use tool paging options to retrieve omitted content. Discovery and tool details are not routed through this cap.",
+        "Call a registered tool by name with JSON arguments.",
         invoke_tool,
     )
 

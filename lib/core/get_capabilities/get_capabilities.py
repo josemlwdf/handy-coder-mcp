@@ -56,14 +56,13 @@ SKILL_SUMMARIES = {
     "caveman": "Communicate tersely with technical clarity",
 }
 
-
 def _five_words(value: str) -> str:
+    """Five words function."""
     words = (value or "").split()[:5]
     words.extend(["tool", "capability", "summary"][: 5 - len(words)])
     return " ".join(words)
 
 _MCP: None = None
-
 
 def get_capabilities() -> dict:
     """Return the server's runtime capabilities and optional-dependency status."""
@@ -232,24 +231,20 @@ def get_capabilities() -> dict:
     # Most tools are unconditionally registered and available. Keep their names
     # together instead of repeating an availability flag and note for each one.
     # These tools have runtime-dependent availability and retain their details.
-    conditional_names = {"run_tests", "git_manage", "capture_url_screenshot"}
-    always_enabled = {
+    conditional_names: set = {"run_tests", "git_manage", "capture_url_screenshot"}
+    always_enabled: dict = {
         name: {"description": tools[name]["description"]}
         for name in tools
         if name not in conditional_names
     }
-    runtime = {
-        name: {
-            key: value
-            for key, value in metadata.items()
-            if key != "note"
-        }
+    runtime: dict = {
+        name: {key: value for key, value in metadata.items() if key != "note"}
         for name, metadata in tools.items()
         if name in conditional_names
         or name in {"build_project", "code_intel", "subagent_manage"}
     }
-    tools_response = {"always_enabled": always_enabled, "runtime": runtime}
-    skills = [
+    tools_response: dict = {"always_enabled": always_enabled, "runtime": runtime}
+    skills: list = [
         {
             "name": item["name"],
             "description": SKILL_SUMMARIES.get(
@@ -269,15 +264,14 @@ def get_capabilities() -> dict:
         },
     }
 
-
 def register(mcp):
     """Register function."""
     global _MCP
     _MCP = mcp
     return mcp.tool(
         description=describe(
-            "Report runtime tools, dependencies, and feature status. "
-            "Shows available tools, installed binaries, and active environment-gated features. "
+            "List available tools, skills, dependencies, and feature status. "
+            "Lists all available tools and skills, installed binaries, and active environment-gated features. "
             "Optional integrations may include missing_requirements and setup_docs. "
             "Call first to check what you can use."
         )
