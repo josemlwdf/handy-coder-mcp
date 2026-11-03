@@ -455,7 +455,7 @@ class SubagentToolTests(unittest.TestCase):
         subagent_tools.after_tool_call(
             "create_file",
             {"path": "created.txt", "created": True, "overwritten": False},
-            {"summary": "Create a tracked file"},
+                {"summary": "Create a tracked file", "automatic_commit": True},
         )
         subagent_tools.after_tool_call(
             "create_file",
@@ -514,13 +514,13 @@ class SubagentToolTests(unittest.TestCase):
                         "created": True,
                         "overwritten": False,
                     },
-                    {"summary": f"Change {index}"},
+                    {"summary": f"Change {index}", "automatic_commit": True},
                 )
 
             result = subagent_tools.after_tool_call(
                 "apply_edits",
                 {"written_files": ["edited-a.txt", "edited-b.txt"], "dry_run": False},
-                {"summary": "Edit two related files"},
+                {"summary": "Edit two related files", "automatic_commit": True},
             )
 
             self.assertEqual(
@@ -549,7 +549,7 @@ class SubagentToolTests(unittest.TestCase):
             later = subagent_tools.after_tool_call(
                 "create_file",
                 {"path": "later.txt", "created": True, "overwritten": False},
-                {"summary": "Later change"},
+                {"summary": "Later change", "automatic_commit": True},
             )
             self.assertNotIn("automatic_commit", later)
             self.assertEqual(
@@ -567,7 +567,7 @@ class SubagentToolTests(unittest.TestCase):
                     "created": True,
                     "overwritten": False,
                 },
-                {"summary": f"Persisted change {index}"},
+                {"summary": f"Persisted change {index}", "automatic_commit": True},
             )
 
         import importlib
@@ -588,7 +588,7 @@ class SubagentToolTests(unittest.TestCase):
                     "created": True,
                     "overwritten": False,
                 },
-                {"summary": "Persisted change 3"},
+                {"summary": "Persisted change 3", "automatic_commit": True},
             )
             result = reloaded_tools.after_tool_call(
                 "create_file",
@@ -597,7 +597,7 @@ class SubagentToolTests(unittest.TestCase):
                     "created": True,
                     "overwritten": False,
                 },
-                {"summary": "Persisted change 4"},
+                {"summary": "Persisted change 4", "automatic_commit": True},
             )
 
         self.assertEqual(
@@ -629,7 +629,7 @@ class SubagentToolTests(unittest.TestCase):
                         "created": True,
                         "overwritten": False,
                     },
-                    {"summary": "Shared state write"},
+                    {"summary": "Shared state write", "automatic_commit": True},
                 )
                 payload = json.loads(state_path.read_text(encoding="utf-8"))
             finally:
@@ -652,7 +652,7 @@ class SubagentToolTests(unittest.TestCase):
                 "created": True,
                 "overwritten": False,
             },
-            {"summary": "Pending change 1"},
+            {"summary": "Pending change 1", "automatic_commit": True},
         )
         subagent_tools.after_tool_call(
             "create_file",
@@ -661,7 +661,7 @@ class SubagentToolTests(unittest.TestCase):
                 "created": True,
                 "overwritten": False,
             },
-            {"summary": "Pending change 2"},
+            {"summary": "Pending change 2", "automatic_commit": True},
         )
 
         before = json.loads(state_path.read_text(encoding="utf-8"))
@@ -698,13 +698,13 @@ class SubagentToolTests(unittest.TestCase):
                         "created": True,
                         "overwritten": False,
                     },
-                    {"summary": f"Change {index}"},
+                    {"summary": f"Change {index}", "automatic_commit": True},
                 )
 
             result = subagent_tools.after_tool_call(
                 "create_file",
                 {"path": "file-4.txt", "created": True, "overwritten": False},
-                {"summary": "Change 4"},
+                {"summary": "Change 4", "automatic_commit": True},
             )
 
         self.assertEqual(result["automatic_commit"]["status"], "dispatch_failed")
@@ -718,7 +718,7 @@ class SubagentToolTests(unittest.TestCase):
             result = subagent_tools.after_tool_call(
                 "create_file",
                 {"path": f"file-{index}.txt", "created": True, "overwritten": False},
-                {"summary": f"Change {index}"},
+                {"summary": f"Change {index}", "automatic_commit": True},
             )
 
         automatic_commit = result["automatic_commit"]

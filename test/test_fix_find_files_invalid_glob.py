@@ -43,6 +43,7 @@ class FindFilesInvalidGlobContractTests(unittest.TestCase):
         """Narrow searches should not walk directories excluded by default."""
         (self.root / "src").mkdir()
         (self.root / "src" / "README.md").write_text("source\n", encoding="utf-8")
+        (self.root / "README.md").write_text("root\n", encoding="utf-8")
         (self.root / "node_modules").mkdir()
         (self.root / "node_modules" / "README.md").write_text("generated\n", encoding="utf-8")
         (self.root / ".cache").mkdir()

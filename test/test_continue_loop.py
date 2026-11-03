@@ -131,6 +131,7 @@ class FakeServerTests(unittest.TestCase):
                             "path": "loop-created.txt",
                             "content": "created",
                             "summary": "Create a loop-written file",
+                            "automatic_commit": True,
                         },
                     }
                 ),

@@ -270,6 +270,8 @@ def _save_skill(
     description: str | None,
     content: str | None,
     overwrite: bool,
+    tags: list[str] | None = None,
+    invokable: bool = True,
 ) -> dict:
     """Save skill function."""
     problem = _validate_name(name)
@@ -294,7 +296,11 @@ def _save_skill(
             "content must be the skill body only; frontmatter is generated from name and description.",
         )
 
-    document = f"---\nname: {name}\ndescription: {description}\n---\n\n{body}\n"
+    clean_tags = list(dict.fromkeys(tag.strip() for tag in (tags or []) if tag.strip()))
+    metadata = f"name: {name}\ndescription: {description}\ninvokable: {str(invokable).lower()}\n"
+    if clean_tags:
+        metadata += f"tags: {', '.join(clean_tags)}\n"
+    document = f"---\n{metadata}---\n\n{body}\n"
     encoded = document.encode("utf-8")
     if len(encoded) > MAX_SKILL_BYTES:
         return _error(
@@ -357,7 +363,7 @@ def skills_manage(
             "get_reference",
         ],
         Field(
-            description="list: return all skill metadata, or rank up to five matches when query is supplied. search: filter by query. get/export: retrieve full skill Markdown. list_references: list Markdown references for a skill from references/. get_reference: read one reference Markdown file. save: create/update a skill using its name and description. delete: remove a skill. (Required: True)"
+            description="list: return all skill metadata, or rank up to five matches when query is supplied. search: filter by query. get/export: retrieve full skill Markdown. list_references: list Markdown references for a skill from references/. get_reference: read one reference Markdown file. save: create/update a skill using its name and description. delete: remove a skill. built-in defaults: grill-me, handoff, mcp-audit, mcp-tools-only, plan, troubleshoot. (Required: True)"
         ),
     ],
     name: Annotated[
@@ -402,6 +408,8 @@ def skills_manage(
             description="For delete: must be true to remove the skill; a backup is kept beside it. (Required: False)"
         ),
     ] = False,
+    tags: Annotated[list[str] | None, Field(description="Optional metadata tags for a skill saved with action=save. (Required: False)")] = None,
+    invokable: Annotated[bool, Field(description="Whether the saved skill can be invoked directly. Defaults to true. (Required: False)")] = True,
 ) -> dict:
     """Skills manage function."""
     if action == "list":
@@ -482,7 +490,7 @@ def skills_manage(
             return _error(
                 "protected_skill", f"Baseline skill cannot be replaced: {name}"
             )
-        return _save_skill(name, description, content, overwrite)
+        return _save_skill(name, description, content, overwrite, tags, invokable)
     return _error("invalid_action", f"Unknown action: {action}")
 
 

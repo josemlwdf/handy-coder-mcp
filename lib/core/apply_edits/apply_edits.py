@@ -474,9 +474,9 @@ def apply_edits(
     written_files: list = [Path(key).relative_to(root).as_posix() for key in written]
     # Per-file polish details live beside the corresponding file changes.
     # Keep only run-level status here to avoid an unassociated files array.
-    polish_summary: dict = {
-        key: value for key, value in polish_report.items() if key != "files"
-    }
+    # Keep the run-level file outcomes available in the public response. Per-file
+    # detail is also attached to each changed file below for convenient lookup.
+    polish_summary: dict = dict(polish_report)
     response: dict = {
         "edits": results,
         "files": files,

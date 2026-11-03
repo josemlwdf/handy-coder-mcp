@@ -223,9 +223,10 @@ def _fetch(url: str, offset: int = 0) -> dict:
             "offset": offset,
             "http_status": http_status,
         }
-    content = raw_text[offset : offset + 4000]
-    has_more = (offset + 4000) < total_length
-    next_offset = offset + 4000 if has_more else None
+    page_size = 20_000
+    content = raw_text[offset : offset + page_size]
+    has_more = (offset + page_size) < total_length
+    next_offset = offset + page_size if has_more else None
     return {
         "supported": True,
         "url": final_url,

@@ -28,8 +28,13 @@ class CodeIndexWorkerTests(unittest.TestCase):
                 deadline = time.monotonic() + 5
                 while time.monotonic() < deadline:
                     if database.exists():
-                        with sqlite3.connect(database) as con:
-                            rows = con.execute("SELECT path FROM files").fetchall()
+                        try:
+                            with sqlite3.connect(database) as con:
+                                rows = con.execute("SELECT path FROM files").fetchall()
+                        except sqlite3.OperationalError:
+                            # The worker creates the DB file before its schema.
+                            time.sleep(0.05)
+                            continue
                         if predicate({row[0] for row in rows}):
                             return
                     time.sleep(0.05)

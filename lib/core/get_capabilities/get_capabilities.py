@@ -67,16 +67,16 @@ def get_capabilities() -> dict:
 
     tools: dict[str, dict] = {
         # Core tools — always available
-        "read_files": {"available": True, "note": "always on"},
-        "create_file": {"available": True, "note": "always on"},
-        "apply_edits": {"available": True, "note": "always on"},
-        "code_polish": {"available": True, "note": "always on"},
-        "terminal_exec": {"available": True, "note": "always on"},
+        "read_files": {"available": True, "note": "always enabled"},
+        "create_file": {"available": True, "note": "always enabled"},
+        "apply_edits": {"available": True, "note": "always enabled"},
+        "code_polish": {"available": True, "note": "always enabled"},
+        "terminal_exec": {"available": True, "note": "always enabled"},
         "search_text": {
             "available": True,
             "note": "Python regex or literal search",
         },
-        "find_files": {"available": True, "note": "always on"},
+        "find_files": {"available": True, "note": "always enabled"},
         "skills_manage": {
             "available": True,
             "note": "list, get, or save skills; base dir: HANDY_CODER_SKILLS_DIR",
@@ -128,7 +128,7 @@ def get_capabilities() -> dict:
         },
         "code_intel": {
             "available": True,
-            "note": "navigate the automatically maintained multilingual source index",
+            "note": "navigate the automatically maintained multilingual source index with search_code, get_symbol, or find_references",
             "indexer": indexer,
         },
         "get_tool_details": {
