@@ -345,6 +345,7 @@ def install(mcp: Any) -> None:
     """Wrap FastMCP registration, retaining original details and publishing brief schemas."""
     catalog: dict[str, dict] = {}
     mcp._tool_details_catalog = catalog
+    mcp._tool_details_frozen = False
     original_tool = mcp.tool
 
     @functools.wraps(original_tool)
@@ -389,6 +390,8 @@ def install(mcp: Any) -> None:
 
     def update_description(name: str, description: str) -> None:
         """Update description function."""
+        if getattr(mcp, "_tool_details_frozen", False):
+            return
         if name in catalog:
             catalog[name]["description"] = description
         manager_tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
@@ -430,16 +433,9 @@ def install(mcp: Any) -> None:
                 "message": message,
             }
         schema = copy.deepcopy(entry["inputSchema"])
-        # Runtime descriptions can change after startup (currently git_manage).
-        live_description = getattr(runtime_tool, "description", None)
-        description = entry["description"]
-        if live_description and live_description != _published_description(
-            resolved_name, entry["description"]
-        ):
-            description = live_description
         return {
             "tool_name": resolved_name,
-            "description": description,
+            "description": entry["description"],
             "arguments": _arguments(schema),
             "definitions": schema.get("$defs", {}),
         }
@@ -625,3 +621,9 @@ def install(mcp: Any) -> None:
             return [tool for tool in listed if getattr(tool, "name", None) in public_names]
 
         manager.list_tools = public_list_tools
+
+    def freeze_descriptions() -> None:
+        """Freeze the registered tool catalog for this server session."""
+        mcp._tool_details_frozen = True
+
+    mcp._tool_details_freeze = freeze_descriptions

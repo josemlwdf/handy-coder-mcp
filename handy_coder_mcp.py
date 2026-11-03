@@ -281,6 +281,8 @@ def main() -> None:
     _sort_registered_tools(mcp)
     _apply_tool_annotations(mcp)
     _assert_tool_argument_types_known(mcp)
+    # Publish one session-stable tool catalog after all registrations are complete.
+    mcp._tool_details_freeze()
 
     index_worker = None
     try:

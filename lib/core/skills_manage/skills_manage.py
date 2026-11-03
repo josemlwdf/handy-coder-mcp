@@ -16,6 +16,7 @@ They live in ``skills/<name>/SKILL.md`` (override the base directory with
 
 from __future__ import annotations
 
+import functools
 import os
 import re
 import tempfile
@@ -489,6 +490,37 @@ def skills_manage(
 
 def register(mcp):
     """Register function."""
+    # Skill metadata is part of the session's published catalog. Keep the
+    # Markdown body live for get/export, while descriptions and membership stay
+    # fixed until the next server session.
+    session_skills = _list_skills()["skills"]
+    session_by_name = {item["name"]: item for item in session_skills}
+
+    @functools.wraps(skills_manage)
+    def session_skills_manage(*args, **kwargs):
+        result = skills_manage(*args, **kwargs)
+        action = kwargs.get("action", args[0] if args else None)
+        query = kwargs.get("query")
+        if action in {"list", "search"}:
+            items = list(session_skills)
+            if query is not None:
+                needle = query.lower()
+                items = [
+                    item for item in items
+                    if needle in item["name"].lower()
+                    or needle in item["description"].lower()
+                    or any(needle in tag.lower() for tag in item["tags"])
+                ]
+                if action == "list":
+                    items = items[:5]
+            return {**result, "skills": items, "count": len(items)}
+        if action in {"get", "export"} and isinstance(result, dict) and "name" in result:
+            item = session_by_name.get(result["name"])
+            if item is None:
+                return _error("not_found", f"Skill not found in this session: {result['name']}")
+            return {**result, "description": item["description"], "tags": item["tags"], "version": item["version"], "invokable": item["invokable"]}
+        return result
+
     return mcp.tool(
         description=describe(
             "Manage reusable skills stored as Markdown files at skills/<name>/SKILL.md. "
@@ -500,4 +532,4 @@ def register(mcp):
             "Baseline skills (including troubleshoot) cannot be deleted or replaced. "
             "When to use: Discover, load, or record skills that guide how to perform a task."
         )
-    )(skills_manage)
+    )(session_skills_manage)
