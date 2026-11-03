@@ -12,7 +12,7 @@ description: Diagnose hard bugs and performance regressions with an evidence-bas
 
 ## Related skills
 
-- `implement` is for carrying out a confirmed fix; `troubleshoot` diagnoses chat-agent behavior from session logs.
+- `implement` is for carrying out a confirmed fix.
 - `analyzing-dotnet-performance` reviews .NET performance patterns.
 
 Systematic workflow for hard bugs. Follow phases in order. Skip a phase only with an explicit, evidence-based reason.

@@ -370,7 +370,7 @@ class AuditRegressionTests(unittest.TestCase):
         action_description = details["arguments"]["action"]["description"]
         self.assertIn("built-in defaults:", action_description)
         self.assertIn("plan", action_description)
-        self.assertIn("troubleshoot", action_description)
+        self.assertNotIn("troubleshoot", action_description)
 
     def test_code_navigator_deduplicates_call_sites_and_hides_database_ids(
         self,

@@ -17,7 +17,7 @@ Create a handoff document for a fresh agent.
 ## Related skills
 
 - `plan` tracks ongoing implementation; `implement` carries out a task.
-- `troubleshoot` is relevant when the handoff concerns agent behavior or session logs.
+- `diagnosing-bugs` is relevant when the handoff concerns an unresolved software issue.
 
 ## Requirements
 

@@ -24,6 +24,8 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 Returns the structured result produced by the implementation. Error results and status fields are tool-specific; inspect the returned object and its documented fields rather than assuming that a process or operation succeeded.
 
+The `tools.always_enabled` object maps each tool name to a curated five-word description. `tools.runtime` contains entries with environment-dependent availability or useful runtime details, such as build support, source-index status, and subagent configuration. `build_project.python_interpreter` reports the workspace `.venv` Python when present, otherwise the system Python used by the build capability check. Subagent role summaries omit tool allowlists and call budgets. The skills list uses curated five-word descriptions for built-in skills and a five-word fallback for added skills. The top-level `subagents` object reports the resolved backend and safe model details; no environment-presence flags are returned.
+
 ## Side effects and runtime requirements
 
 File access and command working directories are scoped to the configured workspace. Some features depend on external project tools being installed; unavailable tools are reported in the result.

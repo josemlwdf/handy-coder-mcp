@@ -6,8 +6,7 @@ HTML files created or modified by `create_file` and `apply_edits` are automatica
 
 The main server registers `web_fetch_docs` from `lib/extras`, plus `web_search` and local C# navigation tools.
 
-Use `get_capabilities` first to confirm what is configured and currently available. Its `tools` section is the runtime source of truth for optional tool availability.
-For optional tools, each `tools.<name>` entry may include `missing_requirements` and `setup_docs` to speed troubleshooting.
+Use `get_capabilities` first to confirm what is configured and currently available. Its `tools.always_enabled` list names the tools available in every session; `tools.runtime` contains availability and feature details for tools whose support depends on the environment.
 
 Tools blocked by missing packages, binaries, environment variables, or adapters return `status: "setup_required"` with `missing_requirements`, `remediation_commands`, and `documentation_url`. Tool-specific `error_code` values may be included for compatibility. Diagnostics and test execution responses include a `detection_trace` describing configured checks or the selected framework.
 

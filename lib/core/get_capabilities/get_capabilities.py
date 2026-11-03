@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from pathlib import Path
 
 from ... import support
 from ... import code_index
@@ -13,9 +14,53 @@ from ...subagents.resolve import (
     resolve_continue_models,
 )
 from ...support import describe
+from ..skills_manage.skills_manage import _list_skills
 from ..gowitness_screenshot import gowitness_available
 from ..build_project.build_project import _python_build_runtime
 from ...subagents.roles import ROLES
+
+TOOL_SUMMARIES = {
+    "read_files": "Read workspace files within limits",
+    "create_file": "Create or replace workspace files",
+    "apply_edits": "Apply validated edits to files",
+    "code_polish": "Format and improve selected files",
+    "terminal_exec": "Run bounded commands within workspace",
+    "search_text": "Search workspace text with patterns",
+    "find_files": "Find workspace files matching patterns",
+    "skills_manage": "List retrieve or save skills",
+    "orchestrator": "Coordinate multistep workspace tasks safely",
+    "run_tests": "Run project tests and report",
+    "git_manage": "Manage workspace repositories and changes",
+    "build_project": "Detect and build supported projects",
+    "code_get_diagnostics": "Run project checks and diagnostics",
+    "web_search": "Search public web for facts",
+    "capture_url_screenshot": "Capture webpage screenshots using gowitness",
+    "code_intel": "Navigate indexed source code symbols",
+    "get_tool_details": "Retrieve registered tool schemas documentation",
+    "web_fetch_docs": "Fetch and extract public text",
+    "subagent_manage": "Manage delegated tasks and results",
+    "inspect_image": "Inspect images using multimodal models",
+    "get_capabilities": "Report runtime tools and availability",
+}
+
+SKILL_SUMMARIES = {
+    "grill-me": "Ask focused questions to clarify",
+    "python-fact-grounded-coding": "Ground Python changes in facts",
+    "dotnet-tests": "Run tests and diagnose failures",
+    "handoff": "Prepare concise context for agents",
+    "analyzing-dotnet-performance": "Analyze performance and suggest improvements",
+    "implement": "Implement changes and verify outcomes",
+    "diagnosing-bugs": "Investigate bugs using evidence carefully",
+    "dotnet-webapi": "Build and maintain web APIs",
+    "plan": "Create plans for complex work",
+    "caveman": "Communicate tersely with technical clarity",
+}
+
+
+def _five_words(value: str) -> str:
+    words = (value or "").split()[:5]
+    words.extend(["tool", "capability", "summary"][: 5 - len(words)])
+    return " ".join(words)
 
 _MCP: None = None
 
@@ -26,6 +71,12 @@ def get_capabilities() -> dict:
     git_ok = shutil.which("git") is not None
     pytest_ok = shutil.which("pytest") is not None
     python_build_python, python_build_ok = _python_build_runtime()
+    workspace = Path(support.ROOT)
+    venv_python = workspace / ".venv" / "bin" / "python"
+    if os.name == "nt":
+        venv_python = workspace / ".venv" / "Scripts" / "python.exe"
+    if venv_python.is_file():
+        python_build_python = str(venv_python)
 
     subagent_backend = resolve_backend()
     screenshot_available, screenshot_note = gowitness_available()
@@ -142,8 +193,6 @@ def get_capabilities() -> dict:
             "backend": subagent_backend,
             "roles": {
                 name: {
-                    "allowed_tools": sorted(role.allowed_tools),
-                    "max_tool_calls": role.max_tool_calls,
                     "result_format": role.result_format,
                 }
                 for name, role in ROLES.items()
@@ -176,19 +225,44 @@ def get_capabilities() -> dict:
     tools.setdefault(
         "get_capabilities", {"available": True, "note": "reports runtime capabilities"}
     )
+    for name, metadata in tools.items():
+        fallback = metadata.get("note", name.replace("_", " "))
+        metadata["description"] = TOOL_SUMMARIES.get(name, _five_words(fallback))
     tools: dict = {name: tools[name] for name in sorted(tools)}
+    # Most tools are unconditionally registered and available. Keep their names
+    # together instead of repeating an availability flag and note for each one.
+    # These tools have runtime-dependent availability and retain their details.
+    conditional_names = {"run_tests", "git_manage", "capture_url_screenshot"}
+    always_enabled = {
+        name: {"description": tools[name]["description"]}
+        for name in tools
+        if name not in conditional_names
+    }
+    runtime = {
+        name: {
+            key: value
+            for key, value in metadata.items()
+            if key != "note"
+        }
+        for name, metadata in tools.items()
+        if name in conditional_names
+        or name in {"build_project", "code_intel", "subagent_manage"}
+    }
+    tools_response = {"always_enabled": always_enabled, "runtime": runtime}
+    skills = [
+        {
+            "name": item["name"],
+            "description": SKILL_SUMMARIES.get(
+                item["name"], _five_words(item.get("description", ""))
+            ),
+        }
+        for item in _list_skills()["skills"]
+    ]
     return {
         # Read at call time: support.configure() rebinds support.ROOT after import.
         "workspace_root": str(support.ROOT),
-        "tools": tools,
-        "env": {
-            "SUBAGENT_BACKEND": bool(os.environ.get("SUBAGENT_BACKEND", "").strip()),
-            "SUBAGENT_LOCAL": bool(os.environ.get("SUBAGENT_LOCAL", "").strip()),
-            "SUBAGENT_CONTINUE": bool(os.environ.get("SUBAGENT_CONTINUE", "").strip()),
-            "SUBAGENT_CONFIG_FILE": bool(
-                os.environ.get("SUBAGENT_CONFIG_FILE", "").strip()
-            ),
-        },
+        "tools": tools_response,
+        "skills": skills,
         "subagents": {
             "backend": subagent_backend,
             **({"continue": continue_info} if continue_info else {}),

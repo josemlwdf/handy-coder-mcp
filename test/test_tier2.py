@@ -602,18 +602,19 @@ class Tier2ToolTests(unittest.TestCase):
         self.assertEqual(caps["workspace_root"], str(Path(tmp).resolve()))
 
     def test_system_info_returns_expected_structure(self) -> None:
-        """system_info.get_capabilities must return workspace_root, tools, and env."""
+        """system_info.get_capabilities returns workspace, tools, and subagents."""
         from lib.core import system_info
 
         caps = system_info.get_capabilities()
         self.assertIn("workspace_root", caps)
         self.assertIn("tools", caps)
-        self.assertIn("env", caps)
-        self.assertIn("read_files", caps["tools"])
-        self.assertIn("apply_edits", caps["tools"])
-        self.assertIn("terminal_exec", caps["tools"])
-        self.assertIn("web_fetch_docs", caps["tools"])
-        self.assertNotIn("code_format_lint", caps["tools"])
+        self.assertNotIn("env", caps)
+        self.assertIn("subagents", caps)
+        self.assertIn("read_files", caps["tools"]["always_enabled"])
+        self.assertIn("apply_edits", caps["tools"]["always_enabled"])
+        self.assertIn("terminal_exec", caps["tools"]["always_enabled"])
+        self.assertIn("web_fetch_docs", caps["tools"]["always_enabled"])
+        self.assertNotIn("code_format_lint", caps["tools"]["always_enabled"])
 
 
 if __name__ == "__main__":

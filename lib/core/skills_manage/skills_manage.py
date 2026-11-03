@@ -30,7 +30,7 @@ from ...support import describe
 SKILLS_DIR_ENV: str = "HANDY_CODER_SKILLS_DIR"
 DEFAULT_SKILLS_DIR = Path(__file__).resolve().parents[3] / "skills"
 BASELINE_SKILLS = frozenset(
-    {"grill-me", "handoff", "mcp-audit", "mcp-tools-only", "plan", "troubleshoot"}
+    {"grill-me", "handoff", "mcp-tools-only", "plan"}
 )
 MAX_SKILL_BYTES = 256 * 1024
 MAX_DESCRIPTION_CHARS: int = 300
@@ -363,7 +363,7 @@ def skills_manage(
             "get_reference",
         ],
         Field(
-            description="list: return all skill metadata, or rank up to five matches when query is supplied. search: filter by query. get/export: retrieve full skill Markdown. list_references: list Markdown references for a skill from references/. get_reference: read one reference Markdown file. save: create/update a skill using its name and description. delete: remove a skill. built-in defaults: grill-me, handoff, mcp-audit, mcp-tools-only, plan, troubleshoot. (Required: True)"
+            description="list: return all skill metadata, or rank up to five matches when query is supplied. search: filter by query. get/export: retrieve full skill Markdown. list_references: list Markdown references for a skill from references/. get_reference: read one reference Markdown file. save: create/update a skill using its name and description. delete: remove a skill. built-in defaults: grill-me, handoff, mcp-tools-only, plan. (Required: True)"
         ),
     ],
     name: Annotated[
@@ -549,7 +549,7 @@ def register(mcp):
             "unless overwrite=true). Failures return error_code (missing_argument, invalid_name, invalid_reference_name, "
             "invalid_description, content_has_frontmatter, skill_too_large, not_found, already_exists, "
             "io_error, confirmation_required, protected_skill, backup_exists, path_escape, binary_file). "
-            "Baseline skills (including troubleshoot) cannot be deleted or replaced. "
+            "Baseline skills cannot be deleted or replaced. "
             "When to use: Discover, load, or record skills that guide how to perform a task."
         )
     )(session_skills_manage)
