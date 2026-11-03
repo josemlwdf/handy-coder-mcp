@@ -4,10 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import BaseModel, Field
 
 from lib import error_handler, tool_details, worker_supervisor
+
+
+class NestedOptions(BaseModel):
+    """Nested search options."""
+
+    archive_path: str = Field(description="Choose the vermilion archive location.")
+
 
 def _server() -> FastMCP:
     """Server function."""
@@ -67,40 +76,76 @@ def test_public_list_is_router_only_and_discovery_is_stable() -> None:
     ]
     assert len(file_matches) == 4
     assert discover("read_files")["tools"][0]["name"] == "read_files"
-    assert (
-        discover("filesystem list directory root workspace")["tools"][0]["name"]
-        == "find_files"
-    )
+    assert discover("directory")["tools"][0]["name"] == "find_files"
     assert discover("authorized")["tools"][0]["name"] == "find_files"
     assert discover("filesystem")["tools"][0]["name"] == "find_files"
-    assert discover("runtime capabilities")["tools"][0]["name"] == "get_capabilities"
-    assert discover("files workspace")["tools"][0]["name"] == "find_files"
+    assert discover("capabilities")["tools"][0]["name"] == "get_capabilities"
+    assert discover("workspace")["tools"][0]["name"] == "find_files"
     assert discover("contents")["tools"][0]["name"] == "read_files"
     assert len(discover("files", limit=20)["tools"]) == 4
     assert len(discover("files", limit=2)["tools"]) == 2
-    assert discover("no-such-capability")["tools"] == []
-    assert {row["name"] for row in discover("", limit=4)["tools"]} == set()
-    assert len(discover("", limit=4)["tools"]) == 0
+    assert discover("no-such-capability")["available"] is True
+    assert discover("", limit=4)["available"] is True
+    assert discover("!2")["available"] is True
 
-def test_wildcard_discovery_returns_compact_full_catalog() -> None:
-    """Test wildcard discovery returns compact full catalog function."""
+def test_keyword_discovery_stems_and_searches_tool_metadata() -> None:
+    """Test keywords stem and search all tool metadata fields."""
     server = _server()
+
+    @server.tool(
+        description=(
+            "Find the glimmer resource. Additional documentation mentions saffron archives."
+        )
+    )
+    def inspect_records(
+        cobalt_id: Annotated[
+            str, Field(description="Choose the cerulean archive identifier.")
+        ],
+    ) -> dict:
+        """Inspect records function."""
+        return {"cobalt_id": cobalt_id}
+
+    @server.tool(description="Search nested archive options.")
+    def search_nested(options: NestedOptions) -> dict:
+        """Search nested archive function."""
+        return options.model_dump()
+
     discover = server._tool_manager._tools["discover_tools"].fn
 
-    result = discover("*", limit=1)
-
-    assert result["count"] > 4
-    assert "discover_tools" not in {tool["name"] for tool in result["tools"]}
-    read_files = next(tool for tool in result["tools"] if tool["name"] == "read_files")
-    assert read_files["description"] == "Read files and return their contents."
-    assert "tags" not in read_files
-    assert read_files["parameters"]["paths"]["type"] == "array"
-    assert "description" in read_files["parameters"]["paths"]
-    assert "inputSchema" not in read_files
+    assert discover("directories")["tools"][0]["name"] == "find_files"
+    assert discover("glimmer")["tools"][0]["name"] == "inspect_records"
+    assert discover("saffron")["tools"][0]["name"] == "inspect_records"
+    assert discover("cobalt")["tools"][0]["name"] == "inspect_records"
+    assert discover("cerulean")["tools"][0]["name"] == "inspect_records"
+    assert discover("vermilion")["tools"][0]["name"] == "search_nested"
+    assert discover("saffr!on2")["tools"][0]["name"] == "inspect_records"
+    assert discover("*")["available"] is True
 
     metadata = server._tool_manager._tools["discover_tools"].description
-    assert "query='*'" in metadata
+    assert "stemmed keyword" in metadata
     assert "get_tool_details" in metadata
+    schema = server._tool_manager._tools["discover_tools"].parameters
+    assert "keyword" in schema["properties"]
+    assert "query" not in schema["properties"]
+
+def test_keyword_discovery_stems_agent_nouns_to_base_words() -> None:
+    """Test agent-noun keywords can find their base word."""
+    server = FastMCP("stem-test")
+    tool_details.install(server)
+
+    @server.tool(description="Return source code.")
+    def code() -> dict:
+        """Return source code function."""
+        return {"available": True}
+
+    @server.tool(description="Report runtime capabilities.")
+    def get_capabilities() -> dict:
+        """Get capabilities function."""
+        return {"available": True}
+
+    discover = server._tool_manager._tools["discover_tools"].fn
+
+    assert discover("coder")["tools"][0]["name"] == "code"
 
 def test_router_dispatch_validates_original_schema_and_unknown_names() -> None:
     """Test router dispatch validates original schema and unknown names function."""

@@ -114,6 +114,7 @@ test/test_fix_p2_3.py
 test/test_fix_p3_1_p3_4.py
 test/test_fix_p3_3_5_6.py
 test/test_fix_p3_7.py
+test/test_get_capabilities_summaries.py
 test/test_gowitness_screenshot.py
 test/test_ide_detector.py
 test/test_inspect_image_errors.py

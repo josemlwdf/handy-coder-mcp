@@ -6,6 +6,7 @@ Requires-Python: >=3.11
 License-File: LICENSE
 Requires-Dist: mcp<2,>=1.2
 Requires-Dist: pydantic<3,>=2
+Requires-Dist: snowballstemmer<4,>=3
 Requires-Dist: tree-sitter<0.26,>=0.23
 Requires-Dist: tree-sitter-c-sharp<0.24,>=0.23
 Requires-Dist: tree-sitter-language-pack<1,>=0.9

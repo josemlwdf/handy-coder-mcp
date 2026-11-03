@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Search registered tool names, descriptions, and curated tags and return matching full schemas. Query terms can match partially: tools matching more terms and stronger fields rank higher, so a useful result can be returned even when not every query term matches. Exact tool-name matches rank first. Use the `*` wildcard (`query="*"`) to list all registered tools except `discover_tools`.
+Search registered tool names, short and detailed descriptions, parameter names, parameter descriptions, and curated tags, then return matching full schemas. English word forms are normalized with stemming before matching; underscore-separated keywords are treated as separate terms. Matches in tool names and parameter names rank above description matches. `discover_tools` does not match itself.
 
 ## When and how to call it
 
@@ -15,9 +15,9 @@ The JSON Schema below is the registered input contract. Required fields appear i
 ```json
 {
   "properties": {
-    "query": {
-      "description": "Tool name or capability keywords to search for. (Required: True)",
-      "title": "Query",
+    "keyword": {
+      "description": "Keyword containing letters and underscores; other characters are removed. English word forms are stemmed before searching tool metadata. (Required: True)",
+      "title": "Keyword",
       "type": "string"
     },
     "limit": {
@@ -28,7 +28,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
     }
   },
   "required": [
-    "query"
+    "keyword"
   ],
   "title": "discover_toolsArguments",
   "type": "object"
@@ -39,7 +39,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 Returns structured tool documentation, matching tools, or the selected tool's result. Errors use structured `error_code` values.
 
-An empty or whitespace-only `query` returns no tools and includes a `hint` asking for a search term. Search with a tool name, description term, or curated tag, such as `filesystem`, `files`, or `workspace`, or use `query="*"` to list all registered tools. Search results include the tool's `tags` array (empty when no tags are curated). The wildcard result includes tags, short descriptions, and parameter details; `limit` is ignored.
+`keyword` is sanitized to letters and underscores; punctuation, spaces, and digits are removed before matching. English stemming normalizes the keyword and searchable metadata, so related word forms can match (for example, `directories` can match `directory`, and `coder` can match `code`). Use a tool name, description word, parameter name, parameter description, or curated tag, such as `filesystem`, `files`, `workspace`, or `directories`. The `limit` is capped at four. If sanitization leaves no keyword or no tools match, the tool returns the output of `get_capabilities`.
 
 ## Side effects and runtime requirements
 

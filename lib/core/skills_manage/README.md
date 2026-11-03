@@ -44,8 +44,15 @@ The JSON Schema below is the registered input contract. Required fields appear i
         "null"
       ]
     },
-    "content": {
+    "body": {
       "description": "Skill body in Markdown, without frontmatter (it is generated). (Required: False)",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "short_description": {
+      "description": "Exactly five words describing the skill for get_capabilities. (Required: False)",
       "type": [
         "string",
         "null"
@@ -82,6 +89,8 @@ The JSON Schema below is the registered input contract. Required fields appear i
 ```
 
 ## Results
+
+For `action="save"`, provide `name`, `description`, `body`, and an exactly five-word `short_description`. The short description is added to the package `summaries.json` and appears in `get_capabilities`.
 
 Returns the structured result produced by the implementation. Error results and status fields are tool-specific; inspect the returned object and its documented fields rather than assuming that a process or operation succeeded.
 

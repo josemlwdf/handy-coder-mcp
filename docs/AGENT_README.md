@@ -75,7 +75,7 @@ Alternatively, use the installed entry point:
 }
 ```
 
-The public `tools/list` contains only `get_capabilities`, `get_tool_details`, `discover_tools`, and `invoke_tool`. Discover relevant internal tools with `discover_tools(query, limit=4)`; each result includes the full description and input schema. `get_tool_details(tool_name)` provides structured argument documentation, and `invoke_tool(tool_name, arguments)` dispatches through the selected tool's original schema validation and execution controls. Individual tools are not directly exposed to clients. See the [tool inventory](docs/TOOL_INVENTORY.md) for the complete internal catalog.
+The public `tools/list` contains only `get_capabilities`, `get_tool_details`, `discover_tools`, and `invoke_tool`. Discover relevant internal tools with `discover_tools(keyword, limit=4)`; English stemming is applied across tool names, descriptions, parameter names, and parameter descriptions, and each result includes the full description and input schema. Invalid keyword characters are removed; searches with no matches return `get_capabilities` output. `get_tool_details(tool_name)` provides structured argument documentation, and `invoke_tool(tool_name, arguments)` dispatches through the selected tool's original schema validation and execution controls. Individual tools are not directly exposed to clients. See the [tool inventory](docs/TOOL_INVENTORY.md) for the complete internal catalog.
 
 Tool modules are organized by tier: Tier 1 tools live in `lib/core`, and optional Tier 2 tools live in `lib/extras`.
 
@@ -163,7 +163,7 @@ Committing is left to the user by default. `create_file` and `apply_edits` accep
 
 - `action: "list"` returns every skill's `name`, `description` and `invokable` flag, plus an `errors` array for files that could not be read.
 - `action: "get"` with `name` returns the full `content` and the `body` without frontmatter.
-- `action: "save"` with `name`, `description` and `content` creates a skill. The frontmatter is generated from `name` and `description`, so `content` must be the body only. It fails with `already_exists` unless `overwrite: true` is passed. `search`, `delete`, and `export` provide discovery, removal, and full Markdown retrieval.
+- `action: "save"` requires `name`, `description`, `body` and an exactly five-word `short_description`. The frontmatter is generated from `name` and `description`, and the short description is registered in the package `summaries.json` for `get_capabilities`. It fails with `already_exists` unless `overwrite: true` is passed. `search`, `delete`, and `export` provide discovery, removal, and full Markdown retrieval.
 
 Names must be 1-64 characters of lowercase letters, digits and hyphens, which also prevents path traversal. Failures return an `error_code`: `missing_argument`, `invalid_name`, `invalid_description`, `content_has_frontmatter`, `skill_too_large`, `not_found`, `already_exists`, `binary_file` or `io_error`.
 

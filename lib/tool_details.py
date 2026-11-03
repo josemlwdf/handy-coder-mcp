@@ -10,6 +10,7 @@ import re
 from typing import Annotated, Any
 
 from pydantic import Field
+import snowballstemmer
 
 # Curated capability vocabulary supplements each tool's own name and docs.
 _TOOL_TAGS: dict[str, tuple[str, ...]] = {
@@ -539,10 +540,14 @@ def install(mcp: Any) -> None:
     }
 
     def discover_tools(
-        query: Annotated[
+        keyword: Annotated[
             str,
             Field(
-                description="Tool name or capability terms to search. (Required: True)"
+                description=(
+                    "Keyword containing letters and underscores; other characters are removed. "
+                    "English word forms are stemmed before searching tool metadata. "
+                    "(Required: True)"
+                )
             ),
         ],
         limit: Annotated[
@@ -550,91 +555,99 @@ def install(mcp: Any) -> None:
             Field(description="Max search matches, capped at 4. (Required: False)"),
         ] = 4,
     ) -> dict:
-        """Search tools or list a compact catalog with query='*'."""
-        query_text = " ".join((query or "").split()).casefold()
-        if not query_text:
-            return {
-                "tools": [],
-                "count": 0,
-                "hint": "Provide a non-empty search query, such as a tool name or capability.",
-            }
-        terms = re.findall(r"[\w.-]+", query_text)
+        """Search tool metadata by keyword; return capabilities when no tools match."""
         manager_tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
-        candidates: list = []
-        if query_text == "*":
-            result: list = []
-            ordered_catalog = sorted(
-                catalog.items(), key=lambda item: item[0].casefold()
-            )
-            for name, entry in ordered_catalog:
-                if name == "discover_tools" or name not in manager_tools:
-                    continue
-                parameters: dict = {}
-                details = _arguments(entry.get("inputSchema", {}))
-                for parameter_name, detail in details.items():
-                    parameter: dict = {
-                        "type": detail["type"],
-                        "description": _brief(detail["description"]),
-                        "required": detail["required"],
-                    }
-                    if "properties" in detail:
-                        parameter["properties"] = {
-                            child_name: {
-                                "type": child["type"],
-                                "description": _brief(child["description"]),
-                                "required": child["required"],
-                            }
-                            for child_name, child in detail["properties"].items()
-                        }
-                    if "items" in detail:
-                        item = detail["items"]
-                        parameter["items"] = {
-                            "type": item["type"],
-                            "description": _brief(item["description"]),
-                            "required": item["required"],
-                        }
-                    parameters[parameter_name] = parameter
-                result.append(
-                    {
-                        "name": name,
-                        "description": _brief(entry.get("description", "")),
-                        "parameters": parameters,
-                    }
-                )
-            return {"tools": result, "count": len(result)}
 
+        def capabilities_fallback() -> dict:
+            """Return the registered runtime capabilities or an explicit error."""
+            capabilities_tool = manager_tools.get("get_capabilities")
+            capabilities_function = getattr(capabilities_tool, "fn", None)
+            if not callable(capabilities_function):
+                return {
+                    "error_code": "capabilities_unavailable",
+                    "message": "The get_capabilities tool is not registered.",
+                }
+            return capabilities_function()
+
+        if not isinstance(keyword, str):
+            return {
+                "error_code": "invalid_keyword",
+                "message": "keyword must be a string",
+            }
+        keyword_text = "".join(
+            character for character in keyword if character.isalpha() or character == "_"
+        ).casefold()
+        english_stemmer = snowballstemmer.stemmer("english")
+
+        def stems(text: str) -> set[str]:
+            """Return the English stems of words in searchable metadata."""
+            words = re.findall(r"[^\W\d_]+", text.casefold(), flags=re.UNICODE)
+            normalized = set(english_stemmer.stemWords(words))
+            # Snowball leaves some agent nouns such as "coder" unchanged.
+            normalized.update(
+                english_stemmer.stemWord(word[:-1])
+                for word in words
+                if len(word) > 4 and word.endswith("er")
+            )
+            return normalized
+
+        terms = stems(keyword_text)
+        if not terms:
+            return capabilities_fallback()
+
+        def parameter_metadata(schema: dict) -> tuple[str, str]:
+            """Collect parameter names and descriptions, including nested fields."""
+            names: list[str] = []
+            descriptions: list[str] = []
+
+            def visit(name: str, detail: dict) -> None:
+                """Collect searchable data from a parameter and its nested fields."""
+                names.append(name)
+                descriptions.append(str(detail.get("description", "")))
+                properties = detail.get("properties", {})
+                if isinstance(properties, dict):
+                    for child_name, child in properties.items():
+                        if isinstance(child, dict):
+                            visit(child_name, child)
+                item = detail.get("items")
+                if isinstance(item, dict):
+                    descriptions.append(str(item.get("description", "")))
+                    item_properties = item.get("properties", {})
+                    if isinstance(item_properties, dict):
+                        for child_name, child in item_properties.items():
+                            if isinstance(child, dict):
+                                visit(child_name, child)
+
+            for name, detail in _arguments(schema).items():
+                visit(name, detail)
+            return " ".join(names), " ".join(descriptions)
+
+        candidates: list = []
         for name, entry in catalog.items():
-            if name not in manager_tools:
+            if name == "discover_tools" or name not in manager_tools:
                 continue
             description = entry.get("description", "")
-            summary = _brief(description)
-            tags = _TOOL_TAGS.get(name, ())
-            name_text = name.casefold()
-            summary_text = summary.casefold()
-            description_text = description.casefold()
-            tags_text = " ".join(tags).casefold()
-            matched = sum(
-                term in name_text
-                or term in summary_text
-                or term in description_text
-                or term in tags_text
-                for term in terms
+            short_description = getattr(manager_tools[name], "description", "")
+            tags = " ".join(_TOOL_TAGS.get(name, ()))
+            parameter_names, parameter_descriptions = parameter_metadata(
+                entry.get("inputSchema", {})
             )
+            fields = (
+                (10, stems(name)),
+                (6, stems(tags)),
+                (5, stems(parameter_names)),
+                (4, stems(short_description)),
+                (3, stems(parameter_descriptions)),
+                (2, stems(description)),
+            )
+            matched = sum(any(term in field for _, field in fields) for term in terms)
             if not matched:
                 continue
-            exact = name_text == query_text
-            # Score each term by its strongest field so repeated wording does not inflate rank.
-            score: int = 0
-            for term in terms:
-                if term in name_text:
-                    score += 10
-                elif term in tags_text:
-                    score += 6
-                elif term in summary_text:
-                    score += 3
-                elif term in description_text:
-                    score += 1
-            # Partial matches are useful; matching more query terms ranks higher.
+            exact = keyword_text == name.casefold()
+            score = sum(
+                max((weight for weight, field in fields if term in field), default=0)
+                for term in terms
+            )
             candidates.append(
                 (not exact, -matched, -score, name.casefold(), name, entry)
             )
@@ -648,6 +661,8 @@ def install(mcp: Any) -> None:
                     "inputSchema": copy.deepcopy(entry.get("inputSchema", {})),
                 }
             )
+        if not result:
+            return capabilities_fallback()
         return {"tools": result, "count": len(result)}
 
     def register_meta(name: str, description: str, function: Any) -> None:
@@ -658,7 +673,7 @@ def install(mcp: Any) -> None:
 
     register_meta(
         "discover_tools",
-        "Search tools by name or capability.",
+        "Search tool names, descriptions, and parameters by stemmed keyword; use get_tool_details for full docs. No matches return runtime capabilities.",
         discover_tools,
     )
 

@@ -17,9 +17,11 @@ They live in ``skills/<name>/SKILL.md`` (override the base directory with
 from __future__ import annotations
 
 import functools
+import json
 import os
 import re
 import tempfile
+import threading
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -34,6 +36,8 @@ BASELINE_SKILLS = frozenset(
 )
 MAX_SKILL_BYTES = 256 * 1024
 MAX_DESCRIPTION_CHARS: int = 300
+SUMMARY_FILE = Path(__file__).resolve().parents[1] / "get_capabilities" / "summaries.json"
+_SUMMARY_LOCK = threading.Lock()
 SKILL_FILE_NAME: str = "SKILL.md"
 REFERENCES_DIR_NAME: str = "references"
 REFERENCE_FILE_EXTENSION: str = ".md"
@@ -213,7 +217,7 @@ def _get_skill(name: str | None) -> dict:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         return _error("binary_file", f"Skill file is not valid UTF-8: {name}")
-    except OSError as exc:
+    except Exception as exc:
         return _error("io_error", f"{exc.strerror or 'Read failed'}: {name}")
     _, body = _parse(text)
     return {**_entry(name, text), "content": text, "body": body}
@@ -269,7 +273,8 @@ def _get_skill_reference(name: str | None, reference: str | None) -> dict:
 def _save_skill(
     name: str | None,
     description: str | None,
-    content: str | None,
+    body: str | None,
+    short_description: str | None,
     overwrite: bool,
     tags: list[str] | None = None,
     invokable: bool = True,
@@ -288,9 +293,17 @@ def _save_skill(
             "invalid_description",
             f"description exceeds {MAX_DESCRIPTION_CHARS} characters",
         )
-    if not content or not content.strip():
-        return _error("missing_argument", "content is required for save")
-    body = content.replace("\r\n", "\n").strip("\n")
+    if not short_description or not short_description.strip():
+        return _error("missing_argument", "short_description is required for save")
+    short_description = short_description.strip()
+    if len(short_description.split()) != 5:
+        return _error(
+            "invalid_short_description",
+            "short_description must contain exactly five words",
+        )
+    if not body or not body.strip():
+        return _error("missing_argument", "body is required for save")
+    body = body.replace("\r\n", "\n").strip("\n")
     if body.startswith("---\n") or body.strip() == "---":
         return _error(
             "content_has_frontmatter",
@@ -311,12 +324,16 @@ def _save_skill(
     directory = _skills_dir()
     skill_dir = _skill_dir(name)
     path = _skill_file(name)
+    previous_skill = None
+    skill_written = False
     try:
         directory.mkdir(parents=True, exist_ok=True)
         if skill_dir.exists() and not skill_dir.is_dir():
             return _error("io_error", f"Skill path is not a directory: {name}")
         skill_dir.mkdir(parents=False, exist_ok=True)
         existed = path.exists()
+        if existed:
+            previous_skill = path.read_bytes()
         if existed and not overwrite:
             return _error(
                 "already_exists",
@@ -331,6 +348,7 @@ def _save_skill(
                 with os.fdopen(fd, "wb") as handle:
                     handle.write(encoded)
                 os.replace(tmp_name, path)
+                skill_written = True
             except BaseException:
                 try:
                     os.unlink(tmp_name)
@@ -341,14 +359,70 @@ def _save_skill(
             # Exclusive create guards against a concurrent save of the same name.
             with open(path, "xb") as handle:
                 handle.write(encoded)
+            skill_written = True
+        _register_skill_summary(name, short_description)
     except FileExistsError:
+        if skill_written:
+            _restore_skill_file(path, previous_skill)
         return _error(
             "already_exists",
             f"Skill already exists: {name}. Pass overwrite=true to replace it.",
         )
     except OSError as exc:
-        return _error("io_error", f"{exc.strerror or 'Write failed'}: {name}")
+        if skill_written:
+            _restore_skill_file(path, previous_skill)
+        message = getattr(exc, "strerror", None) or str(exc) or "Write failed"
+        return _error("io_error", f"{message}: {name}")
+    except Exception as exc:
+        if skill_written:
+            _restore_skill_file(path, previous_skill)
+        return _error("io_error", f"{exc}: {name}")
     return {"saved": True, "name": name, "created": not existed, "bytes": len(encoded)}
+
+
+def _restore_skill_file(path: Path, previous: bytes | None) -> None:
+    """Restore the skill document after a failed summary registration."""
+    try:
+        if previous is None:
+            path.unlink(missing_ok=True)
+        else:
+            fd, temporary = tempfile.mkstemp(
+                dir=path.parent, prefix=f".{path.parent.name}.", suffix=".restore"
+            )
+            try:
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write(previous)
+                os.replace(temporary, path)
+            except BaseException:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
+                raise
+    except OSError:
+        pass
+
+
+def _register_skill_summary(name: str, short_description: str) -> None:
+    """Atomically add or replace a skill's five-word capabilities summary."""
+    with _SUMMARY_LOCK:
+        with SUMMARY_FILE.open(encoding="utf-8") as handle:
+            summaries = json.load(handle)
+        summaries.setdefault("skills", {})[name] = short_description
+        fd, temporary = tempfile.mkstemp(
+            dir=SUMMARY_FILE.parent, prefix=".summaries.", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(summaries, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+            os.replace(temporary, SUMMARY_FILE)
+        except BaseException:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+            raise
 
 
 def skills_manage(
@@ -364,7 +438,7 @@ def skills_manage(
             "get_reference",
         ],
         Field(
-            description="list: return all skill metadata, or all skills matching any query term in name, description, tags, or full SKILL.md content. search: same uncapped full-content search. get/export: retrieve full skill Markdown. list_references: list Markdown references for a skill from references/. get_reference: read one reference Markdown file. save: create/update a skill using its name and description. delete: remove a skill. built-in defaults: grill-me, handoff, mcp-tools-only, plan. (Required: True)"
+            description="list: return all skill metadata, or all skills matching any query term in name, description, tags, or full SKILL.md content. search: same uncapped full-content search. get/export: retrieve full skill Markdown. list_references: list Markdown references for a skill from references/. get_reference: read one reference Markdown file. save: create/update using name, description, body and a five-word short_description. delete: remove a skill. built-in defaults: grill-me, handoff, mcp-tools-only, plan. (Required: True)"
         ),
     ],
     name: Annotated[
@@ -379,10 +453,16 @@ def skills_manage(
             description="Single-line summary of what the skill does and when to use it. Required for save. (Required: False)"
         ),
     ] = None,
-    content: Annotated[
+    body: Annotated[
         str | None,
         Field(
             description="Skill body in Markdown, without frontmatter (it is generated). Required for save. (Required: False)"
+        ),
+    ] = None,
+    short_description: Annotated[
+        str | None,
+        Field(
+            description="Exactly five words describing the skill for get_capabilities. Required for save. (Required: False)"
         ),
     ] = None,
     overwrite: Annotated[
@@ -481,7 +561,9 @@ def skills_manage(
             return _error(
                 "protected_skill", f"Baseline skill cannot be replaced: {name}"
             )
-        return _save_skill(name, description, content, overwrite, tags, invokable)
+        return _save_skill(
+            name, description, body, short_description, overwrite, tags, invokable
+        )
     return _error("invalid_action", f"Unknown action: {action}")
 
 
@@ -527,7 +609,7 @@ def register(mcp):
         description=describe(
             "Manage reusable skills stored as Markdown files at skills/<name>/SKILL.md. "
             "Actions: list returns metadata for all skills or every match on any case-insensitive query term in name, description, tags, or full SKILL.md Markdown; search uses the same uncapped full-content matching; get/export returns full Markdown; list_references lists available files from skills/<name>/references/*.md; get_reference reads one reference file by reference name; delete requires confirm=true, protects baseline skills, and keeps a .bak backup; "
-            "save creates a skill from name, description and content; fails with already_exists "
+            "save creates a skill from name, description, body and an exactly five-word short_description; fails with already_exists "
             "unless overwrite=true). Failures return error_code (missing_argument, invalid_name, invalid_reference_name, "
             "invalid_description, content_has_frontmatter, skill_too_large, not_found, already_exists, "
             "io_error, confirmation_required, protected_skill, backup_exists, path_escape, binary_file). "

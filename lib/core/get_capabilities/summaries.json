@@ -1,0 +1,37 @@
+{
+  "tools": {
+    "read_files": "Read workspace files within limits",
+    "create_file": "Create or replace workspace files",
+    "apply_edits": "Apply validated edits to files",
+    "code_polish": "Format and improve selected files",
+    "terminal_exec": "Run bounded commands within workspace",
+    "search_text": "Search workspace text with patterns",
+    "find_files": "Find workspace files matching patterns",
+    "skills_manage": "List retrieve or save skills",
+    "orchestrator": "Coordinate multistep workspace tasks safely",
+    "run_tests": "Run project tests and report",
+    "git_manage": "Manage workspace repositories and changes",
+    "build_project": "Detect and build supported projects",
+    "code_get_diagnostics": "Run project checks and diagnostics",
+    "web_search": "Search public web for facts",
+    "capture_url_screenshot": "Capture webpage screenshots using gowitness",
+    "code_intel": "Navigate indexed source code symbols",
+    "get_tool_details": "Retrieve registered tool schemas documentation",
+    "web_fetch_docs": "Fetch and extract public text",
+    "subagent_manage": "Manage delegated tasks and results",
+    "inspect_image": "Inspect images using multimodal models",
+    "get_capabilities": "Report runtime tools and availability"
+  },
+  "skills": {
+    "grill-me": "Ask focused questions to clarify",
+    "python-fact-grounded-coding": "Ground Python changes in facts",
+    "dotnet-tests": "Run tests and diagnose failures",
+    "handoff": "Prepare concise context for agents",
+    "analyzing-dotnet-performance": "Analyze performance and suggest improvements",
+    "implement": "Implement changes and verify outcomes",
+    "diagnosing-bugs": "Investigate bugs using evidence carefully",
+    "dotnet-webapi": "Build and maintain web APIs",
+    "plan": "Create plans for complex work",
+    "caveman": "Communicate tersely with technical clarity"
+  }
+}

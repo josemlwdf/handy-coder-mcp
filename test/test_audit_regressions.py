@@ -552,7 +552,8 @@ class AuditRegressionTests(unittest.TestCase):
                 action="save",
                 name="regression",
                 description="A test skill",
-                content="Body",
+                body="Body",
+                short_description="Regression skill summary appears here",
             )
             self.assertTrue(saved["saved"])
             pending = skills.skills_manage(action="delete", name="regression")

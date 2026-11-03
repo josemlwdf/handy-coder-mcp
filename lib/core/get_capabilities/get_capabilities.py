@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from pathlib import Path
@@ -19,42 +20,17 @@ from ..gowitness_screenshot import gowitness_available
 from ..build_project.build_project import _python_build_runtime
 from ...subagents.roles import ROLES
 
-TOOL_SUMMARIES = {
-    "read_files": "Read workspace files within limits",
-    "create_file": "Create or replace workspace files",
-    "apply_edits": "Apply validated edits to files",
-    "code_polish": "Format and improve selected files",
-    "terminal_exec": "Run bounded commands within workspace",
-    "search_text": "Search workspace text with patterns",
-    "find_files": "Find workspace files matching patterns",
-    "skills_manage": "List retrieve or save skills",
-    "orchestrator": "Coordinate multistep workspace tasks safely",
-    "run_tests": "Run project tests and report",
-    "git_manage": "Manage workspace repositories and changes",
-    "build_project": "Detect and build supported projects",
-    "code_get_diagnostics": "Run project checks and diagnostics",
-    "web_search": "Search public web for facts",
-    "capture_url_screenshot": "Capture webpage screenshots using gowitness",
-    "code_intel": "Navigate indexed source code symbols",
-    "get_tool_details": "Retrieve registered tool schemas documentation",
-    "web_fetch_docs": "Fetch and extract public text",
-    "subagent_manage": "Manage delegated tasks and results",
-    "inspect_image": "Inspect images using multimodal models",
-    "get_capabilities": "Report runtime tools and availability",
-}
+with Path(__file__).with_name("summaries.json").open(encoding="utf-8") as _summary_file:
+    _SUMMARIES = json.load(_summary_file)
 
-SKILL_SUMMARIES = {
-    "grill-me": "Ask focused questions to clarify",
-    "python-fact-grounded-coding": "Ground Python changes in facts",
-    "dotnet-tests": "Run tests and diagnose failures",
-    "handoff": "Prepare concise context for agents",
-    "analyzing-dotnet-performance": "Analyze performance and suggest improvements",
-    "implement": "Implement changes and verify outcomes",
-    "diagnosing-bugs": "Investigate bugs using evidence carefully",
-    "dotnet-webapi": "Build and maintain web APIs",
-    "plan": "Create plans for complex work",
-    "caveman": "Communicate tersely with technical clarity",
-}
+TOOL_SUMMARIES = _SUMMARIES["tools"]
+SKILL_SUMMARIES = _SUMMARIES["skills"]
+
+
+def _load_summaries() -> dict:
+    """Read curated summaries so newly saved skills appear immediately."""
+    with Path(__file__).with_name("summaries.json").open(encoding="utf-8") as handle:
+        return json.load(handle)
 
 def _five_words(value: str) -> str:
     """Five words function."""
@@ -66,6 +42,9 @@ _MCP: None = None
 
 def get_capabilities() -> dict:
     """Return the server's runtime capabilities and optional-dependency status."""
+    summaries = _load_summaries()
+    tool_summaries = summaries["tools"]
+    skill_summaries = summaries["skills"]
     # Core binaries
     git_ok = shutil.which("git") is not None
     pytest_ok = shutil.which("pytest") is not None
@@ -226,7 +205,7 @@ def get_capabilities() -> dict:
     )
     for name, metadata in tools.items():
         fallback = metadata.get("note", name.replace("_", " "))
-        metadata["description"] = TOOL_SUMMARIES.get(name, _five_words(fallback))
+        metadata["description"] = tool_summaries.get(name, _five_words(fallback))
     tools: dict = {name: tools[name] for name in sorted(tools)}
     # Most tools are unconditionally registered and available. Keep their names
     # together instead of repeating an availability flag and note for each one.
@@ -247,7 +226,7 @@ def get_capabilities() -> dict:
     skills: list = [
         {
             "name": item["name"],
-            "description": SKILL_SUMMARIES.get(
+            "description": skill_summaries.get(
                 item["name"], _five_words(item.get("description", ""))
             ),
         }

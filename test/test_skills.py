@@ -1,6 +1,8 @@
 """Module documentation."""
 
 import os
+import json
+import importlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -36,6 +38,13 @@ class SkillsToolTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.dir = Path(self._tmp.name) / "skills"
+        self.summary_file = Path(self._tmp.name) / "summaries.json"
+        self.summary_file.write_text(
+            Path(skills.SUMMARY_FILE).read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        summary_patcher = mock.patch.object(skills, "SUMMARY_FILE", self.summary_file)
+        summary_patcher.start()
+        self.addCleanup(summary_patcher.stop)
         patcher = mock.patch.dict(os.environ, {skills.SKILLS_DIR_ENV: str(self.dir)})
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -46,7 +55,8 @@ class SkillsToolTests(unittest.TestCase):
             "action": "save",
             "name": name,
             "description": "Does a thing.",
-            "content": "Step one.\nStep two.",
+            "body": "Step one.\nStep two.",
+            "short_description": "Create helpful reusable skill summaries",
         }
         args.update(overrides)
         return skills.skills_manage(**args)
@@ -69,6 +79,21 @@ class SkillsToolTests(unittest.TestCase):
         self.assertEqual(got["body"].strip(), "Step one.\nStep two.")
         self.assertTrue(got["content"].startswith("---\nname: my-skill\n"))
         self.assertTrue((self.dir / "my-skill" / "SKILL.md").is_file())
+        summaries = json.loads(self.summary_file.read_text(encoding="utf-8"))
+        self.assertEqual(
+            summaries["skills"]["my-skill"],
+            "Create helpful reusable skill summaries",
+        )
+
+    def test_summary_registration_failure_restores_skill_file(self) -> None:
+        self.save()
+        original = (self.dir / "my-skill" / "SKILL.md").read_bytes()
+        summaries = self.summary_file.read_bytes()
+        with mock.patch.object(skills, "_register_skill_summary", side_effect=OSError("disk full")):
+            result = self.save(body="Changed body.", overwrite=True)
+        self.assertEqual(result["error_code"], "io_error")
+        self.assertEqual((self.dir / "my-skill" / "SKILL.md").read_bytes(), original)
+        self.assertEqual(self.summary_file.read_bytes(), summaries)
 
     def test_list_returns_sorted_entries(self) -> None:
         """Test list returns sorted entries function."""
@@ -99,7 +124,7 @@ class SkillsToolTests(unittest.TestCase):
     def test_search_matches_case_insensitive_terms_in_metadata_and_body(self) -> None:
         self.save("first", description="Python helper")
         self.save("second", description="Java helper")
-        self.save("body-only", description="Other helper", content="Special Quasar protocol.")
+        self.save("body-only", description="Other helper", body="Special Quasar protocol.")
         self.assertEqual(
             [s["name"] for s in skills.skills_manage(action="search", query="pYtHoN")["skills"]],
             ["first"],
@@ -118,7 +143,7 @@ class SkillsToolTests(unittest.TestCase):
 
     def test_registered_wrapper_uses_full_content_match_without_cap(self) -> None:
         for index in range(7):
-            self.save(f"skill-{index}", description="Ordinary helper", content="Needle in body.")
+            self.save(f"skill-{index}", description="Ordinary helper", body="Needle in body.")
         mcp = FakeMCP()
         registered = skills.register(mcp)
         for action in ("search", "list"):
@@ -128,7 +153,7 @@ class SkillsToolTests(unittest.TestCase):
     def test_save_refuses_overwrite_by_default(self) -> None:
         """Test save refuses overwrite by default function."""
         self.save()
-        again = self.save(content="Different.")
+        again = self.save(body="Different.")
         self.assertEqual(again["error_code"], "already_exists")
         got = skills.skills_manage(action="get", name="my-skill")
         self.assertIn("Step one.", got["body"])
@@ -136,7 +161,7 @@ class SkillsToolTests(unittest.TestCase):
     def test_save_with_overwrite_replaces(self) -> None:
         """Test save with overwrite replaces function."""
         self.save()
-        again = self.save(content="Different.", overwrite=True)
+        again = self.save(body="Different.", short_description="Replace the previous skill summary", overwrite=True)
         self.assertTrue(again["saved"])
         self.assertFalse(again["created"])
         got = skills.skills_manage(action="get", name="my-skill")
@@ -179,12 +204,37 @@ class SkillsToolTests(unittest.TestCase):
         result = skills.skills_manage(action="get")
         self.assertEqual(result["error_code"], "missing_argument")
 
-    def test_save_requires_description_and_content(self) -> None:
-        """Test save requires description and content function."""
+    def test_save_requires_description_body_and_short_description(self) -> None:
+        """Test save requires all content fields function."""
         self.assertEqual(self.save(description=None)["error_code"], "missing_argument")
         self.assertEqual(self.save(description="  ")["error_code"], "missing_argument")
-        self.assertEqual(self.save(content=None)["error_code"], "missing_argument")
-        self.assertEqual(self.save(content="\n ")["error_code"], "missing_argument")
+        self.assertEqual(self.save(body=None)["error_code"], "missing_argument")
+        self.assertEqual(self.save(body="\n ")["error_code"], "missing_argument")
+        self.assertEqual(self.save(short_description=None)["error_code"], "missing_argument")
+
+    def test_short_description_requires_exactly_five_words(self) -> None:
+        before = self.summary_file.read_bytes()
+        for value in ("only four words", "this description has six whole words"):
+            result = self.save(short_description=value)
+            self.assertEqual(result["error_code"], "invalid_short_description")
+            self.assertEqual(self.summary_file.read_bytes(), before)
+            self.assertFalse((self.dir / "my-skill" / "SKILL.md").exists())
+
+    def test_capabilities_uses_new_summary_immediately(self) -> None:
+        self.save()
+        capabilities = importlib.import_module(
+            "lib.core.get_capabilities.get_capabilities"
+        )
+        with mock.patch.object(
+            capabilities,
+            "_load_summaries",
+            return_value=json.loads(self.summary_file.read_text(encoding="utf-8")),
+        ):
+            result = capabilities.get_capabilities()
+        description = next(
+            item["description"] for item in result["skills"] if item["name"] == "my-skill"
+        )
+        self.assertEqual(description, "Create helpful reusable skill summaries")
 
     def test_description_must_be_single_short_line(self) -> None:
         """Test description must be single short line function."""
@@ -197,12 +247,12 @@ class SkillsToolTests(unittest.TestCase):
 
     def test_content_with_frontmatter_is_rejected(self) -> None:
         """Test content with frontmatter is rejected function."""
-        result = self.save(content="---\nname: x\n---\nbody")
+        result = self.save(body="---\nname: x\n---\nbody")
         self.assertEqual(result["error_code"], "content_has_frontmatter")
 
     def test_oversized_skill_is_rejected(self) -> None:
         """Test oversized skill is rejected function."""
-        result = self.save(content="x" * (skills.MAX_SKILL_BYTES + 1))
+        result = self.save(body="x" * (skills.MAX_SKILL_BYTES + 1))
         self.assertEqual(result["error_code"], "skill_too_large")
 
     def test_crlf_frontmatter_is_parsed(self) -> None:
