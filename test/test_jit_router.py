@@ -101,6 +101,29 @@ def test_invoke_tool_descriptions_enforce_router_usage() -> None:
     assert "Never call internal tools directly" in detailed_description
 
 
+def test_internal_tool_descriptions_require_router_usage() -> None:
+    """Test internal tools forbid direct calls in short and detailed docs."""
+    server = _server()
+    public_tools = {
+        "get_capabilities",
+        "get_tool_details",
+        "discover_tools",
+        "invoke_tool",
+    }
+    get_details = server._tool_manager._tools["get_tool_details"].fn
+
+    for name in server._tool_details_catalog.keys() - public_tools:
+        short_description = server._tool_manager._tools[name].description
+        detailed_description = get_details(name)["description"]
+
+        assert short_description.startswith(
+            "Do not call this tool directly; all calls must go through invoke_tool."
+        )
+        assert detailed_description.startswith(
+            "Do not call this tool directly; all calls must go through invoke_tool."
+        )
+
+
 def test_keyword_discovery_stems_and_searches_tool_metadata() -> None:
     """Test keywords stem and search all tool metadata fields."""
     server = _server()

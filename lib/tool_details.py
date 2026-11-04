@@ -26,6 +26,17 @@ _TOOL_TAGS: dict[str, tuple[str, ...]] = {
 }
 
 _ROUTER_RESULT_CHAR_LIMIT = 16_000
+_ROUTER_PUBLIC_TOOLS = frozenset(
+    {
+        "get_capabilities",
+        "get_tool_details",
+        "discover_tools",
+        "invoke_tool",
+    }
+)
+_ROUTER_ONLY_GUIDANCE = (
+    "Do not call this tool directly; all calls must go through invoke_tool."
+)
 
 def _serialized_length(value: Any) -> int:
     """Serialized length function."""
@@ -135,16 +146,35 @@ def _brief(description: str) -> str:
 
 def _published_description(name: str, description: str) -> str:
     """Keep editing guidance visible in the regular tool listing."""
+    route_only = name not in _ROUTER_PUBLIC_TOOLS
+    content = description
+    if route_only and content.startswith(_ROUTER_ONLY_GUIDANCE):
+        content = content[len(_ROUTER_ONLY_GUIDANCE) :].lstrip()
     if name in {"create_file", "apply_edits", "code_polish"}:
-        start = description.find("Note: The code_polish tool is applied automatically")
+        start = content.find("Note: The code_polish tool is applied automatically")
         end_marker: str = (
             "Treat these automated changes as the baseline standard of the repository."
         )
-        end = description.find(end_marker, start) if start >= 0 else -1
+        end = content.find(end_marker, start) if start >= 0 else -1
         if end >= 0:
-            note = description[start : end + len(end_marker)]
-            return f"{_brief(description)} {note}"
-    return _brief(description)
+            note = content[start : end + len(end_marker)]
+            published = f"{_brief(content)} {note}"
+            return f"{_ROUTER_ONLY_GUIDANCE} {published}" if route_only else published
+    published = _brief(content)
+    if route_only:
+        available = 159 - len(_ROUTER_ONLY_GUIDANCE)
+        return f"{_ROUTER_ONLY_GUIDANCE} {published[:available]}".rstrip()
+    return published
+
+
+def _with_router_guidance(name: str, description: str) -> str:
+    """Require router-only invocation for tools outside the public router API."""
+    if name in _ROUTER_PUBLIC_TOOLS:
+        return description
+    if description.startswith(_ROUTER_ONLY_GUIDANCE):
+        return description
+    return f"{_ROUTER_ONLY_GUIDANCE}\n\n{description}".rstrip()
+
 
 def _schema(tool: Any) -> dict:
     """Schema function."""
@@ -445,18 +475,21 @@ def install(mcp: Any) -> None:
             """Register function."""
             registered = decorator(function)
             name = getattr(registered, "__name__", function.__name__)
+            detailed_description = _with_router_guidance(
+                name, description or inspect.getdoc(function) or ""
+            )
             manager_tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
             runtime_tool = manager_tools.get(name)
             if runtime_tool is not None:
                 runtime_tool.description = _published_description(
-                    name, description or ""
+                    name, detailed_description
                 )
             full_schema = _schema(runtime_tool) if runtime_tool is not None else {}
             if _schema_has_unknown_argument_types(full_schema):
                 full_schema = _fallback_argument_schema(function)
             _normalize_schema_types(full_schema)
             catalog[name] = {
-                "description": description or "",
+                "description": detailed_description,
                 "inputSchema": full_schema,
             }
             if runtime_tool is not None:
@@ -478,12 +511,13 @@ def install(mcp: Any) -> None:
         """Update description function."""
         if getattr(mcp, "_tool_details_frozen", False):
             return
+        detailed_description = _with_router_guidance(name, description)
         if name in catalog:
-            catalog[name]["description"] = description
+            catalog[name]["description"] = detailed_description
         manager_tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
         runtime_tool = manager_tools.get(name)
         if runtime_tool is not None:
-            runtime_tool.description = _published_description(name, description)
+            runtime_tool.description = _published_description(name, detailed_description)
 
     mcp._tool_details_update = update_description
 
@@ -755,14 +789,10 @@ def install(mcp: Any) -> None:
         def public_list_tools(*args, **kwargs) -> list:
             """Public list tools function."""
             listed = original_list_tools(*args, **kwargs)
-            public_names: set = {
-                "get_capabilities",
-                "get_tool_details",
-                "discover_tools",
-                "invoke_tool",
-            }
             return [
-                tool for tool in listed if getattr(tool, "name", None) in public_names
+                tool
+                for tool in listed
+                if getattr(tool, "name", None) in _ROUTER_PUBLIC_TOOLS
             ]
 
         manager.list_tools = public_list_tools
