@@ -1,6 +1,6 @@
 ---
 name: research
-description: "Research codebases, technical topics, APIs, and documentation using workspace evidence and high-trust primary sources. Use for investigations and fact-checking that need a cited Markdown report."
+description: Research codebases, technical topics, APIs, and documentation using workspace evidence and high-trust primary sources. Use for investigations and fact-checking that need a cited Markdown report.
 tags: research, investigation, sources, documentation
 ---
 

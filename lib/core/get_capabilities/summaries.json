@@ -34,6 +34,8 @@
     "plan": "Create plans for complex work",
     "caveman": "Communicate tersely with technical clarity",
     "batched-test-failure-reporting": "Batch tests and report failures",
-    "regression": "Regression skill summary appears here"
+    "regression": "Regression skill summary appears here",
+    "improve-codebase-architecture": "Review codebase architecture improvements thoroughly",
+    "research": "Research codebases and technical topics"
   }
 }
