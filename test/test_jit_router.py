@@ -88,6 +88,19 @@ def test_public_list_is_router_only_and_discovery_is_stable() -> None:
     assert discover("", limit=4)["available"] is True
     assert discover("!2")["available"] is True
 
+
+def test_invoke_tool_descriptions_enforce_router_usage() -> None:
+    """Test invoke_tool descriptions require routing internal calls."""
+    server = _server()
+    short_description = server._tool_manager._tools["invoke_tool"].description
+    details = server._tool_manager._tools["get_tool_details"].fn("invoke_tool")
+    detailed_description = details["description"]
+
+    assert "Do not call internal tools directly" in short_description
+    assert "discover_tools or get_tool_details" in detailed_description
+    assert "Never call internal tools directly" in detailed_description
+
+
 def test_keyword_discovery_stems_and_searches_tool_metadata() -> None:
     """Test keywords stem and search all tool metadata fields."""
     server = _server()

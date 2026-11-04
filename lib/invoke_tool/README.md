@@ -2,11 +2,14 @@
 
 ## Purpose
 
-Dispatch a registered tool through its normal validated execution path.
+Dispatch a registered tool through its normal validated execution path. Never call
+internal tools directly; all internal tool calls must go through `invoke_tool`.
 
 ## When and how to call it
 
-These are stable MCP router tools. Call `invoke_tool` directly through the MCP client.
+Use `discover_tools` or `get_tool_details` to select the internal tool and inspect its
+schema, then call it through `invoke_tool` with schema-valid arguments. Do not call
+internal tools directly.
 
 ## Parameters and defaults
 

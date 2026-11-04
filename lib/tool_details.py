@@ -665,11 +665,22 @@ def install(mcp: Any) -> None:
             return capabilities_fallback()
         return {"tools": result, "count": len(result)}
 
-    def register_meta(name: str, description: str, function: Any) -> None:
+    def register_meta(
+        name: str,
+        description: str,
+        function: Any,
+        *,
+        detailed_description: str | None = None,
+    ) -> None:
         """Register meta function."""
         original_tool(name=name, description=description)(function)
         runtime = getattr(getattr(mcp, "_tool_manager", None), "_tools", {}).get(name)
-        catalog[name] = {"description": description, "inputSchema": _schema(runtime)}
+        catalog[name] = {
+            "description": (
+                description if detailed_description is None else detailed_description
+            ),
+            "inputSchema": _schema(runtime),
+        }
 
     register_meta(
         "discover_tools",
@@ -691,7 +702,11 @@ def install(mcp: Any) -> None:
             ),
         ],
     ) -> Any:
-        """Invoke an internally registered tool through FastMCP's normal call path."""
+        """Use discover_tools or get_tool_details to select a tool and its schema, then invoke it here.
+
+        Never call internal tools directly; all internal tool calls must go through
+        this router with schema-valid arguments.
+        """
         requested_name = (tool_name or "").strip()
         canonical = _canonical_tool_name(requested_name)
         manager = getattr(mcp, "_tool_manager", None)
@@ -724,8 +739,12 @@ def install(mcp: Any) -> None:
 
     register_meta(
         "invoke_tool",
-        "Call a registered tool by name with JSON arguments.",
+        (
+            "Do not call internal tools directly; select a tool and its schema, "
+            "then call it only through invoke_tool."
+        ),
         invoke_tool,
+        detailed_description=inspect.getdoc(invoke_tool),
     )
 
     # Keep every registration available to dispatch while publishing only the stable router API.
