@@ -10,7 +10,7 @@ Use workspace evidence to make Python changes and state conclusions. Keep observ
 
 ## Evidence Workflow
 
-1. **Locate relevant files:** Use `find_files` for Python modules, tests, and configuration. Use `search_text` for names, strings, and behavior clues.
+1. **Locate relevant files:** Use `list_dir` to inspect a directory's immediate contents, `find_files` for recursive matching, and `search_text` for names, strings, and behavior clues.
 2. **Read source code:** Use `read_files` for implementation, callers, tests, and configuration. Expand inspection when behavior crosses module or package boundaries.
 3. **Navigate cautiously:** Use `code_intel` actions (`search_code`, `get_symbol`, `find_references`) for lexical or syntactic candidates (not compiler-resolved facts). Verify definitions and call sites in source and tests.
 4. **Diagnose and test:** Use `code_get_diagnostics` for configured checks, `run_tests` for relevant test suites, and `build_project` when build behavior applies. Use `terminal_exec` for focused Python commands not covered by other tools.
@@ -27,7 +27,7 @@ Use workspace evidence to make Python changes and state conclusions. Keep observ
 
 ## Related Tools
 
-- **Discovery & Inspection:** `find_files`, `search_text`, `read_files`
+- **Discovery & Inspection:** `list_dir`, `find_files`, `search_text`, `read_files`
 - **Analysis & Diagnostics:** `code_intel`, `code_get_diagnostics`
 - **Validation & Execution:** `run_tests`, `build_project`, `terminal_exec`
 

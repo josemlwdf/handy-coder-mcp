@@ -13,7 +13,7 @@ Use when a Python test suite needs to be executed in batches or failures require
 - Prefer the registered `run_tests` tool when available. Check capabilities and discover its current schema using `get_capabilities`, `discover_tools`, and `get_tool_details("run_tests")`. Invoke internal tools through `invoke_tool`.
 - Use `run_tests` with `test_framework="pytest"` and workspace-relative `filter_path` when supported.
 - Use `terminal_exec` when the registered runner cannot express the required invocation. Follow the repository's configured Python interpreter and environment rather than assuming `.venv` or a particular package manager.
-- Use `find_files`, `read_files`, and `search_text` to inspect test modules, source, and configuration. Use `code_get_diagnostics` when relevant.
+- Use `list_dir`, `find_files`, `read_files`, and `search_text` to inspect test modules, source, and configuration. Use `code_get_diagnostics` when relevant.
 - Keep reports and temporary artifacts under `tmp/full_test_report/`. Use workspace-relative paths and respect workspace boundaries.
 - Related skills: `diagnosing-bugs` for root-cause investigation, `implement` for fixes, and `python-fact-grounded-coding` for Python correctness.
 

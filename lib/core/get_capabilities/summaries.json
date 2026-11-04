@@ -7,6 +7,7 @@
     "terminal_exec": "Run bounded commands within workspace",
     "search_text": "Search workspace text with patterns",
     "find_files": "Find workspace files matching patterns",
+    "list_dir": "List immediate workspace directory contents",
     "skills_manage": "List retrieve or save skills",
     "orchestrator": "Coordinate multistep workspace tasks safely",
     "run_tests": "Run project tests and report",

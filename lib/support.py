@@ -149,8 +149,9 @@ def iter_workspace_files(
     deadline: float | None = None,
     max_file_size_bytes: int | None = None,
     report_outside_workspace_errors: bool = True,
+    include_directories: bool = False,
 ) -> Iterator[tuple[Path, str]]:
-    """Yield workspace files and report paths that could not be scanned."""
+    """Yield workspace files (and optionally directories) and report scan failures."""
     root = inside(".")
     scan_errors = errors if errors is not None else []
     prefix = _glob_prefix(path_glob)
@@ -189,7 +190,7 @@ def iter_workspace_files(
             try:
                 if entry.is_dir(follow_symlinks=False):
                     if (
-                        entry.name == ".git"
+                        (entry.name == ".git" and not include_directories)
                         or entry.name in exclude_dirs
                         or (entry.name.startswith(".") and not include_dot_dirs)
                     ):
@@ -197,6 +198,8 @@ def iter_workspace_files(
                     child_parts: tuple = (*directory_parts, entry.name)
                     if _may_match_glob_scope(child_parts, prefix):
                         child_directories.append(Path(entry.path))
+                    if include_directories:
+                        yield Path(entry.path), relative_path
                     continue
                 if not entry.is_file(follow_symlinks=True):
                     continue

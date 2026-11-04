@@ -54,6 +54,7 @@ from lib.core import (  # noqa: E402
     create_file,
     code_get_diagnostics,
     find_files,
+    list_dir,
     git_manage,
     orchestrator,
     read_files,
@@ -137,6 +138,7 @@ def _assert_tool_argument_types_known(mcp) -> None:
 _READ_ONLY_TOOL_HINTS = frozenset(
     {
         "find_files",
+        "list_dir",
         "get_capabilities",
         "get_tool_details",
         "read_files",
@@ -164,6 +166,7 @@ _DESTRUCTIVE_TOOL_HINTS = frozenset(
 _IDEMPOTENT_TOOL_HINTS = frozenset(
     {
         "find_files",
+        "list_dir",
         "get_capabilities",
         "get_tool_details",
         "read_files",
@@ -266,6 +269,7 @@ def main() -> None:
         terminal_exec,
         search_text,
         find_files,
+        list_dir,
         code_get_diagnostics,
         run_tests,
         git_manage,

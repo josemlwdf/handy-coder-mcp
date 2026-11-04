@@ -16,7 +16,7 @@ Create concise, actionable handoff document in `./tmp` so next agent seamlessly 
 
 # Required Tools & Fallbacks
 
-- `read_files`, `search_text`: Verify workspace artifacts and state before writing handoff.
+- `list_dir`, `read_files`, `search_text`: Verify workspace artifacts and state before writing handoff.
 - `create_file`: Save document under `./tmp/` (e.g., `./tmp/handoff.md`).
 
 # Actionable Workflow

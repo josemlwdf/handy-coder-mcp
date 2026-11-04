@@ -37,7 +37,7 @@ When combining shallow modules or evaluating module necessity, consult [DEEPENIN
 ## Workspace Tools & Environment
 
 Use workspace navigation and execution tools responsibly:
-- **Navigation/Inspection:** `find_files`, `search_text`, `read_files`, `code_intel` (C# navigation), and `git_manage`.
+- **Navigation/Inspection:** `list_dir`, `find_files`, `search_text`, `read_files`, `code_intel` (C# navigation), and `git_manage`.
 - **Execution:** `terminal_exec` within workspace boundaries.
 - **MCP Tool Discovery:** Discover tools via `discover_tools`, inspect schemas via `get_tool_details`, and invoke via `invoke_tool`. Never guess tool names or arguments.
 

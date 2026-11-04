@@ -14,7 +14,7 @@ Use for codebase investigations, technical and API research, standards and docum
 
 ## Project Tools
 
-- **Workspace:** `read_files`, `find_files`, and `search_text` locate evidence. `code_intel` can help navigate symbols and references, but results may be lexical or syntactic candidates, so verify them against source.
+- **Workspace:** `list_dir`, `read_files`, `find_files`, and `search_text` locate evidence. `code_intel` can help navigate symbols and references, but results may be lexical or syntactic candidates, so verify them against source.
 - **External sources:** `web_search` finds candidate pages; `web_fetch_docs` reads public documentation pages. Search snippets are leads, not evidence. These tools require network access; follow pagination when results are truncated.
 - **Delegation:** `subagent_manage` can run a scoped `explorer` role with read-only workspace tools. Do not assume it can browse the web or use tools outside its allowlist.
 - **Reports:** `create_file` creates a report; `apply_edits` updates an existing file. Both require a concise `summary`; use workspace-relative paths.

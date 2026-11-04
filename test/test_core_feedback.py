@@ -630,18 +630,18 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIn("matches", result)
         self.assertEqual(result["matches"], [])
 
-    def test_find_files_excludes_generated_dirs_by_default(self) -> None:
-        """Test find files excludes generated dirs by default function."""
+    def test_find_files_searches_generated_dirs_by_default(self) -> None:
+        """Recursive search includes generated directories by default."""
         (self.root / "__pycache__").mkdir()
         (self.root / "__pycache__" / "cached.py").write_text("x", encoding="utf-8")
         (self.root / "src").mkdir()
         (self.root / "src" / "main.py").write_text("x", encoding="utf-8")
 
-        result = self.mcp.tools["find_files"]("*.py")
+        result = self.mcp.tools["find_files"](".py")
 
         paths = result["files"]
         self.assertIn("src/main.py", paths)
-        self.assertNotIn("__pycache__/cached.py", paths)
+        self.assertIn("__pycache__/cached.py", paths)
         self.assertFalse(result["incomplete"])
 
     def test_find_files_includes_generated_dirs_when_requested(self) -> None:
@@ -649,18 +649,18 @@ class CoreFeedbackTests(unittest.TestCase):
         (self.root / "__pycache__").mkdir()
         (self.root / "__pycache__" / "cached.py").write_text("x", encoding="utf-8")
 
-        result = self.mcp.tools["find_files"]("*.py", include_generated=True)
+        result = self.mcp.tools["find_files"]("cached", include_generated=True)
 
         self.assertIn("__pycache__/cached.py", result["files"])
 
-    def test_find_files_excludes_dot_directories_by_default(self) -> None:
-        """Test find files excludes dot directories by default function."""
+    def test_find_files_searches_dot_directories_by_default(self) -> None:
+        """Recursive search includes dot-prefixed directories by default."""
         (self.root / ".config").mkdir()
         (self.root / ".config" / "settings.py").write_text("x", encoding="utf-8")
 
-        result = self.mcp.tools["find_files"]("*.py", include_generated=True)
+        result = self.mcp.tools["find_files"]("settings")
 
-        self.assertNotIn(".config/settings.py", result["files"])
+        self.assertIn(".config/settings.py", result["files"])
 
     def test_find_files_includes_dot_directories_when_requested(self) -> None:
         """Test find files includes dot directories when requested function."""
@@ -668,7 +668,7 @@ class CoreFeedbackTests(unittest.TestCase):
         (self.root / ".config" / "settings.py").write_text("x", encoding="utf-8")
 
         result = self.mcp.tools["find_files"](
-            "*.py", include_generated=True, include_dot_dirs=True
+            "settings", include_generated=True, include_dot_dirs=True
         )
 
         self.assertIn(".config/settings.py", result["files"])
@@ -686,22 +686,10 @@ class CoreFeedbackTests(unittest.TestCase):
             except OSError as exc:
                 self.skipTest(f"symlinks not supported: {exc}")
 
-            result = self.mcp.tools["find_files"]("**/python*", include_generated=True)
-            detailed_result = self.mcp.tools["find_files"](
-                "**/python*", include_generated=True, include_diagnostics=True
-            )
+            result = self.mcp.tools["find_files"]("python3")
 
         self.assertEqual(result["files"], [])
         self.assertEqual(result["errors"], [])
-        self.assertEqual(
-            detailed_result["errors"],
-            [
-                {
-                    "path": ".venv/bin/python3",
-                    "message": "Skipped a file that resolves outside the authorized workspace",
-                }
-            ],
-        )
 
     def test_run_tests_parses_pytest_output(self) -> None:
         """Test run tests parses pytest output function."""
@@ -1012,15 +1000,15 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertEqual(result["matches"], [])
         read_text.assert_not_called()
 
-    def test_find_files_globstar_matches_zero_intermediate_dirs(self) -> None:
-        """src/**/*.py must match src/foo.py (zero intermediate directories)."""
+    def test_find_files_string_matches_name_and_extension_recursively(self) -> None:
+        """A plain extension substring matches names recursively."""
         src = self.root / "src"
         src.mkdir()
         (src / "foo.py").write_text("x", encoding="utf-8")
         (src / "sub").mkdir()
         (src / "sub" / "bar.py").write_text("x", encoding="utf-8")
 
-        result = self.mcp.tools["find_files"]("src/**/*.py")
+        result = self.mcp.tools["find_files"](".py")
 
         files = result["files"]
         self.assertIn("src/foo.py", files, "zero-dir case not matched")

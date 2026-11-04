@@ -209,7 +209,7 @@ class InvalidCallsAreStructuredTests(unittest.TestCase):
                 ],
             },
         ),
-        ("find_files", {"glob_pattern": "*", "sort_by": 5}),
+        ("find_files", {}),
         ("terminal_exec", {}),
     )
 

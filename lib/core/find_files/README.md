@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Find workspace files using glob and exclusion filters.
+Recursively find workspace files and directories using case-insensitive substring filters on entry names or extensions.
 
 ## When and how to call it
 
@@ -17,62 +17,22 @@ The JSON Schema below is the registered input contract. Required fields appear i
   "type": "object",
   "properties": {
     "glob_pattern": {
-      "description": "Non-empty glob pattern matched against workspace-relative paths and file names. (Required: True)",
+      "description": "Non-empty, case-insensitive string matched against file or directory names and extensions at workspace-relative paths throughout the workspace and subdirectories. (Required: True)",
       "type": "string"
     },
     "exclude_pattern": {
-      "description": "Optional glob pattern to exclude matching workspace-relative paths. (Required: False)",
+      "description": "Optional case-insensitive string; exclude workspace-relative entries whose name or extension contains it. (Required: False)",
       "type": [
         "string",
         "null"
       ]
     },
     "include_generated": {
-      "description": "When true, also search generated and build directories that are excluded by default. (Required: False)",
+      "description": "When false, skip generated and build directories; defaults to searching them. (Required: False)",
       "type": "boolean"
     },
     "include_dot_dirs": {
-      "description": "When true, include files inside dot-prefixed directories such as .git and .vscode. (Required: False)",
-      "type": "boolean"
-    },
-    "file_type": {
-      "description": "Optional extension filter such as .py; file selects all file types. (Required: False)",
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "min_size": {
-      "description": "Optional minimum file size in bytes; files only. (Required: False)",
-      "minimum": 0,
-      "type": [
-        "integer",
-        "null"
-      ]
-    },
-    "max_size": {
-      "description": "Optional maximum file size in bytes; files only. (Required: False)",
-      "minimum": 0,
-      "type": [
-        "integer",
-        "null"
-      ]
-    },
-    "sort_by": {
-      "description": "Sort results by path (default), size, or modified (last-modified time). (Required: False)",
-      "enum": [
-        "path",
-        "size",
-        "modified"
-      ],
-      "type": "string"
-    },
-    "include_metadata": {
-      "description": "Include size_bytes and modified_time per result. (Required: False)",
-      "type": "boolean"
-    },
-    "include_diagnostics": {
-      "description": "Include diagnostics for files skipped because they resolve outside the authorized workspace. (Required: False)",
+      "description": "When false, skip dot-prefixed directories; defaults to searching them. (Required: False)",
       "type": "boolean"
     }
   },

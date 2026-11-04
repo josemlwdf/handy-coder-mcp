@@ -30,6 +30,7 @@ Each page describes a tool's purpose and runtime behavior. For the full paramete
 - [code_polish](lib/core/code_polish/README.md)
 - [search_text](lib/core/search_text/README.md)
 - [find_files](lib/core/find_files/README.md)
+- [list_dir](lib/core/list_dir/README.md)
 - [code_get_diagnostics](lib/core/code_get_diagnostics/README.md)
 - [code_intel](lib/core/code_intel/README.md)
 

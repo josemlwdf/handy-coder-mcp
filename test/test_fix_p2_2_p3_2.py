@@ -79,23 +79,20 @@ class ReadFilesAliasSchemaTests(_HandlerFixture, unittest.TestCase):
         self.assertNotIn("pydantic.dev", json.dumps(result))
 
 
-class FindFilesSortBySchemaTests(_HandlerFixture, unittest.TestCase):
-    def test_sort_by_schema_is_enum_with_modified(self):
+class FindFilesContractTests(_HandlerFixture, unittest.TestCase):
+    def test_removed_parameters_are_absent_from_schema(self):
         props = self.mcp._tool_manager.get_tool("find_files").parameters["properties"]
-        self.assertEqual(props["sort_by"]["enum"], ["path", "size", "modified"])
-        self.assertIn("modified", props["sort_by"]["description"])
+        self.assertTrue(
+            {"include_diagnostics", "file_type", "min_size", "max_size", "sort_by", "include_metadata"}.isdisjoint(props)
+        )
 
-    def test_sort_by_bogus_is_invalid_argument(self):
-        result = self.call("find_files", {"glob_pattern": "*", "sort_by": "bogus"})
-        self.assertEqual(result["error_code"], "invalid_argument")
-        self.assertEqual(result.get("field"), "sort_by")
-        self.assertNotIn("pydantic.dev", json.dumps(result))
-
-    def test_sort_by_valid_values_work(self):
-        for value in ("path", "size", "modified"):
-            result = self.call("find_files", {"glob_pattern": "*.txt", "sort_by": value})
-            self.assertNotIn("error_code", result)
-            self.assertIn("lines.txt", result["files"])
+    def test_plain_substring_search_finds_nested_files(self):
+        nested = self.root / "nested"
+        nested.mkdir()
+        (nested / "lines.txt").write_text("line", encoding="utf-8")
+        result = self.call("find_files", {"glob_pattern": ".TXT"})
+        self.assertNotIn("error_code", result)
+        self.assertIn("nested/lines.txt", result["files"])
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ tags: dotnet, testing, test-runner, troubleshooting, mtp, vstest
 # Run and Filter .NET Tests
 
 ## Related Tools & Skills
-- **Tools:** `find_files` (locate projects/solutions), `read_files` (inspect configuration), `terminal_exec` / `run_tests` / `build_project` (execution).
+- **Tools:** `list_dir` (inspect project directories), `find_files` (locate projects/solutions), `read_files` (inspect configuration), `terminal_exec` / `run_tests` / `build_project` (execution).
 - **Skills:** `diagnosing-bugs`, `implement`, `dotnet-webapi`.
 
 ---

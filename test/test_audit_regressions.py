@@ -475,36 +475,20 @@ class AuditRegressionTests(unittest.TestCase):
         self.assertEqual(len(result["recent_commits"]), 1)
         self.assertIn("third", result["recent_commits"][0]["subject"])
 
-    def test_find_files_type_file_and_invalid_value(self) -> None:
-        """Test find files type file and invalid value function."""
+    def test_find_files_matches_files_and_directories(self) -> None:
+        """Plain substring searches include matching files and directories."""
         (self.root / "a.py").write_text("x")
-        (self.root / "sub").mkdir()
-        result = find_files.find_files("*", file_type="file")
-        self.assertEqual(result["files"], ["a.py"])
-        with self.assertRaisesRegex(ValueError, "file_type"):
-            find_files.find_files("*", file_type="folder")
-        with self.assertRaisesRegex(ValueError, "file_type"):
-            find_files.find_files("*", file_type="directory")
+        (self.root / "subdir").mkdir()
+        result = find_files.find_files("a")
+        self.assertEqual(result["files"], [".handy-coder", "a.py"])
+        self.assertEqual(find_files.find_files("sub")["files"], ["subdir"])
 
-    def test_find_files_rejects_invalid_glob_patterns(self) -> None:
-        """Test find files rejects malformed glob patterns function."""
-        invalid_glob = find_files.find_files("[")
-        self.assertEqual(invalid_glob["files"], [])
-        self.assertEqual(invalid_glob["incomplete"], False)
-        self.assertEqual(invalid_glob["errors"][0]["error_code"], "invalid_glob")
-        self.assertIn("glob_pattern", invalid_glob["errors"][0]["message"])
-
-        invalid_exclude = find_files.find_files("*", exclude_pattern="[")
-        self.assertEqual(invalid_exclude["files"], [])
-        self.assertEqual(invalid_exclude["incomplete"], False)
-        self.assertEqual(invalid_exclude["errors"][0]["error_code"], "invalid_glob")
-        self.assertIn("exclude_pattern", invalid_exclude["errors"][0]["message"])
-
-    def test_find_files_normalizes_backslash_glob_paths(self) -> None:
-        """Test find files normalizes backslash separators in glob patterns."""
+    def test_find_files_excludes_matching_substring(self) -> None:
+        """The exclusion substring applies to names and extensions."""
         (self.root / "src").mkdir()
-        (self.root / "src" / "main.py").write_text("print('ok')")
-        result = find_files.find_files("src\\*.py")
+        (self.root / "src" / "main.py").write_text("x")
+        (self.root / "src" / "test.py").write_text("x")
+        result = find_files.find_files(".py", exclude_pattern="test")
         self.assertEqual(result["files"], ["src/main.py"])
 
     def test_apply_edits_conditional_dependency_hint_and_ignored_limit_warning(

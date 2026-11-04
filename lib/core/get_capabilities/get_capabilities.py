@@ -106,6 +106,7 @@ def get_capabilities() -> dict:
             "note": "Python regex or literal search",
         },
         "find_files": {"available": True, "note": "always enabled"},
+        "list_dir": {"available": True, "note": "always enabled"},
         "skills_manage": {
             "available": True,
             "note": "list, get, or save skills; base dir: HANDY_CODER_SKILLS_DIR",

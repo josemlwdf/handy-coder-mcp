@@ -10,6 +10,7 @@ _tools = {
     "terminal_exec": "terminal_exec",
     "code_search": "search_text",
     "find_files": "find_files",
+    "list_dir": "list_dir",
     "diagnostics": "code_get_diagnostics",
     "run_tests": "run_tests",
     "build_project": "build_project",

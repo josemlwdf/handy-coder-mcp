@@ -10,7 +10,7 @@ Systematic, evidence-led workflow for diagnosing hard bugs and performance regre
 
 ## Related Tools & Skills
 
-- **Tools:** `search_text`, `find_files`, `read_files`, `code_intel`, `code_get_diagnostics`, `run_tests`, `terminal_exec`, `build_project`.
+- **Tools:** `list_dir`, `search_text`, `find_files`, `read_files`, `code_intel`, `code_get_diagnostics`, `run_tests`, `terminal_exec`, `build_project`.
 - **Skills:** `implement` (for applying a confirmed fix), `analyzing-dotnet-performance` (.NET performance patterns).
 
 ## Operating Mode: Fully Autonomous

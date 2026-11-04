@@ -1,6 +1,7 @@
 """Module documentation."""
 
 import asyncio
+import inspect
 import json
 import tempfile
 import unittest
@@ -135,11 +136,16 @@ class StructuredErrorTests(unittest.TestCase):
         )
         self.assert_structured(result)
 
-    def test_find_files_invalid_sort_by(self) -> None:
-        """Test find files invalid sort by function."""
-        self.assert_structured(
-            self.call("find_files", {"glob_pattern": "*", "sort_by": "bogus"})
-        )
+    def test_find_files_sort_option_is_removed(self) -> None:
+        """Removed sort options no longer appear in the function signature."""
+        from lib.core import find_files
+
+        class SchemaMCP:
+            def tool(self, description):
+                return lambda function: function
+
+        function = find_files.register(SchemaMCP())
+        self.assertNotIn("sort_by", inspect.signature(function).parameters)
 
     def test_terminal_exec_empty_command(self) -> None:
         """Test terminal exec empty command function."""

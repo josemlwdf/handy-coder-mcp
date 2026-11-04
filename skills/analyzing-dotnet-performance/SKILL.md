@@ -43,7 +43,7 @@ If a reference is unavailable, report the limitation. Never recreate its detecti
 
 1. **Scope:** Identify target files, scan depth, framework version, and available profiling or benchmark context.
 2. **Load references:** Retrieve all required and relevant references before scanning.
-3. **Inspect source:** Use `find_files`, `search_text`, and `read_files` to locate and verify candidates. Read entire files when under 500 lines. Search results alone are not evidence.
+3. **Inspect source:** Use `list_dir`, `find_files`, `search_text`, and `read_files` to locate and verify candidates. Read entire files when under 500 lines. Search results alone are not evidence.
 4. **Run checks:** Execute every loaded reference's `## Detection` checks. Translate shell/grep examples into `search_text` queries where possible; use `terminal_exec` only when workspace search is insufficient. Record exact matching-line counts, including zero. Narrow and rerun truncated searches before reporting exact counts.
 5. **Verify:** Check hot-path relevance, correctness, framework constraints, and counterpart implementations. Do not make unsupported performance claims.
 6. **Report:** Start with a checklist naming every detection check and its exact hit count. Group verified findings by severity, merge instances with the same underlying cause and fix, and provide concrete recommendations.
@@ -68,7 +68,7 @@ Use code blocks only when a transformation needs explanation. Report positive pa
 
 Use Handy Coder MCP tools to inspect the target repository:
 
-- `find_files`, `search_text`, and `read_files`: locate and verify source patterns.
+- `list_dir`, `find_files`, `search_text`, and `read_files`: locate and verify source patterns.
 - `code_intel`: navigate indexed C# symbols and references; verify results against source.
 - `terminal_exec`: run focused scans or benchmarks when workspace search is insufficient.
 - `code_get_diagnostics`: inspect configured diagnostics, not general performance.

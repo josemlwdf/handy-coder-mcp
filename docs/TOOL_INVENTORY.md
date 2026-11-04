@@ -12,6 +12,7 @@ The catalog below is the complete internal tool inventory available to discovery
 - `terminal_exec`
 - `search_text`
 - `find_files`
+- `list_dir`
 - `code_get_diagnostics` — includes `html_syntax_sweep` for workspace HTML structural syntax checks.
 - `run_tests`
 - `build_project` — detects and builds Python, Node, or .NET projects with structured diagnostics.

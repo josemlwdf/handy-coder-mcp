@@ -15,7 +15,7 @@ Handy Coder MCP exposes tools through a router:
 2. Use `discover_tools` with task keywords, then `get_tool_details` for schemas.
 3. Call via `invoke_tool`.
 
-- **Inspection**: `find_files`, `search_text`, `read_files`, `code_intel`.
+- **Inspection**: `list_dir`, `find_files`, `search_text`, `read_files`, `code_intel`.
 - **Build/Test**: `build_project`, `terminal_exec` for `dotnet build`, `dotnet test`, `dotnet run`, and HTTP checks. Do not use `run_tests` for .NET (use `dotnet-tests` skill workflow).
 - **Diagnostics**: `code_get_diagnostics` (does not replace a .NET build).
 

@@ -12,7 +12,7 @@ Plan non-trivial work. Carry implementation through integration and validation. 
 
 - `orchestrator`: Bootstrap plans, update task status.
 - `subagent_manage`: Run, monitor, complete, cancel subagents.
-- `read_files`, `search_text`, `code_get_diagnostics`, `run_tests`, `build_project`: Scoped investigation, validation.
+- `list_dir`, `read_files`, `search_text`, `code_get_diagnostics`, `run_tests`, `build_project`: Scoped investigation, validation.
 
 ## Related Skills
 
