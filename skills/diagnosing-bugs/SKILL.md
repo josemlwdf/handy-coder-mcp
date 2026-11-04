@@ -1,6 +1,7 @@
 ---
 name: diagnosing-bugs
 description: Diagnose hard bugs and performance regressions with an evidence-based workflow. Use when the user asks to debug or fix broken, throwing, failing, or slow behavior.
+tags: debugging, performance, troubleshooting, diagnostics
 ---
 
 # Diagnosing Bugs

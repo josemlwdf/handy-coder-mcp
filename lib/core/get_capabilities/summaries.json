@@ -32,6 +32,8 @@
     "diagnosing-bugs": "Investigate bugs using evidence carefully",
     "dotnet-webapi": "Build and maintain web APIs",
     "plan": "Create plans for complex work",
-    "caveman": "Communicate tersely with technical clarity"
+    "caveman": "Communicate tersely with technical clarity",
+    "batched-test-failure-reporting": "Batch tests and report failures",
+    "regression": "Regression skill summary appears here"
   }
 }

@@ -1,6 +1,7 @@
 ---
 name: dotnet-tests
 description: Run and filter .NET tests with the registered test runner, detecting the test platform and framework and selecting suitable commands and reporting. Use for full or partial runs and test troubleshooting.
+tags: dotnet, testing, test-runner, troubleshooting
 ---
 
 # Run .NET Tests

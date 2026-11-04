@@ -1,6 +1,7 @@
 ---
 name: grill-me
 description: Stress-test a plan, decision, or idea through a structured interview. Use when the user asks to be grilled or uses a grill trigger phrase.
+tags: planning, decision-making, interview, critical-thinking
 ---
 
 # Grill Me

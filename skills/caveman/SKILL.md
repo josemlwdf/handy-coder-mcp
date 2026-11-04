@@ -1,6 +1,7 @@
 ---
 name: caveman
 description: Rewrite technical communication in concise caveman style using six modes while preserving meaning and precision.
+tags: writing, communication, editing, style
 ---
 
 Speak in concise technical caveman style. Default: `full`.

@@ -5,7 +5,7 @@ Skills are Markdown files with a small frontmatter block::
     ---
     name: my-skill
     description: One-line summary of when to use the skill.
-    invokable: true
+    tags: example, reusable
     ---
 
     Body of the skill...
@@ -139,7 +139,6 @@ def _entry(name: str, text: str) -> dict:
     return {
         "name": name,
         "description": meta.get("description", ""),
-        "invokable": meta.get("invokable", "true").lower() == "true",
         "tags": [tag.strip() for tag in meta.get("tags", "").split(",") if tag.strip()],
         "version": meta.get("version", "1"),
     }
@@ -277,7 +276,6 @@ def _save_skill(
     short_description: str | None,
     overwrite: bool,
     tags: list[str] | None = None,
-    invokable: bool = True,
 ) -> dict:
     """Save skill function."""
     problem = _validate_name(name)
@@ -311,9 +309,11 @@ def _save_skill(
         )
 
     clean_tags = list(dict.fromkeys(tag.strip() for tag in (tags or []) if tag.strip()))
-    metadata = f"name: {name}\ndescription: {description}\ninvokable: {str(invokable).lower()}\n"
-    if clean_tags:
-        metadata += f"tags: {', '.join(clean_tags)}\n"
+    if not clean_tags:
+        return _error("missing_argument", "at least one non-empty tag is required for save")
+    metadata = (
+        f"name: {name}\ndescription: {description}\ntags: {', '.join(clean_tags)}\n"
+    )
     document = f"---\n{metadata}---\n\n{body}\n"
     encoded = document.encode("utf-8")
     if len(encoded) > MAX_SKILL_BYTES:
@@ -489,8 +489,12 @@ def skills_manage(
             description="For delete: must be true to remove the skill; a backup is kept beside it. (Required: False)"
         ),
     ] = False,
-    tags: Annotated[list[str] | None, Field(description="Optional metadata tags for a skill saved with action=save. (Required: False)")] = None,
-    invokable: Annotated[bool, Field(description="Whether the saved skill can be invoked directly. Defaults to true. (Required: False)")] = True,
+    tags: Annotated[
+        list[str] | None,
+        Field(
+            description="One or more descriptive tags for a skill saved with action=save; required for save and written to SKILL.md frontmatter. (Required: False)"
+        ),
+    ] = None,
 ) -> dict:
     """Skills manage function."""
     if action == "list":
@@ -562,7 +566,7 @@ def skills_manage(
                 "protected_skill", f"Baseline skill cannot be replaced: {name}"
             )
         return _save_skill(
-            name, description, body, short_description, overwrite, tags, invokable
+            name, description, body, short_description, overwrite, tags
         )
     return _error("invalid_action", f"Unknown action: {action}")
 
@@ -601,7 +605,6 @@ def register(mcp):
                 "description": item["description"],
                 "tags": item["tags"],
                 "version": item["version"],
-                "invokable": item["invokable"],
             }
         return result
 
@@ -609,7 +612,7 @@ def register(mcp):
         description=describe(
             "Manage reusable skills stored as Markdown files at skills/<name>/SKILL.md. "
             "Actions: list returns metadata for all skills or every match on any case-insensitive query term in name, description, tags, or full SKILL.md Markdown; search uses the same uncapped full-content matching; get/export returns full Markdown; list_references lists available files from skills/<name>/references/*.md; get_reference reads one reference file by reference name; delete requires confirm=true, protects baseline skills, and keeps a .bak backup; "
-            "save creates a skill from name, description, body and an exactly five-word short_description; fails with already_exists "
+            "save creates a skill from name, description, body, one or more tags, and an exactly five-word short_description; pass tags as a list of strings (for example, [\"python\", \"testing\"]) and include at least one non-empty tag; fails with already_exists "
             "unless overwrite=true). Failures return error_code (missing_argument, invalid_name, invalid_reference_name, "
             "invalid_description, content_has_frontmatter, skill_too_large, not_found, already_exists, "
             "io_error, confirmation_required, protected_skill, backup_exists, path_escape, binary_file). "

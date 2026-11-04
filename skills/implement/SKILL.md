@@ -1,6 +1,7 @@
 ---
 name: implement
 description: Implement features, fixes, or tasks from a plan or user prompt. Use for coding, typechecks, tests, debugging, review, and commits.
+tags: implementation, coding, testing, debugging
 ---
 
 # Implement

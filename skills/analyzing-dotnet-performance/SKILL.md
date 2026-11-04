@@ -1,6 +1,7 @@
 ---
 name: analyzing-dotnet-performance
-description: Scan .NET code for performance anti-patterns across async, memory, strings, collections, LINQ, regex, serialization, and I/O. Classify findings by severity for optimization reviews and hot-path audits.
+description: Scan .NET code for performance anti-patterns using Handy Coder MCP workspace tools. Classify findings by severity for optimization reviews and hot-path audits.
+tags: dotnet, csharp, performance, optimization, code-review
 ---
 
 # .NET Performance Patterns
@@ -32,9 +33,9 @@ Scan C#/.NET code for performance anti-patterns. Return prioritized findings wit
 
 ### Step 1: Load Reference Files
 
-Try loading `references/critical-patterns.md` and relevant topic-specific reference files. They contain detailed detection recipes and grep commands.
+Use `skills_manage` with `action="list_references"` and `name="analyzing-dotnet-performance"` to check the bundled reference files. Load `critical-patterns` and the topic-specific references relevant to the code signals in Step 2 with `action="get_reference"`. When using the Handy Coder MCP router, discover tools as needed and invoke `skills_manage` through `invoke_tool`.
 
-**Reference missing:** Skip file loading. Continue to Step 3 with inline recipes. Do not search elsewhere on the filesystem. If expected relative path is absent, treat reference as unavailable.
+**Reference missing or unavailable:** Skip it and continue with the inline recipes in Step 3. Do not search unrelated filesystem paths.
 
 ### Step 2: Detect Signals and Select Recipes
 
@@ -58,44 +59,46 @@ Always check structural patterns, including unsealed classes, even without match
 
 ### Step 3: Scan and Report
 
-**Files under 500 lines:** Read entire file first. Visual inspection catches many patterns quickly. Use grep to confirm counts and catch missed patterns.
+**Files under 500 lines:** Read the entire file first with `read_files`. Use `find_files` to identify candidate C# files and `search_text` to count matching lines and locate candidate patterns. Confirm findings in source; search results alone are not proof of a performance issue.
 
 Run every relevant recipe for detected categories. Report exact counts, never estimates.
 
-**Inline scan recipes:** Run when reference files unavailable.
+**Inline scan recipes:** Run when reference files are unavailable. For each relevant expression below, call `search_text` with `is_regex=true`, `max_results=10000`, and a C#-scoped `path_glob` such as `**/*.cs` (narrow it to the relevant directory when practical). The search tool uses Python regular expressions. Report `total_matches_seen` as matching lines, not token occurrences. If the result reports `truncated` because of `time_limit`, narrow the search and rerun before reporting an exact count.
 
-```bash
-# Strings & memory
-grep -n '\.IndexOf("' FILE                    # Missing StringComparison
-grep -n '\.Substring(' FILE                   # Substring allocations
-grep -En '\.(StartsWith|EndsWith|Contains)\s*\(' FILE  # Missing StringComparison
-grep -n '\.ToLower()\|\.ToUpper()' FILE       # Culture-sensitive + allocation
-grep -n '\.Replace(' FILE                     # Chained Replace allocations
-grep -n 'params ' FILE                        # params array allocation
+**Strings and memory:**
 
-# Collections & LINQ
-grep -n '\.Select\|\.Where\|\.OrderBy\|\.GroupBy' FILE  # LINQ on hot path
-grep -n '\.All\|\.Any' FILE                   # LINQ on string/char
-grep -n 'new Dictionary<\|new List<' FILE   # Per-call allocation
-grep -n 'static readonly Dictionary<' FILE   # FrozenDictionary candidate
+- `\.IndexOf\("`
+- `\.Substring\(`
+- `\.(StartsWith|EndsWith|Contains)\s*\(`
+- `\.ToLower\(\)|\.ToUpper\(\)`
+- `\.Replace\(`
+- `\bparams\s+`
 
-# Regex
-grep -n 'RegexOptions.Compiled' FILE          # Compiled regex budget
-grep -n 'new Regex(' FILE                     # Per-call regex
-grep -n 'GeneratedRegex' FILE                 # Positive: source-generated regex
+**Collections and LINQ:**
 
-# Structural
-grep -n 'public class \|internal class ' FILE # Unsealed classes
-grep -n 'sealed class' FILE                   # Already sealed
-grep -n ': IEquatable' FILE                   # Positive: struct equality
-```
+- `\.(Select|Where|OrderBy|GroupBy)\b`
+- `\.(All|Any)\s*\(`
+- `\bnew\s+(Dictionary|List)<`
+- `\bstatic\s+readonly\s+Dictionary<`
+
+**Regex:**
+
+- `RegexOptions\.Compiled`
+- `new\s+Regex\s*\(`
+- `GeneratedRegex`
+
+**Structural:**
+
+- `\b(public|internal)\s+class\s+`
+- `\bsealed\s+class\s+`
+- `:\s*IEquatable`
 
 **Scan rules:**
 
-- Run every relevant recipe for each detected category.
+- Run every relevant recipe for each detected category. In reference files, translate shell/grep detection examples into equivalent `search_text` queries where possible; use `terminal_exec` only when a check cannot be expressed with workspace search.
 - Before classifying findings, emit a scan execution checklist. List each recipe and exact hit count.
 - `0 hits` is valid evidence. Report it; it confirms absence of detected matches.
-- If reference files loaded, also run their `## Detection` recipes.
+- If reference files loaded, also run their `## Detection` checks using the project tools.
 
 **Verify-the-Inverse Rule:** For absence patterns, count both sides and report ratio. Example: `N of M classes are sealed`. Ratio affects severity: `0/185` suggests systematic issue; `12/15` suggests consistency fix.
 
@@ -178,8 +181,11 @@ End with summary table and disclaimer:
 
 ## Related tools
 
-- `find_files` and `search_text` locate candidate code; `read_files` provides source evidence.
-- `terminal_exec` can run targeted scans or benchmarks when appropriate; `code_get_diagnostics` reports configured diagnostics.
+- `find_files` locates candidate C# files; `search_text` counts matching lines and returns search evidence; `read_files` verifies patterns in context.
+- Handy Coder MCP publishes a stable router interface. When internal tools are not directly exposed, use `discover_tools` or `get_tool_details` to select the tool, then `invoke_tool` to call it.
+- `skills_manage` lists and retrieves this skill's bundled pattern references.
+- `terminal_exec` is an alternative for focused scans or benchmarks when workspace search is insufficient; `code_get_diagnostics` reports configured diagnostics, not general performance results.
+- `code_intel` can help navigate indexed C# symbols and references; verify its candidates in source before reporting.
 
 ## Related skills
 

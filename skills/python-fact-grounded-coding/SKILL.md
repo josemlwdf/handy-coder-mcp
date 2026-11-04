@@ -1,6 +1,7 @@
 ---
 name: python-fact-grounded-coding
 description: Implement, debug, and validate Python changes using repository evidence and Handy Coder MCP tools. Use when Python behavior or code structure must be grounded in the workspace.
+tags: python, coding, debugging, testing, evidence
 ---
 
 # Python Fact-Grounded Coding

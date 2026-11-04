@@ -159,11 +159,11 @@ Committing is left to the user by default. `create_file` and `apply_edits` accep
 
 ### Skills
 
-`skills_manage` stores and retrieves reusable skills as Markdown files with a small frontmatter block (`name` and `description`) at `skills/<skill-name>/SKILL.md`. Set `HANDY_CODER_SKILLS_DIR` to use a different base directory. The skills directory is not tied to `--root`.
+`skills_manage` stores and retrieves reusable skills as Markdown files with frontmatter fields `name`, `description`, and `tags` at `skills/<skill-name>/SKILL.md`. Set `HANDY_CODER_SKILLS_DIR` to use a different base directory. The skills directory is not tied to `--root`.
 
-- `action: "list"` returns every skill's `name`, `description` and `invokable` flag, plus an `errors` array for files that could not be read.
+- `action: "list"` returns every skill's `name`, `description`, and `tags`, plus an `errors` array for files that could not be read.
 - `action: "get"` with `name` returns the full `content` and the `body` without frontmatter.
-- `action: "save"` requires `name`, `description`, `body` and an exactly five-word `short_description`. The frontmatter is generated from `name` and `description`, and the short description is registered in the package `summaries.json` for `get_capabilities`. It fails with `already_exists` unless `overwrite: true` is passed. `search`, `delete`, and `export` provide discovery, removal, and full Markdown retrieval.
+- `action: "save"` requires `name`, `description`, `body`, one or more `tags`, and an exactly five-word `short_description`. Pass tags as a list; they are written to the `tags` frontmatter field. The short description is registered in the package `summaries.json` for `get_capabilities`. It fails with `already_exists` unless `overwrite: true` is passed. `search`, `delete`, and `export` provide discovery, removal, and full Markdown retrieval.
 
 Names must be 1-64 characters of lowercase letters, digits and hyphens, which also prevents path traversal. Failures return an `error_code`: `missing_argument`, `invalid_name`, `invalid_description`, `content_has_frontmatter`, `skill_too_large`, `not_found`, `already_exists`, `binary_file` or `io_error`.
 

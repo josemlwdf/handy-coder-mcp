@@ -1,19 +1,30 @@
 ---
 name: dotnet-webapi
 description: Build and modify ASP.NET Core Web API endpoints with correct HTTP semantics, OpenAPI metadata, and error handling. Use for controllers, minimal APIs, DTOs, OpenAPI, endpoint tests, and global error handling.
+tags: dotnet, aspnet-core, web-api, openapi, backend
 ---
 
 # ASP.NET Core Web API
 
 ## Related tools
 
-- `find_files`, `search_text`, and `read_files` inspect endpoints and project configuration.
-- `code_get_diagnostics`, `run_tests`, and `build_project` help validate API changes; `terminal_exec` runs focused commands.
+Handy Coder MCP exposes tools through a router. Do not call internal tool names directly:
+
+1. Use `get_capabilities` if availability is unclear.
+2. Use `discover_tools` with a task keyword to find a tool, then `get_tool_details` for its current schema.
+3. Call it with `invoke_tool`, passing the discovered internal tool name and schema-valid arguments.
+
+For this workflow:
+
+- `find_files`, `search_text`, and `read_files` inspect endpoints and project configuration; `code_intel` can navigate C# symbols and references.
+- `build_project` can build .NET projects. Use `terminal_exec` for focused `dotnet` commands, starting the app, and HTTP checks.
+- `run_tests` supports pytest, Jest, and Vitest, not `dotnet test`. For .NET tests, follow `dotnet-tests` and run the appropriate `dotnet test` command with `terminal_exec`.
+- `code_get_diagnostics` runs configured diagnostics; do not treat it as a substitute for a .NET build.
 
 ## Related skills
 
-- `implement` carries out feature work; `dotnet-tests` covers .NET test workflows.
-- `diagnosing-bugs` is for investigating broken endpoint behavior.
+- `implement` carries out feature work; `dotnet-tests` covers .NET test selection and execution.
+- `diagnosing-bugs` investigates broken endpoint behavior; `analyzing-dotnet-performance` covers performance concerns.
 
 Build or modify ASP.NET Core HTTP APIs. Match project style. Use correct HTTP status codes, documented contracts, safe errors, and verifiable tests.
 
@@ -28,7 +39,7 @@ Build or modify ASP.NET Core HTTP APIs. Match project style. Use correct HTTP st
 ## When Not to Use
 
 - General C# style or non-API refactoring.
-- EF Core data modeling or query optimization; use relevant EF Core guidance.
+- EF Core data modeling or query optimization; follow the existing project conventions and use `implement` or `diagnosing-bugs` as appropriate.
 - Frontend, Razor, or Blazor UI.
 - gRPC services.
 - SignalR hubs or real-time messaging.
@@ -363,7 +374,7 @@ Register interface, not concrete implementation:
 builder.Services.AddScoped<IProductService, ProductService>();
 ```
 
-For EF Core migrations, Fluent API, `AsNoTracking`, seed data, and data-access patterns, follow the project's EF Core guidance.
+For EF Core migrations, Fluent API, `AsNoTracking`, seed data, and data-access patterns, inspect and follow the conventions already used by the project.
 
 ### Step 7: Create `.http` Test File
 
@@ -400,9 +411,10 @@ Rules:
 
 ### Step 8: Build and Verify
 
-1. Run `dotnet build`; require zero errors and zero warnings.
-2. Start app; verify OpenAPI document loads. Default route: `/openapi/v1.json`.
-3. Run `.http` requests; verify actual status codes.
+1. Build with `build_project` or `terminal_exec` running `dotnet build`. Resolve errors and new warnings; distinguish existing baseline warnings.
+2. Run the relevant .NET tests using `dotnet test` through `terminal_exec`, following the `dotnet-tests` skill. Do not use `run_tests` for .NET projects.
+3. Start the app and use `terminal_exec` for focused HTTP checks (for example, `curl`) to verify the OpenAPI document and actual response status codes. The default OpenAPI route is `/openapi/v1.json`.
+4. Add or update a `.http` file as a reusable manual request collection; it does not replace executed HTTP checks.
 
 ## Validation
 
@@ -421,7 +433,9 @@ Before completion, check every item:
 - [ ] Every API DTO has `<summary>` XML documentation.
 - [ ] Date/time DTO properties use `DateTimeOffset`, not `DateTime`.
 - [ ] `.http` file covers every new endpoint.
-- [ ] `dotnet build` passes with zero errors and warnings.
+- [ ] `dotnet build` passes without errors or new warnings.
+- [ ] Relevant .NET tests pass using the .NET test workflow.
+- [ ] HTTP checks confirm the OpenAPI document and relevant endpoint status codes.
 - [ ] Every DTO is a `sealed record`, not mutable class.
 - [ ] Minimal API handlers use `TypedResults` and explicit `Results<T1, T2>` when returning multiple result types.
 - [ ] Every service has an interface and DI registration through that interface.

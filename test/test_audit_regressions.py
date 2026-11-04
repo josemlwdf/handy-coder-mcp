@@ -114,8 +114,9 @@ class AuditRegressionTests(unittest.TestCase):
             )
         )
         result = system_info.get_capabilities()
+        tools = result["tools"]
         self.assertEqual(
-            set(result["tools"]),
+            set(tools["always_enabled"]) | set(tools["runtime"]),
             {
                 "code_intel",
                 "get_capabilities",
@@ -124,7 +125,8 @@ class AuditRegressionTests(unittest.TestCase):
             },
         )
         self.assertIn(
-            "HANDY_CODER_SKILLS_DIR", result["tools"]["skills_manage"]["note"]
+            "HANDY_CODER_SKILLS_DIR",
+            tools["always_enabled"]["skills_manage"]["note"],
         )
 
     def test_capabilities_tool_names_are_alphabetized(self) -> None:
@@ -554,6 +556,7 @@ class AuditRegressionTests(unittest.TestCase):
                 description="A test skill",
                 body="Body",
                 short_description="Regression skill summary appears here",
+                tags=["testing", "regression"],
             )
             self.assertTrue(saved["saved"])
             pending = skills.skills_manage(action="delete", name="regression")

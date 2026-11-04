@@ -38,16 +38,21 @@ class CapabilityNotesTests(unittest.TestCase):
         """TearDown function."""
         system_info._MCP = None
 
-    def assert_specific_notes(self, tools) -> None:
-        """Assert specific notes function."""
+    def assert_capability_summaries(self, tools) -> None:
+        """Assert public capability summaries for selected tools."""
+        entries = {**tools["always_enabled"], **tools["runtime"]}
         for name in NAMED_TOOLS:
             with self.subTest(tool=name):
-                self.assertIn(name, tools)
-                self.assertTrue(tools[name]["available"])
-                self.assertNotEqual(tools[name]["note"], "registered MCP tool")
+                self.assertIn(name, entries)
+                self.assertTrue(entries[name]["description"])
+        if "skills_manage" in tools["always_enabled"]:
+            self.assertIn(
+                "HANDY_CODER_SKILLS_DIR",
+                tools["always_enabled"]["skills_manage"]["note"],
+            )
 
-    def test_registry_branch_has_specific_notes(self) -> None:
-        """Test registry branch has specific notes function."""
+    def test_registry_branch_has_capability_summaries(self) -> None:
+        """Registered tool names appear in grouped capability summaries."""
         mcp = FastMCP("t")
         tool_details.install(mcp)
         web_search_tool.register(mcp)
@@ -59,33 +64,35 @@ class CapabilityNotesTests(unittest.TestCase):
         for name in NAMED_TOOLS:
             self.assertIn(name, registered)
         result = system_info.get_capabilities()
+        tools = result["tools"]
         self.assertEqual(
-            set(result["tools"]) - {"get_capabilities"},
-            registered - {"get_capabilities"},
+            set(tools["always_enabled"]) | set(tools["runtime"]), registered
         )
-        self.assert_specific_notes(result["tools"])
+        self.assert_capability_summaries(tools)
 
-    def test_fallback_branch_has_specific_notes(self) -> None:
-        """Test fallback branch has specific notes function."""
+    def test_fallback_branch_has_capability_summaries(self) -> None:
+        """Fallback capabilities include summaries for selected tools."""
         system_info._MCP = None
-        self.assert_specific_notes(system_info.get_capabilities()["tools"])
+        self.assert_capability_summaries(system_info.get_capabilities()["tools"])
 
-    def test_notes_mention_key_behavior(self) -> None:
-        """Test notes mention key behavior function."""
+    def test_summaries_identify_selected_capabilities(self) -> None:
+        """Selected capabilities have summaries in the intended groups."""
         system_info._MCP = None
         tools = system_info.get_capabilities()["tools"]
-        self.assertIn("search_code", tools["code_intel"]["note"])
-        self.assertNotIn("index_codebase", tools)
-        self.assertNotIn("code_navigator", tools)
-        self.assertIn("unknown_tool", tools["get_tool_details"]["note"])
+        self.assertIn("code_intel", tools["runtime"])
+        self.assertIn("get_tool_details", tools["always_enabled"])
+        self.assertNotIn("index_codebase", tools["always_enabled"])
+        self.assertNotIn("code_navigator", tools["always_enabled"])
 
     def test_fallback_includes_code_polish(self) -> None:
-        """Test fallback includes code_polish with a specific note."""
+        """Fallback includes code_polish with its curated summary."""
         system_info._MCP = None
         tools = system_info.get_capabilities()["tools"]
-        self.assertIn("code_polish", tools)
-        self.assertTrue(tools["code_polish"]["available"])
-        self.assertEqual(tools["code_polish"]["note"], "always enabled")
+        self.assertIn("code_polish", tools["always_enabled"])
+        self.assertEqual(
+            tools["always_enabled"]["code_polish"]["description"],
+            "Format and improve selected files",
+        )
 
 
 if __name__ == "__main__":

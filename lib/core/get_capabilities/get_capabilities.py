@@ -212,7 +212,14 @@ def get_capabilities() -> dict:
     # These tools have runtime-dependent availability and retain their details.
     conditional_names: set = {"run_tests", "git_manage", "capture_url_screenshot"}
     always_enabled: dict = {
-        name: {"description": tools[name]["description"]}
+        name: {
+            "description": tools[name]["description"],
+            **(
+                {"note": tools[name]["note"]}
+                if name == "skills_manage"
+                else {}
+            ),
+        }
         for name in tools
         if name not in conditional_names
     }

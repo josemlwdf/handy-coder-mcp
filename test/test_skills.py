@@ -57,6 +57,7 @@ class SkillsToolTests(unittest.TestCase):
             "description": "Does a thing.",
             "body": "Step one.\nStep two.",
             "short_description": "Create helpful reusable skill summaries",
+            "tags": ["testing", "example"],
         }
         args.update(overrides)
         return skills.skills_manage(**args)
@@ -75,9 +76,11 @@ class SkillsToolTests(unittest.TestCase):
         got = skills.skills_manage(action="get", name="my-skill")
         self.assertEqual(got["name"], "my-skill")
         self.assertEqual(got["description"], "Does a thing.")
-        self.assertTrue(got["invokable"])
+        self.assertEqual(got["tags"], ["testing", "example"])
         self.assertEqual(got["body"].strip(), "Step one.\nStep two.")
         self.assertTrue(got["content"].startswith("---\nname: my-skill\n"))
+        self.assertIn("tags: testing, example\n", got["content"])
+        self.assertNotIn("invokable:", got["content"])
         self.assertTrue((self.dir / "my-skill" / "SKILL.md").is_file())
         summaries = json.loads(self.summary_file.read_text(encoding="utf-8"))
         self.assertEqual(
@@ -98,10 +101,10 @@ class SkillsToolTests(unittest.TestCase):
     def test_list_returns_sorted_entries(self) -> None:
         """Test list returns sorted entries function."""
         self.save("b-skill", description="Second.")
-        self.save("a-skill", description="First.", invokable=False)
+        self.save("a-skill", description="First.")
         result = skills.skills_manage(action="list")
         self.assertEqual([s["name"] for s in result["skills"]], ["a-skill", "b-skill"])
-        self.assertFalse(result["skills"][0]["invokable"])
+        self.assertEqual(result["skills"][0]["tags"], ["testing", "example"])
         self.assertEqual(result["skills"][1]["description"], "Second.")
 
     def test_list_query_matches_any_term_without_limit(self) -> None:
@@ -211,6 +214,8 @@ class SkillsToolTests(unittest.TestCase):
         self.assertEqual(self.save(body=None)["error_code"], "missing_argument")
         self.assertEqual(self.save(body="\n ")["error_code"], "missing_argument")
         self.assertEqual(self.save(short_description=None)["error_code"], "missing_argument")
+        self.assertEqual(self.save(tags=None)["error_code"], "missing_argument")
+        self.assertEqual(self.save(tags=[" ", ""])["error_code"], "missing_argument")
 
     def test_short_description_requires_exactly_five_words(self) -> None:
         before = self.summary_file.read_bytes()
@@ -260,11 +265,11 @@ class SkillsToolTests(unittest.TestCase):
         self.dir.mkdir(parents=True)
         (self.dir / "win").mkdir(parents=True)
         (self.dir / "win" / "SKILL.md").write_bytes(
-            b"---\r\nname: win\r\ndescription: From Windows.\r\ninvokable: false\r\n---\r\n\r\nBody\r\n"
+            b"---\r\nname: win\r\ndescription: From Windows.\r\ntags: windows, parsing\r\n---\r\n\r\nBody\r\n"
         )
         got = skills.skills_manage(action="get", name="win")
         self.assertEqual(got["description"], "From Windows.")
-        self.assertFalse(got["invokable"])
+        self.assertEqual(got["tags"], ["windows", "parsing"])
         self.assertEqual(got["body"].strip(), "Body")
 
     def test_binary_skill_file_is_reported_not_raised(self) -> None:
@@ -353,6 +358,15 @@ class BaselineSkillsTests(unittest.TestCase):
         action_field = get_args(action_hint)[1]
         self.assertIn("full SKILL.md content", action_field.description)
 
+    def test_save_uses_tags_and_no_longer_exposes_invokable(self) -> None:
+        hints = get_type_hints(skills.skills_manage, include_extras=True)
+        self.assertIn("tags", hints)
+        self.assertNotIn("invokable", hints)
+        mcp = FakeMCP()
+        skills.register(mcp)
+        self.assertIn("tags as a list of strings", mcp.descriptions["skills_manage"])
+        self.assertIn('["python", "testing"]', mcp.descriptions["skills_manage"])
+
     def test_baseline_skills_are_listed(self) -> None:
         """Test baseline skills are listed function."""
         with mock.patch.dict(os.environ):
@@ -360,6 +374,8 @@ class BaselineSkillsTests(unittest.TestCase):
             result = skills.skills_manage(action="list")
             names: set = {s["name"] for s in result["skills"]}
             self.assertTrue({"grill-me", "handoff"} <= names)
+            self.assertTrue(all(skill["tags"] for skill in result["skills"]))
+            self.assertTrue(all("invokable" not in skill for skill in result["skills"]))
             got = skills.skills_manage(action="get", name="handoff")
             self.assertIn("handoff", got["description"].lower())
 

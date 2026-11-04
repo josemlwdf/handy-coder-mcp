@@ -1,6 +1,7 @@
 ---
 name: handoff
 description: Create a compact handoff document so another agent can continue the work.
+tags: handoff, documentation, continuity, agent
 ---
 
 # Handoff

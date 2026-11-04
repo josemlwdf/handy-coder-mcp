@@ -1,6 +1,7 @@
 ---
 name: plan
 description: Plan and deliver non-trivial work with Handy Coder. Delegate tasks, track progress, integrate, and validate.
+tags: planning, delegation, task-management, validation
 ---
 
 # Plan & Delegate
