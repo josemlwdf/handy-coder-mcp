@@ -4,29 +4,55 @@ description: Create a compact handoff document so another agent can continue the
 tags: handoff, documentation, continuity, agent
 ---
 
-# Handoff
+# Purpose & Scope
 
-Ask: **“What will the next session be used for?”**
+Create concise, actionable handoff document in `./tmp` so next agent seamlessly resumes work without lost context or duplicate effort.
 
-Create a handoff document for a fresh agent.
+# Operating Principles & Safeguards
 
-## Related tools
+- **Reference, Don't Duplicate**: Never re-paste code, full diffs, specs, plans, or commit histories present in artifacts. Reference by exact path or URL.
+- **Redact Sensitive Data**: Strip all API keys, secrets, tokens, passwords, and personal identifiable information (PII).
+- **Concise & Actionable**: Keep summary tight, clear, directly relevant to next steps.
 
-- `read_files` and `search_text` help verify workspace artifacts and references before writing the handoff.
-- `create_file` saves the document in the required temporary directory when available.
+# Required Tools & Fallbacks
 
-## Related skills
+- `read_files`, `search_text`: Verify workspace artifacts and state before writing handoff.
+- `create_file`: Save document under `./tmp/` (e.g., `./tmp/handoff.md`).
 
-- `plan` tracks ongoing implementation; `implement` carries out a task.
-- `diagnosing-bugs` is relevant when the handoff concerns an unresolved software issue.
+# Actionable Workflow
 
-## Requirements
+1. **Ask User Prompt**: Ask **“What will the next session be used for?”** (if user focus/intent not already specified).
+2. **Inspect Environment**: Check workspace artifacts (specs, plans, issues, diffs) using file/search tools.
+3. **Draft Handoff Content**:
+   - Focus / Goal: State primary objective for next session based on user input.
+   - Context Summary: Brief recap of work completed and current status.
+   - Artifact References: Table/list of paths and URLs for key existing files/docs.
+   - Pending Work & Next Steps: Action items for incoming agent.
+   - Suggested Skills: Explicitly list skills next agent should invoke using Skill tool (e.g., `plan`, `implement`, `diagnosing-bugs`).
+4. **Sanitize & Save**: Verify secret redaction, then save file under `./tmp/handoff.md` via `create_file`.
 
-- Save the document under `./tmp`.
-- Summarize the current conversation for session continuity.
-- Tailor the handoff to any user-supplied focus arguments.
-- Add a **Suggested skills** section. Name skills the next agent should invoke with the Skill tool.
-- Do not repeat information already stored in artifacts (specs, plans, ADRs, issues, commits, diffs). Reference each by path or URL.
-- Redact secrets and personal data, including API keys and passwords.
+# Output Format
 
-Keep the handoff concise, actionable, and sufficient to resume the work.
+Output created document directly into `./tmp/handoff.md`:
+
+```markdown
+# Session Handoff
+
+## Focus / Goal
+[Target focus for next session]
+
+## Context & Current Status
+[Brief high-level summary of state]
+
+## Key References & Artifacts
+- `path/to/spec.md` - Feature specification
+- `path/to/plan.md` - Implementation plan
+
+## Next Steps
+1. [Actionable step 1]
+2. [Actionable step 2]
+
+## Suggested Skills
+- `plan`: [Reason to invoke]
+- `implement`: [Reason to invoke]
+```

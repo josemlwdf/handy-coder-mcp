@@ -1,196 +1,127 @@
 ---
 name: diagnosing-bugs
-description: Diagnose hard bugs and performance regressions with an evidence-based workflow. Use when the user asks to debug or fix broken, throwing, failing, or slow behavior.
+description: Diagnose hard bugs and performance regressions with an evidence-based, fully autonomous workflow. Use when debugging or fixing broken, throwing, failing, or slow behavior.
 tags: debugging, performance, troubleshooting, diagnostics
 ---
 
 # Diagnosing Bugs
 
-## Related tools
+Systematic, evidence-led workflow for diagnosing hard bugs and performance regressions. Follow phases in sequence; skip a phase only with an explicit, evidence-based reason.
 
-- `search_text`, `find_files`, and `read_files` gather code evidence; `code_intel` supplies syntactic or lexical navigation candidates.
-- `code_get_diagnostics`, `run_tests`, `terminal_exec`, and `build_project` help reproduce and validate findings.
+## Related Tools & Skills
 
-## Related skills
-
-- `implement` is for carrying out a confirmed fix.
-- `analyzing-dotnet-performance` reviews .NET performance patterns.
-
-Systematic workflow for hard bugs. Follow phases in order. Skip a phase only with an explicit, evidence-based reason.
+- **Tools:** `search_text`, `find_files`, `read_files`, `code_intel`, `code_get_diagnostics`, `run_tests`, `terminal_exec`, `build_project`.
+- **Skills:** `implement` (for applying a confirmed fix), `analyzing-dotnet-performance` (.NET performance patterns).
 
 ## Operating Mode: Fully Autonomous
 
-Run workflow end to end. Do not involve user between phases.
+Execute the workflow end-to-end without pausing for user input between phases:
+- **No interactive prompts:** Make the strongest reasonable assumption, record it in working notes, and proceed. Never delegate manual tasks (clicking, commands, copying output) to the user.
+- **Autonomous discovery:** Inspect code, Git history, logs, configs, and documentation. Search the web when necessary.
+- **Parallelization:** Use subagents where available to parallelize independent probes (loop candidates, hypothesis tests, log searches, bisects). Isolate probes in separate copies or branches.
+- **Completion:** Stop only when the fix is verified or all viable avenues are exhausted (delivering a structured report under **When no tight loop exists**).
 
-- Do not ask questions, request approval, or wait for input. Make strongest reasonable assumption, record it, continue.
-- Do not delegate manual steps to user (clicking, commands, copying output). Use available tools, scripts, or subagents.
-- Missing context → inspect code, Git history, logs, configs, docs, and environment. Search web when useful.
-- Record assumptions, decisions, and ranked hypotheses in working notes and final report.
-- Use subagents when available. Parallelize independent work: loop candidates, hypothesis tests, log searches, and bisects. Isolate probes in separate copies or branches.
-- Stop only when fix is verified or all viable avenues are exhausted. If exhausted, deliver full report using **When no tight loop exists**.
+## Redaction & Security
 
-## Redaction
+This workflow handles live commands and captured artifacts.
+- **Redact secrets:** Replace all credentials, tokens, and sensitive data with `<REDACTED>`. Pass credentials via environment variables—never embed them in commands or artifacts.
+- **Narrow capture:** If redacted output is insufficient, capture again with a narrower probe targeting only necessary diagnostic fields.
 
-This workflow exposes commands, outputs, and captured artifacts. **Redact secrets before displaying or storing output.** Replace each secret with `<REDACTED>`. Pass credentials through environment variables; never embed them in shown commands or artifacts. Captured artifacts may contain auth headers: quote only relevant, redacted lines.
-
-Redacted output insufficient → capture again with a narrower probe. Log only fields needed to diagnose. Do not ask user for the output.
+---
 
 ## Phase 1: Build a Feedback Loop
 
-**Highest-priority phase.** Build a tight pass/fail signal that detects this exact bug. Bisection, hypothesis tests, and instrumentation depend on it. Without a useful signal, code inspection alone cannot establish the cause.
-
-Spend most effort here. Try different approaches. Do not quit early.
+**Highest-priority phase.** Establish a tight pass/fail signal that detects the exact bug before theorizing or reading code.
 
 ### Loop Construction Options
-
-Try roughly in this order:
-
-1. **Failing test:** Unit, integration, or end-to-end test at the seam that reaches the bug.
-2. **HTTP script:** `curl` or equivalent against a dev server you start.
+Evaluate in order:
+1. **Failing test:** Unit, integration, or E2E test at the seam reaching the bug.
+2. **HTTP script:** `curl` or equivalent against a started dev server.
 3. **CLI run:** Feed fixture input; diff stdout against known-good snapshot.
-4. **Headless browser:** Playwright/Puppeteer drives UI; assert DOM, console, and network behavior.
-5. **Trace replay:** Save real request, payload, or event log; replay through isolated code path.
-6. **Throwaway harness:** Minimal system subset (one service, mocked dependencies) that calls the bug path directly.
-7. **Property/fuzz loop:** For intermittent wrong output, run many randomized inputs (e.g. 1,000) and detect failure.
-8. **Bisection harness:** For regression between known states (commit, dataset, version), automate boot + check so `git bisect run` can locate change.
-9. **Differential loop:** Run identical input against old/new versions or configs; diff results.
-10. **Synthetic environment:** If real environment unavailable, recreate it with containers, local emulators, stub services, fixtures from logs/schemas/Git history, and an automated driver. No manual steps.
-
-Correct loop solves most of the debugging problem. Build it before theorizing.
+4. **Headless browser:** Playwright/Puppeteer driving UI assertions.
+5. **Trace replay:** Replay captured request payload or event log through isolated path.
+6. **Throwaway harness:** Minimal subset (mocked dependencies) calling the bug path.
+7. **Property/fuzz loop:** Run randomized inputs (e.g., 1,000+) for intermittent failures.
+8. **Bisection harness:** Automate boot + check for `git bisect run`.
+9. **Differential loop:** Compare identical input across versions or configs.
+10. **Synthetic environment:** Recreate via containers, local emulators, stubs, and automated drivers.
 
 ### Tighten the Loop
-
-Treat loop quality as part of the work. Improve:
-
-- **Speed:** Cache setup; skip unrelated initialization; narrow test scope.
-- **Signal:** Assert exact symptom, not merely absence of crash.
-- **Determinism:** Pin time; seed RNG; isolate filesystem; freeze or stub network.
-
-A slow, flaky loop gives weak feedback. Target seconds and repeatable verdicts.
+- **Speed:** Cache setup, skip unrelated initialization, narrow scope.
+- **Signal:** Assert exact symptoms, not merely lack of crash.
+- **Determinism:** Pin time, seed RNG, isolate filesystem, stub network. Target second-level execution and repeatable verdicts.
 
 ### Non-Deterministic Bugs
-
-Goal: raise reproduction rate, not necessarily create perfect repro. Repeat trigger many times (e.g. 100×), parallelize, stress system, narrow timing windows, or inject sleeps. Raise reproduction rate until failure can be debugged reliably.
+Raise reproduction rate by repeating triggers (e.g., 100×), parallelizing, stressing the system, or pinning conditions until failure is reliably debugged.
 
 ### When No Tight Loop Exists
-
-Do not stop at first blocker. Try this ladder:
-
-1. Try every construction method above, not only obvious ones. Run independent candidates in parallel through subagents.
-2. Recreate missing data, services, config, or traffic from code, logs, schemas, and Git history.
-3. Add temporary, tagged, local instrumentation (Phase 4) to expose symptom.
-4. Build closest possible **proxy loop**. Exercise suspected path and assert measurable symptom proxy. Label it lower-confidence.
-
-After exhausting options without a red-capable loop:
-
-- Continue with best proxy loop.
-- Mark every conclusion as lower-confidence.
-- Final report must list attempts, why each failed, what environment/artifact would enable a tight loop, and all unverified conclusions.
-- Never present unverified conclusions as confirmed.
+If standard loops fail:
+1. Try every construction method above in parallel via subagents.
+2. Reconstruct missing data, services, config, or traffic from code/logs/Git history.
+3. Add temporary, tagged instrumentation (Phase 4).
+4. Build the closest possible **proxy loop** and label conclusions lower-confidence.
 
 ### Phase 1 Completion Gate
+Complete only when a **red-capable command** exists and has been verified:
+- [ ] **Red-capable:** Exercises the actual bug path, failing before the fix and passing after.
+- [ ] **Deterministic:** Consistent verdicts across runs.
+- [ ] **Fast:** Completes in seconds.
+- [ ] **Agent-runnable:** Runs fully unattended.
 
-Phase 1 complete only when one **tight, red-capable command** exists. Name the command (script path, test invocation, or `curl`), run it at least once, and show invocation + redacted output.
-
-It must satisfy all criteria:
-
-- [ ] **Red-capable:** Exercises actual bug path and asserts user's exact symptom. Goes red before fix and green after. “Runs without error” is insufficient.
-- [ ] **Deterministic:** Same verdict each run. For flaky bugs, pin conditions and achieve high reproduction rate.
-- [ ] **Fast:** Seconds, not minutes.
-- [ ] **Agent-runnable:** Runs unattended; no human action.
-
-Do not build a theory by reading code before this command exists. That is the failure this workflow prevents. No red-capable command—or explicitly labelled proxy after exhausting the fallback ladder—means no Phase 2.
+---
 
 ## Phase 2: Reproduce and Minimize
 
-Run loop. Observe exact failure.
+1. **Reproduce:** Confirm the loop captures the exact user-reported failure across runs.
+2. **Minimize:** Shrink the failing scenario by removing inputs, callers, config, or data one by one until every remaining element is load-bearing.
 
-Confirm:
-
-- [ ] Loop reproduces user's reported failure, not a nearby or unrelated failure. Wrong bug → wrong fix. Ambiguous report → choose best-supported interpretation, record assumption, and add cheap loops for other plausible meanings.
-- [ ] Failure repeats across runs. For nondeterministic bugs, reproduction rate is high enough to debug.
-- [ ] Exact symptom captured: error, incorrect output, or timing. Reuse it to verify fix.
-
-### Minimize
-
-Shrink failing repro to smallest scenario that still goes red.
-
-Remove one item at a time: inputs, callers, config, data, or steps. Re-run loop after each removal. Keep only elements required for failure.
-
-Minimal repro reduces Phase 3 hypothesis space and becomes Phase 5 regression test.
-
-Done when every remaining element is load-bearing: removing any one makes loop go green.
-
-Do not proceed until repro is both reproduced and minimized.
+---
 
 ## Phase 3: Hypothesize
 
-Create **3–5 ranked hypotheses** before testing. One hypothesis risks anchoring on first plausible cause.
+Formulate **3–5 ranked, falsifiable hypotheses** before testing. Every hypothesis must state a clear prediction:
+> *“If `<X>` causes the bug, changing `<Y>` makes it disappear; changing `<Z>` makes it worse.”*
 
-Every hypothesis must be falsifiable and state a prediction.
+Test independent hypotheses in parallel using isolated subagents or branches.
 
-> Format: “If `<X>` causes bug, changing `<Y>` makes bug disappear; changing `<Z>` makes it worse.”
-
-No testable prediction → discard or sharpen hypothesis.
-
-Record ranked list in notes and final report. Do not wait for review; proceed. Test independent hypotheses in parallel with subagents, each in isolated copy/branch so probes cannot interfere.
+---
 
 ## Phase 4: Instrument
 
-Each probe tests one specific Phase 3 prediction. **Change one variable at a time.**
+Test one specific prediction at a time. **Change one variable at a time.**
+1. **Tool Order:** Prefer debuggers/REPLs first, followed by targeted logs at decision boundaries. Never log everything and grep.
+2. **Tagging:** Prefix all debug logs uniquely (e.g., `[DEBUG-a4f2]`) and remove them entirely during cleanup.
+3. **Performance Regressions:** Establish timing baselines using profilers or query plans before modifying code.
 
-Tool order:
-
-1. **Debugger/REPL:** Prefer when environment supports it. One useful breakpoint beats many logs.
-2. **Targeted logs:** Add only at boundaries that distinguish hypotheses.
-3. **Never log everything and grep.**
-
-Tag every debug log with unique prefix, e.g. `[DEBUG-a4f2]`. Later, one grep finds all temporary logs. Remove every tagged log during cleanup.
-
-**Performance regressions:** Logs usually provide poor evidence. Establish baseline with timing harness, `performance.now()`, profiler, or query plan. Then bisect. Measure before fixing.
-
-Hypothesis falsified → drop it and test next. All falsified → generate new ranked set from evidence and repeat.
+---
 
 ## Phase 5: Fix and Regression Test
 
-Write regression test **before fix**, but only when a correct test seam exists.
+1. **Regression Test:** Convert the minimized repro into a failing test at the correct seam before applying the fix. If no correct seam exists, document it as an architectural finding.
+2. **Apply Fix:** Implement the smallest root-cause fix.
+3. **Verify:** Confirm the regression test passes, and rerun the full Phase 1 loop against the unminimized scenario. Run wider test suites to check for regressions.
 
-**Correct seam:** Test exercises real bug pattern at its actual call site. Shallow seam gives false confidence. Examples: single-caller test cannot catch bug requiring multiple callers; unit test cannot reproduce triggering call chain.
-
-**No correct seam:** Record this as an architectural finding in final report. Keep best available guard (e.g. checked-in Phase 1 script). Do not block fix on unavailable seam.
-
-When correct seam exists:
-
-1. Convert minimized repro into failing test at that seam.
-2. Run test; confirm it fails.
-3. Apply smallest fix for root cause.
-4. Run test; confirm it passes.
-5. Run Phase 1 loop against original, unminimized scenario.
-
-Prefer smallest root-cause fix. Run wider existing test suite. Fix regressions introduced by change.
+---
 
 ## Phase 6: Cleanup
 
-All checks required before declaring done:
+Verify all completion criteria:
+- [ ] Original repro passes Phase 1 loop.
+- [ ] Regression test passes (or missing seam is documented).
+- [ ] Existing test suite passes cleanly.
+- [ ] All `[DEBUG-...]` logs and throwaway prototypes removed.
+- [ ] Confirmed root cause documented in commit/PR message.
+- [ ] Work committed to current branch without user prompt.
 
-- [ ] Original repro no longer fails; rerun Phase 1 loop.
-- [ ] Regression test passes, or missing correct seam is documented.
-- [ ] Existing test suite passes.
-- [ ] All `[DEBUG-...]` instrumentation removed; grep prefix to verify.
-- [ ] Throwaway prototypes deleted or moved to clearly marked debug location.
-- [ ] Confirmed hypothesis stated in commit/PR message so next debugger has context.
-
-Commit work to current branch without asking for confirmation.
+---
 
 ## Final Report
 
-End with concise report containing:
-
+Provide a concise final report covering:
 - User-visible symptom.
-- Loop command and before/after output (redacted).
-- Root cause.
-- Hypotheses tested and each outcome.
+- Loop command and redacted before/after output.
+- Root cause analysis.
+- Hypotheses tested and outcomes.
 - Fix applied.
-- Regression test result, or missing-seam finding.
-- Assumptions made.
-- Lower-confidence or unverified conclusions.
+- Regression test results / missing-seam findings.
+- Assumptions and lower-confidence conclusions.
