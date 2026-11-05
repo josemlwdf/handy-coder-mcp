@@ -7,8 +7,7 @@ internal tools directly; all internal tool calls must go through `invoke_tool`.
 
 ## When and how to call it
 
-Use `discover_tools` or `get_tool_details` to select the internal tool and inspect its
-schema, then call it through `invoke_tool` with schema-valid arguments. Do not call
+Use `get_capabilities` to find the internal tool and `get_tool_details` to inspect its schema. Set `full_schema=true` for nested fields and constraints, then call it through `invoke_tool` with schema-valid arguments. Do not call
 internal tools directly.
 
 ## Parameters and defaults
@@ -41,11 +40,11 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 ## Results
 
-Returns structured tool documentation, matching tools, or the selected tool's result. Errors use structured `error_code` values.
+Returns the selected tool's result or a structured error. Errors use structured `error_code` values.
 
 ## Side effects and runtime requirements
 
-`get_tool_details` and `discover_tools` are read-only. `invoke_tool` runs the selected tool and can have that tool's side effects.
+`get_capabilities` and `get_tool_details` are read-only. `invoke_tool` runs the selected tool and can have that tool's side effects.
 
 ## Technical details
 

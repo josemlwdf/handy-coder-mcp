@@ -22,7 +22,7 @@ Review any target codebase or subsystem for architectural friction and proportio
 ## Required Tools & Handy Coder MCP Router Integration
 Handy Coder MCP exposes four router tools. Use these router interfaces to access underlying inspection capabilities rather than direct endpoints:
 - `get_capabilities`: Discover available router capabilities and supported operations.
-- `discover_tools(keyword)`: Locate available tools within Handy Coder MCP for file navigation, code intelligence, and git analysis.
+- `get_capabilities`: Find available Handy Coder MCP tools for file navigation, code intelligence, and git analysis.
 - `get_tool_details(tool_name)`: Inspect specific tool schemas and argument requirements.
 - `invoke_tool`: Execute internal tools with exact registered names and documented arguments (e.g., for finding files, searching text, reading files, code navigation, and git management).
 

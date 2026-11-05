@@ -4,16 +4,15 @@ Handy Coder MCP is a local [Model Context Protocol (MCP)](https://modelcontextpr
 
 The server uses MCP's **stdio transport** and confines workspace file operations and command working directories to a configured root. It is written in Python and requires Python 3.11 or newer.
 
-## Just-in-time tool discovery
+## Just-in-time tool routing
 
-Handy Coder MCP uses a **router-based, just-in-time (JIT) tool discovery and invocation pattern** to reduce the tool definitions and schema context sent to an MCP client, which can lower prompt token usage. Internally, the server registers its tool catalog at startup, while MCP `tools/list` publishes only four stable router tools:
+Handy Coder MCP keeps the registered tool catalog internal and publishes three stable router tools through MCP `tools/list`:
 
-- `get_capabilities` reports runtime capabilities and optional tool availability.
-- `discover_tools(keyword, limit=4)` searches tool names, short and detailed descriptions, parameter names, parameter descriptions, and curated tags using English stemming. Invalid keyword characters are removed, and results are capped at four. If no tools match, it returns the output of `get_capabilities`.
-- `get_tool_details(tool_name)` returns full argument documentation, including nested fields, defaults, and validation constraints, for one registered tool.
-- `invoke_tool(tool_name, arguments)` dispatches a selected tool through its normal execution path.
+- `get_capabilities` reports available tools and runtime requirements.
+- `get_tool_details(tool_name, full_schema=false)` provides a compact argument summary. Set `full_schema=true` for nested fields, defaults, constraints, and definitions.
+- `invoke_tool(tool_name, arguments)` validates and dispatches a selected tool through its normal execution path.
 
-In practice, the client checks capabilities, discovers a tool or requests its details, then invokes it by name with a JSON arguments object. Other tools are internally registered and callable through the router; they are not individually exposed in `tools/list`. Their ordinary published descriptions and schemas are kept brief, while discovery and details provide the fuller documentation on demand. The selected tool's original schema validation and execution controls still apply.
+Use capabilities to find a tool, details to inspect its arguments, then invoke it with a JSON arguments object. Internal tools remain callable through the router and are not individually exposed in `tools/list`.
 
 See the [internal tool inventory](docs/TOOL_INVENTORY.md) for the catalog and [optional setup notes](docs/SETUP.md) for runtime requirements.
 
@@ -49,7 +48,6 @@ Each page describes a tool's purpose and runtime behavior. For the full paramete
 
 - [get_capabilities](lib/core/get_capabilities/README.md)
 - [get_tool_details](lib/get_tool_details/README.md)
-- [discover_tools](lib/discover_tools/README.md)
 - [invoke_tool](lib/invoke_tool/README.md)
 - [web_search](lib/core/web_search/README.md)
 - [web_fetch_docs](lib/extras/web_fetch_docs/README.md)

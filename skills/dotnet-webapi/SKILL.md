@@ -12,7 +12,7 @@ Build or modify ASP.NET Core HTTP APIs matching project style with correct HTTP 
 
 Handy Coder MCP exposes tools through a router:
 1. Use `get_capabilities` if availability is unclear.
-2. Use `discover_tools` with task keywords, then `get_tool_details` for schemas.
+2. Use `get_capabilities` to find tools, then `get_tool_details` for schemas.
 3. Call via `invoke_tool`.
 
 - **Inspection**: `list_dir`, `find_files`, `search_text`, `read_files`, `code_intel`.

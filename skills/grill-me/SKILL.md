@@ -11,7 +11,7 @@ Interview the user until you reach shared understanding. Build a **decision tree
 ## Related tools
 
 - `read_files`, `search_text`, `find_files`, and `list_dir` can establish facts from workspace artifacts before asking about decisions.
-- `get_capabilities` and `discover_tools` identify available MCP capabilities when a decision depends on them.
+- `get_capabilities` identifies available MCP capabilities when a decision depends on them.
 
 ## Related skills
 

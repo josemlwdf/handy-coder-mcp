@@ -6,31 +6,15 @@ import copy
 import functools
 import inspect
 import json
-import re
 from typing import Annotated, Any
 
 from pydantic import Field
-import snowballstemmer
-
-# Curated capability vocabulary supplements each tool's own name and docs.
-_TOOL_TAGS: dict[str, tuple[str, ...]] = {
-    "find_files": (
-        "filesystem",
-        "files",
-        "directory",
-        "list",
-        "workspace",
-        "root",
-        "discovery",
-    ),
-}
 
 _ROUTER_RESULT_CHAR_LIMIT = 16_000
 _ROUTER_PUBLIC_TOOLS = frozenset(
     {
         "get_capabilities",
         "get_tool_details",
-        "discover_tools",
         "invoke_tool",
     }
 )
@@ -526,10 +510,18 @@ def install(mcp: Any) -> None:
             str,
             Field(
                 description=(
-                    "Registered tool name, e.g. 'read_files'. Prefix aliases accepted. (Required: True)"
+                    "Registered tool name. Prefix aliases accepted. (Required: True)"
                 )
             ),
         ],
+        full_schema: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Include nested fields, defaults, and constraints. (Required: False)"
+                )
+            ),
+        ] = False,
     ) -> dict:
         """Get tool details function."""
         requested_name = (tool_name or "").strip()
@@ -553,15 +545,27 @@ def install(mcp: Any) -> None:
                 "message": message,
             }
         schema = copy.deepcopy(entry["inputSchema"])
+        arguments = _arguments(schema)
+        if not full_schema:
+            arguments = {
+                name: {
+                    "type": detail["type"],
+                    "required": detail["required"],
+                    "description": _brief(detail["description"]),
+                }
+                for name, detail in arguments.items()
+            }
         return {
             "tool_name": resolved_name,
-            "description": entry["description"],
-            "arguments": _arguments(schema),
-            "definitions": schema.get("$defs", {}),
+            "description": (
+                entry["description"] if full_schema else _brief(entry["description"])
+            ),
+            "arguments": arguments,
+            **({"definitions": schema.get("$defs", {})} if full_schema else {}),
         }
 
     # Register through the original FastMCP method so this meta-tool is not shortened.
-    meta_description: str = "Get a tool's full docs and arguments."
+    meta_description: str = "Get compact or full documentation and arguments for an available tool. Compact is the default."
     original_tool(name="get_tool_details", description=meta_description)(
         get_tool_details
     )
@@ -572,132 +576,6 @@ def install(mcp: Any) -> None:
         "description": meta_description,
         "inputSchema": _schema(meta_tool),
     }
-
-    def discover_tools(
-        keyword: Annotated[
-            str,
-            Field(
-                description=(
-                    "Keyword containing letters and underscores; other characters are removed. "
-                    "English word forms are stemmed before searching tool metadata. "
-                    "(Required: True)"
-                )
-            ),
-        ],
-        limit: Annotated[
-            int,
-            Field(description="Max search matches, capped at 4. (Required: False)"),
-        ] = 4,
-    ) -> dict:
-        """Search tool metadata by keyword; return capabilities when no tools match."""
-        manager_tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
-
-        def capabilities_fallback() -> dict:
-            """Return the registered runtime capabilities or an explicit error."""
-            capabilities_tool = manager_tools.get("get_capabilities")
-            capabilities_function = getattr(capabilities_tool, "fn", None)
-            if not callable(capabilities_function):
-                return {
-                    "error_code": "capabilities_unavailable",
-                    "message": "The get_capabilities tool is not registered.",
-                }
-            return capabilities_function()
-
-        if not isinstance(keyword, str):
-            return {
-                "error_code": "invalid_keyword",
-                "message": "keyword must be a string",
-            }
-        keyword_text = "".join(
-            character for character in keyword if character.isalpha() or character == "_"
-        ).casefold()
-        english_stemmer = snowballstemmer.stemmer("english")
-
-        def stems(text: str) -> set[str]:
-            """Return the English stems of words in searchable metadata."""
-            words = re.findall(r"[^\W\d_]+", text.casefold(), flags=re.UNICODE)
-            normalized = set(english_stemmer.stemWords(words))
-            # Snowball leaves some agent nouns such as "coder" unchanged.
-            normalized.update(
-                english_stemmer.stemWord(word[:-1])
-                for word in words
-                if len(word) > 4 and word.endswith("er")
-            )
-            return normalized
-
-        terms = stems(keyword_text)
-        if not terms:
-            return capabilities_fallback()
-
-        def parameter_metadata(schema: dict) -> tuple[str, str]:
-            """Collect parameter names and descriptions, including nested fields."""
-            names: list[str] = []
-            descriptions: list[str] = []
-
-            def visit(name: str, detail: dict) -> None:
-                """Collect searchable data from a parameter and its nested fields."""
-                names.append(name)
-                descriptions.append(str(detail.get("description", "")))
-                properties = detail.get("properties", {})
-                if isinstance(properties, dict):
-                    for child_name, child in properties.items():
-                        if isinstance(child, dict):
-                            visit(child_name, child)
-                item = detail.get("items")
-                if isinstance(item, dict):
-                    descriptions.append(str(item.get("description", "")))
-                    item_properties = item.get("properties", {})
-                    if isinstance(item_properties, dict):
-                        for child_name, child in item_properties.items():
-                            if isinstance(child, dict):
-                                visit(child_name, child)
-
-            for name, detail in _arguments(schema).items():
-                visit(name, detail)
-            return " ".join(names), " ".join(descriptions)
-
-        candidates: list = []
-        for name, entry in catalog.items():
-            if name == "discover_tools" or name not in manager_tools:
-                continue
-            description = entry.get("description", "")
-            short_description = getattr(manager_tools[name], "description", "")
-            tags = " ".join(_TOOL_TAGS.get(name, ()))
-            parameter_names, parameter_descriptions = parameter_metadata(
-                entry.get("inputSchema", {})
-            )
-            fields = (
-                (10, stems(name)),
-                (6, stems(tags)),
-                (5, stems(parameter_names)),
-                (4, stems(short_description)),
-                (3, stems(parameter_descriptions)),
-                (2, stems(description)),
-            )
-            matched = sum(any(term in field for _, field in fields) for term in terms)
-            if not matched:
-                continue
-            exact = keyword_text == name.casefold()
-            score = sum(
-                max((weight for weight, field in fields if term in field), default=0)
-                for term in terms
-            )
-            candidates.append(
-                (not exact, -matched, -score, name.casefold(), name, entry)
-            )
-        candidates.sort(key=lambda item: item[:5])
-        result: list = []
-        for _, _, _, _, name, entry in candidates[: max(0, min(int(limit), 4))]:
-            result.append(
-                {
-                    "name": name,
-                    "description": entry.get("description", ""),
-                    "inputSchema": copy.deepcopy(entry.get("inputSchema", {})),
-                }
-            )
-        if not result:
-            return capabilities_fallback()
-        return {"tools": result, "count": len(result)}
 
     def register_meta(
         name: str,
@@ -716,12 +594,6 @@ def install(mcp: Any) -> None:
             "inputSchema": _schema(runtime),
         }
 
-    register_meta(
-        "discover_tools",
-        "Search tool names, descriptions, and parameters by stemmed keyword; use get_tool_details for full docs. No matches return runtime capabilities.",
-        discover_tools,
-    )
-
     async def invoke_tool(
         tool_name: Annotated[
             str,
@@ -736,7 +608,7 @@ def install(mcp: Any) -> None:
             ),
         ],
     ) -> Any:
-        """Use discover_tools or get_tool_details to select a tool and its schema, then invoke it here.
+        """Use get_capabilities to find tools and get_tool_details to inspect schemas, then invoke a tool here.
 
         Never call internal tools directly; all internal tool calls must go through
         this router with schema-valid arguments.
@@ -774,7 +646,7 @@ def install(mcp: Any) -> None:
     register_meta(
         "invoke_tool",
         (
-            "Do not call internal tools directly; select a tool and its schema, "
+            "Do not call internal tools directly; select a tool and its arguments, "
             "then call it only through invoke_tool."
         ),
         invoke_tool,

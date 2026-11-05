@@ -25,8 +25,6 @@ _NO_WORKER_TOOLS: set = {
     "get_tool_details",
     # Capabilities reads the live registry installed during server startup.
     "get_capabilities",
-    # Discovery closes over the live registration catalog and must read it in-process.
-    "discover_tools",
     # Subagent lifecycle uses in-memory task state and cancellation events.
     "subagent_manage",
     # Image inspection relies on process-local runtime backend configuration,

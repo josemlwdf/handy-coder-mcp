@@ -1,21 +1,13 @@
-"""Tests for router-only tool publication and just-in-time discovery."""
+"""Tests for the router-only tool publication flow."""
 
 from __future__ import annotations
 
 import asyncio
 import json
-from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel, Field
 
 from lib import error_handler, tool_details, worker_supervisor
-
-
-class NestedOptions(BaseModel):
-    """Nested search options."""
-
-    archive_path: str = Field(description="Choose the vermilion archive location.")
 
 
 def _server() -> FastMCP:
@@ -57,131 +49,49 @@ def _server() -> FastMCP:
     error_handler.install(server)
     return server
 
-def test_public_list_is_router_only_and_discovery_is_stable() -> None:
-    """Test public list is router only and discovery is stable function."""
+def test_public_list_has_only_three_router_tools() -> None:
     server = _server()
     assert {tool.name for tool in server._tool_manager.list_tools()} == {
-        "get_capabilities",
-        "get_tool_details",
-        "discover_tools",
-        "invoke_tool",
+        "get_capabilities", "get_tool_details", "invoke_tool"
     }
-    discover = server._tool_manager._tools["discover_tools"].fn
-    file_matches = discover("files", limit=20)["tools"]
-    assert [row["name"] for row in file_matches] == [
-        "find_files",
-        "inspect_files",
-        "list_files",
-        "read_files",
-    ]
-    assert len(file_matches) == 4
-    assert discover("read_files")["tools"][0]["name"] == "read_files"
-    assert discover("directory")["tools"][0]["name"] == "find_files"
-    assert discover("authorized")["tools"][0]["name"] == "find_files"
-    assert discover("filesystem")["tools"][0]["name"] == "find_files"
-    assert discover("capabilities")["tools"][0]["name"] == "get_capabilities"
-    assert discover("workspace")["tools"][0]["name"] == "find_files"
-    assert discover("contents")["tools"][0]["name"] == "read_files"
-    assert len(discover("files", limit=20)["tools"]) == 4
-    assert len(discover("files", limit=2)["tools"]) == 2
-    assert discover("no-such-capability")["available"] is True
-    assert discover("", limit=4)["available"] is True
-    assert discover("!2")["available"] is True
+    assert "discover_tools" not in server._tool_manager._tools
 
 
-def test_invoke_tool_descriptions_enforce_router_usage() -> None:
-    """Test invoke_tool descriptions require routing internal calls."""
+def test_get_tool_details_compact_default_full_schema_and_aliases() -> None:
+    server = _server()
+    get_details = server._tool_manager._tools["get_tool_details"].fn
+    compact = get_details("read_files")
+    omitted = get_details("read_files", full_schema=False)
+    assert compact["arguments"] == omitted["arguments"]
+    assert compact["arguments"]["paths"]["type"] == "array"
+    assert compact["arguments"]["paths"]["required"] is True
+    assert isinstance(compact["arguments"]["paths"]["description"], str)
+    assert "properties" not in compact["arguments"]["paths"]
+    assert "definitions" not in compact
+    full = get_details("read_files", full_schema=True)
+    assert "items" in full["arguments"]["paths"]
+    assert "definitions" in full
+    assert get_details("handy_coder_read_files")["tool_name"] == "read_files"
+    assert get_details("nope")["error_code"] == "unknown_tool"
+
+
+def test_router_guidance_and_internal_tool_descriptions() -> None:
     server = _server()
     short_description = server._tool_manager._tools["invoke_tool"].description
-    details = server._tool_manager._tools["get_tool_details"].fn("invoke_tool")
-    detailed_description = details["description"]
-
+    details = server._tool_manager._tools["get_tool_details"].fn("invoke_tool", full_schema=True)
     assert "Do not call internal tools directly" in short_description
-    assert "discover_tools or get_tool_details" in detailed_description
-    assert "Never call internal tools directly" in detailed_description
-
-
-def test_internal_tool_descriptions_require_router_usage() -> None:
-    """Test internal tools forbid direct calls in short and detailed docs."""
-    server = _server()
-    public_tools = {
-        "get_capabilities",
-        "get_tool_details",
-        "discover_tools",
-        "invoke_tool",
-    }
+    assert "get_capabilities" in details["description"]
+    assert "Never call internal tools directly" in details["description"]
+    public_tools = {"get_capabilities", "get_tool_details", "invoke_tool"}
     get_details = server._tool_manager._tools["get_tool_details"].fn
-
     for name in server._tool_details_catalog.keys() - public_tools:
-        short_description = server._tool_manager._tools[name].description
-        detailed_description = get_details(name)["description"]
-
-        assert short_description.startswith(
+        assert server._tool_manager._tools[name].description.startswith(
             "Do not call this tool directly; all calls must go through invoke_tool."
         )
-        assert detailed_description.startswith(
+        assert get_details(name, full_schema=True)["description"].startswith(
             "Do not call this tool directly; all calls must go through invoke_tool."
         )
 
-
-def test_keyword_discovery_stems_and_searches_tool_metadata() -> None:
-    """Test keywords stem and search all tool metadata fields."""
-    server = _server()
-
-    @server.tool(
-        description=(
-            "Find the glimmer resource. Additional documentation mentions saffron archives."
-        )
-    )
-    def inspect_records(
-        cobalt_id: Annotated[
-            str, Field(description="Choose the cerulean archive identifier.")
-        ],
-    ) -> dict:
-        """Inspect records function."""
-        return {"cobalt_id": cobalt_id}
-
-    @server.tool(description="Search nested archive options.")
-    def search_nested(options: NestedOptions) -> dict:
-        """Search nested archive function."""
-        return options.model_dump()
-
-    discover = server._tool_manager._tools["discover_tools"].fn
-
-    assert discover("directories")["tools"][0]["name"] == "find_files"
-    assert discover("glimmer")["tools"][0]["name"] == "inspect_records"
-    assert discover("saffron")["tools"][0]["name"] == "inspect_records"
-    assert discover("cobalt")["tools"][0]["name"] == "inspect_records"
-    assert discover("cerulean")["tools"][0]["name"] == "inspect_records"
-    assert discover("vermilion")["tools"][0]["name"] == "search_nested"
-    assert discover("saffr!on2")["tools"][0]["name"] == "inspect_records"
-    assert discover("*")["available"] is True
-
-    metadata = server._tool_manager._tools["discover_tools"].description
-    assert "stemmed keyword" in metadata
-    assert "get_tool_details" in metadata
-    schema = server._tool_manager._tools["discover_tools"].parameters
-    assert "keyword" in schema["properties"]
-    assert "query" not in schema["properties"]
-
-def test_keyword_discovery_stems_agent_nouns_to_base_words() -> None:
-    """Test agent-noun keywords can find their base word."""
-    server = FastMCP("stem-test")
-    tool_details.install(server)
-
-    @server.tool(description="Return source code.")
-    def code() -> dict:
-        """Return source code function."""
-        return {"available": True}
-
-    @server.tool(description="Report runtime capabilities.")
-    def get_capabilities() -> dict:
-        """Get capabilities function."""
-        return {"available": True}
-
-    discover = server._tool_manager._tools["discover_tools"].fn
-
-    assert discover("coder")["tools"][0]["name"] == "code"
 
 def test_router_dispatch_validates_original_schema_and_unknown_names() -> None:
     """Test router dispatch validates original schema and unknown names function."""
@@ -194,7 +104,7 @@ def test_router_dispatch_validates_original_schema_and_unknown_names() -> None:
     good = asyncio.run(
         call(
             "invoke_tool",
-            {"tool_name": "get_tool_details", "arguments": {"tool_name": "read_files"}},
+            {"tool_name": "get_tool_details", "arguments": {"tool_name": "read_files", "full_schema": True}},
         )
     )
     assert good["tool_name"] == "read_files"
@@ -207,6 +117,17 @@ def test_router_dispatch_validates_original_schema_and_unknown_names() -> None:
     )
     assert isinstance(invalid, dict)
     assert invalid.get("error_code")
+
+    aliased = asyncio.run(
+        call(
+            "invoke_tool",
+            {
+                "tool_name": "handy_coder_get_tool_details",
+                "arguments": {"tool_name": "read_files"},
+            },
+        )
+    )
+    assert aliased["tool_name"] == "read_files"
 
     unknown = asyncio.run(
         call("invoke_tool", {"tool_name": "not_registered", "arguments": {}})

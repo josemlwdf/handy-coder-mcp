@@ -73,7 +73,7 @@ Use Handy Coder MCP tools to inspect the target repository:
 - `terminal_exec`: run focused scans or benchmarks when workspace search is insufficient.
 - `code_get_diagnostics`: inspect configured diagnostics, not general performance.
 - `skills_manage`: retrieve this skill's bundled references.
-- Discover internal tools and schemas with `discover_tools` or `get_tool_details`; invoke them through `invoke_tool`.
+- Find internal tools with `get_capabilities` and inspect schemas with `get_tool_details`; invoke them through `invoke_tool`.
 
 Use available tools and conventions appropriate to the target workspace. Do not assume a particular repository layout, test framework, or project configuration.
 

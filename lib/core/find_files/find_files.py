@@ -1,9 +1,11 @@
 """Module documentation."""
 
+import re
 import time
 from typing import Annotated
 
 from pydantic import Field
+import snowballstemmer
 from ...support import describe, iter_workspace_files
 
 # Common generated/build directories to skip by default
@@ -30,25 +32,36 @@ _DEFAULT_EXCLUDE_DIRS = frozenset(
 )
 
 MAX_RESULTS: int = 5000
+_ENGLISH_STEMMER = snowballstemmer.stemmer("english")
+
+
+def _stems(value: str) -> set[str]:
+    """Return English stems for the alphabetic words in a filename or pattern."""
+    words = re.findall(r"[^\W\d_]+", value.casefold(), flags=re.UNICODE)
+    return set(_ENGLISH_STEMMER.stemWords(words))
 
 
 def _matches_name_or_extension(name: str, pattern: str) -> bool:
-    """Match a plain substring against an entry name or its extension."""
+    """Match a substring or all stemmed pattern words against an entry name."""
     lowered = pattern.casefold()
-    return lowered in name.casefold() or lowered in name.rsplit(".", 1)[-1].casefold()
+    lowered_name = name.casefold()
+    if lowered in lowered_name or lowered in name.rsplit(".", 1)[-1].casefold():
+        return True
+    pattern_stems = _stems(pattern)
+    return bool(pattern_stems) and pattern_stems.issubset(_stems(name))
 
 
 def find_files(
     glob_pattern: Annotated[
         str,
         Field(
-            description="Non-empty, case-insensitive string matched against file or directory names and extensions at workspace-relative paths throughout the workspace and subdirectories. (Required: True)"
+            description="Non-empty, case-insensitive substring or stemmed word pattern matched against names and extensions at workspace-relative paths throughout the workspace. (Required: True)"
         ),
     ],
     exclude_pattern: Annotated[
         str | None,
         Field(
-            description="Optional case-insensitive string; exclude workspace-relative entries whose name or extension contains it. (Required: False)"
+            description="Optional case-insensitive substring or stemmed word pattern; exclude entries at workspace-relative paths whose name or extension matches it. (Required: False)"
         ),
     ] = None,
     include_generated: Annotated[
@@ -124,7 +137,7 @@ def register(mcp):
     """Register function."""
     return mcp.tool(
         description=describe(
-            "Find workspace files and directories by case-insensitive substring in entry names or extensions, optionally excluding matches. "
+            "Find workspace files and directories by case-insensitive substring or stemmed words in entry names or extensions, optionally excluding matches. "
             f"Generated and build directories ({', '.join(sorted(_DEFAULT_EXCLUDE_DIRS))}) are searched by default and can be skipped with include_generated=false. "
             "Dot-prefixed directories are searched by default and can be skipped with include_dot_dirs=false. "
             f"Returns at most {MAX_RESULTS} results; incomplete is true when the limit was reached. "

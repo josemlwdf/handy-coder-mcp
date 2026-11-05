@@ -10,7 +10,7 @@ Use when a Python test suite needs to be executed in batches or failures require
 
 ## Workspace Tools
 
-- Prefer the registered `run_tests` tool when available. Check capabilities and discover its current schema using `get_capabilities`, `discover_tools`, and `get_tool_details("run_tests")`. Invoke internal tools through `invoke_tool`.
+- Prefer the registered `run_tests` tool when available. Check capabilities and inspect its current schema using `get_capabilities` and `get_tool_details("run_tests")`. Invoke internal tools through `invoke_tool`.
 - Use `run_tests` with `test_framework="pytest"` and workspace-relative `filter_path` when supported.
 - Use `terminal_exec` when the registered runner cannot express the required invocation. Follow the repository's configured Python interpreter and environment rather than assuming `.venv` or a particular package manager.
 - Use `list_dir`, `find_files`, `read_files`, and `search_text` to inspect test modules, source, and configuration. Use `code_get_diagnostics` when relevant.

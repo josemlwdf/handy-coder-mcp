@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Recursively find workspace files and directories using case-insensitive substring filters on entry names or extensions.
+Recursively find workspace files and directories using case-insensitive substring or stemmed word filters on entry names or extensions. Plural patterns can match singular names, such as `documents` matching `document.md`.
 
 ## When and how to call it
 
@@ -17,11 +17,11 @@ The JSON Schema below is the registered input contract. Required fields appear i
   "type": "object",
   "properties": {
     "glob_pattern": {
-      "description": "Non-empty, case-insensitive string matched against file or directory names and extensions at workspace-relative paths throughout the workspace and subdirectories. (Required: True)",
+      "description": "Non-empty, case-insensitive substring or stemmed word pattern matched against names and extensions at workspace-relative paths throughout the workspace. (Required: True)",
       "type": "string"
     },
     "exclude_pattern": {
-      "description": "Optional case-insensitive string; exclude workspace-relative entries whose name or extension contains it. (Required: False)",
+      "description": "Optional case-insensitive substring or stemmed word pattern; exclude entries at workspace-relative paths whose name or extension matches it. (Required: False)",
       "type": [
         "string",
         "null"

@@ -17,7 +17,7 @@
     "web_search": "Search public web for facts",
     "capture_url_screenshot": "Capture webpage screenshots using gowitness",
     "code_intel": "Navigate indexed source code symbols",
-    "get_tool_details": "Retrieve registered tool schemas documentation",
+    "get_tool_details": "Inspect tool schemas on demand",
     "web_fetch_docs": "Fetch and extract public text",
     "subagent_manage": "Manage delegated tasks and results",
     "inspect_image": "Inspect images using multimodal models",

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Return full documentation and the argument schema for one registered tool.
+Return a compact argument summary by default, or the full argument schema when `full_schema=true`.
 
 ## When and how to call it
 
@@ -19,6 +19,11 @@ The JSON Schema below is the registered input contract. Required fields appear i
       "description": "Canonical registered tool name (for example 'read_files'). Prefixed aliases such as 'handy_coder_read_files' are accepted. (Required: True)",
       "title": "Tool Name",
       "type": "string"
+    },
+    "full_schema": {
+      "default": false,
+      "description": "Include nested fields, defaults, and constraints. (Required: False)",
+      "type": "boolean"
     }
   },
   "required": [
@@ -31,11 +36,11 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 ## Results
 
-Returns structured tool documentation, matching tools, or the selected tool's result. Errors use structured `error_code` values.
+Returns structured documentation. The default result summarizes each top-level argument; `full_schema=true` includes nested documentation, defaults, constraints, and definitions. Errors use structured `error_code` values.
 
 ## Side effects and runtime requirements
 
-`get_tool_details` and `discover_tools` are read-only. `invoke_tool` runs the selected tool and can have that tool's side effects.
+`get_capabilities` and `get_tool_details` are read-only. `invoke_tool` runs the selected tool and can have that tool's side effects.
 
 ## Technical details
 

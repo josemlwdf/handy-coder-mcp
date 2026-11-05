@@ -1,8 +1,8 @@
 # Registered tool inventory
 
-`tools/list` exposes only the stable router interface: `get_capabilities`, `get_tool_details`, `discover_tools`, and `invoke_tool`. The server retains all other tools internally. Use `discover_tools(keyword, limit=4)` to search names, descriptions, parameters, and curated tags using English stemming; results include full descriptions and input schemas. Invalid characters are removed from the keyword, and no-match searches return the output of `get_capabilities`. `get_tool_details(tool_name)` returns structured argument documentation, including nested fields, defaults, and validation constraints. Call a selected tool with `invoke_tool(tool_name, arguments)`. The server validates arguments against that tool's original schema and runs it through the normal execution path. Unknown or unavailable names return a structured error. Direct calls to individual tool names are no longer part of the public interface.
+`tools/list` exposes only `get_capabilities`, `get_tool_details`, and `invoke_tool`. The server retains other tools internally. Use `get_capabilities` to find available tools, `get_tool_details(tool_name)` for a compact top-level argument summary, and `get_tool_details(tool_name, full_schema=true)` for nested fields, defaults, constraints, and definitions. Call a selected tool with `invoke_tool(tool_name, arguments)`. The server validates arguments against that tool's original schema and runs it through the normal execution path. Unknown or unavailable names return a structured error. Direct calls to individual tools are not part of the public interface.
 
-The catalog below is the complete internal tool inventory available to discovery and routing.
+The catalog below is the complete internal tool inventory available to routing.
 
 ## Core tools
 
@@ -40,4 +40,4 @@ The catalog below is the complete internal tool inventory available to discovery
 
 ### Result size limits
 
-`invoke_tool` caps every dispatched result at 16,000 JSON-serialized characters. Oversized results retain their JSON structure and include `truncated: true` plus `truncation` metadata describing affected paths and omitted content. Tool errors and status fields are preserved. Source limits are 4,000 characters each for terminal stdout/stderr, 16,000 characters per returned file (files up to 256 KiB; use `read_files` line ranges for later lines), 4,000 characters per web page (continue with `offset`/`next_offset`), and 4,000 characters per subagent result page (continue with `offset`/`final_next_offset`). Discovery and tool-detail responses are outside the invoke result cap.
+`invoke_tool` caps every dispatched result at 16,000 JSON-serialized characters. Oversized results retain their JSON structure and include `truncated: true` plus `truncation` metadata describing affected paths and omitted content. Tool errors and status fields are preserved. Source limits are 4,000 characters each for terminal stdout/stderr, 16,000 characters per returned file (files up to 256 KiB; use `read_files` line ranges for later lines), 4,000 characters per web page (continue with `offset`/`next_offset`), and 4,000 characters per subagent result page (continue with `offset`/`final_next_offset`). Tool-detail responses are outside the invoke result cap.

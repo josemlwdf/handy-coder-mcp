@@ -48,6 +48,16 @@ class FindFilesInvalidGlobContractTests(unittest.TestCase):
         result = find_files.find_files(glob_pattern=".cs")
         self.assertEqual(result["files"], [".hidden/b.cs", "obj/a.cs"])
 
+    def test_stemmed_patterns_match_and_exclude_singular_names(self) -> None:
+        (self.root / "document.md").write_text("doc\n", encoding="utf-8")
+        (self.root / "document_reports.md").write_text("report\n", encoding="utf-8")
+
+        result = find_files.find_files(
+            glob_pattern="documents", exclude_pattern="reports"
+        )
+
+        self.assertEqual(result["files"], ["document.md"])
+
 
 if __name__ == "__main__":
     unittest.main()
