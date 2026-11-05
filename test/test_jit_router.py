@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 
 from mcp.server.fastmcp import FastMCP
@@ -57,20 +58,34 @@ def test_public_list_has_only_three_router_tools() -> None:
     assert "discover_tools" not in server._tool_manager._tools
 
 
-def test_get_tool_details_compact_default_full_schema_and_aliases() -> None:
+def test_schema_helper_is_hidden_from_capabilities() -> None:
+    server = _server()
+    capabilities_module = importlib.import_module(
+        "lib.core.get_capabilities.get_capabilities"
+    )
+    previous_mcp = capabilities_module._MCP
+    capabilities_module._MCP = server
+    try:
+        capabilities = capabilities_module.get_capabilities()
+    finally:
+        capabilities_module._MCP = previous_mcp
+    assert "get_tool_schema" not in capabilities["tools"]["always_enabled"]
+    assert "get_tool_schema" not in capabilities["tools"]["runtime"]
+
+
+def test_get_tool_details_is_compact_and_schema_helper_returns_full_details() -> None:
     server = _server()
     get_details = server._tool_manager._tools["get_tool_details"].fn
     compact = get_details("read_files")
-    omitted = get_details("read_files", full_schema=False)
-    assert compact["arguments"] == omitted["arguments"]
+    assert set(server._tool_manager._tools["get_tool_details"].parameters["properties"]) == {"tool_name"}
     assert compact["arguments"]["paths"]["type"] == "array"
     assert compact["arguments"]["paths"]["required"] is True
     assert isinstance(compact["arguments"]["paths"]["description"], str)
     assert "properties" not in compact["arguments"]["paths"]
     assert "definitions" not in compact
-    full = get_details("read_files", full_schema=True)
+    full = server._tool_manager._tools["get_tool_schema"].fn("read_files")
     assert "items" in full["arguments"]["paths"]
-    assert "definitions" in full
+    assert full["arguments"]["paths"]["constraints"]["items"] == {"type": "string"}
     assert get_details("handy_coder_read_files")["tool_name"] == "read_files"
     assert get_details("nope")["error_code"] == "unknown_tool"
 
@@ -78,17 +93,17 @@ def test_get_tool_details_compact_default_full_schema_and_aliases() -> None:
 def test_router_guidance_and_internal_tool_descriptions() -> None:
     server = _server()
     short_description = server._tool_manager._tools["invoke_tool"].description
-    details = server._tool_manager._tools["get_tool_details"].fn("invoke_tool", full_schema=True)
+    details = server._tool_manager._tools["get_tool_details"].fn("invoke_tool")
     assert "Do not call internal tools directly" in short_description
     assert "get_capabilities" in details["description"]
-    assert "Never call internal tools directly" in details["description"]
+    assert "compact schemas" in details["description"]
     public_tools = {"get_capabilities", "get_tool_details", "invoke_tool"}
     get_details = server._tool_manager._tools["get_tool_details"].fn
     for name in server._tool_details_catalog.keys() - public_tools:
         assert server._tool_manager._tools[name].description.startswith(
             "Do not call this tool directly; all calls must go through invoke_tool."
         )
-        assert get_details(name, full_schema=True)["description"].startswith(
+        assert get_details(name)["description"].startswith(
             "Do not call this tool directly; all calls must go through invoke_tool."
         )
 
@@ -104,10 +119,17 @@ def test_router_dispatch_validates_original_schema_and_unknown_names() -> None:
     good = asyncio.run(
         call(
             "invoke_tool",
-            {"tool_name": "get_tool_details", "arguments": {"tool_name": "read_files", "full_schema": True}},
+            {"tool_name": "get_tool_details", "arguments": {"tool_name": "read_files"}},
         )
     )
     assert good["tool_name"] == "read_files"
+    full = asyncio.run(
+        call(
+            "invoke_tool",
+            {"tool_name": "get_tool_schema", "arguments": {"tool_name": "read_files"}},
+        )
+    )
+    assert "items" in full["arguments"]["paths"]
 
     invalid = asyncio.run(
         call(
@@ -133,6 +155,42 @@ def test_router_dispatch_validates_original_schema_and_unknown_names() -> None:
         call("invoke_tool", {"tool_name": "not_registered", "arguments": {}})
     )
     assert unknown["error_code"] == "unknown_tool"
+
+
+def test_retry_hint_requires_two_consecutive_failures_for_same_tool() -> None:
+    server = _server()
+
+    @server.tool(description="Return a structured failure.")
+    def failing_tool(value: int) -> dict:
+        """Failing tool function."""
+        return {"error_code": "expected_failure"}
+
+    async def call(name: str, args: dict | None = None):
+        return await server._tool_manager.call_tool(
+            "invoke_tool", {"tool_name": name, "arguments": args or {"value": 1}}
+        )
+
+    first = asyncio.run(call("failing_tool"))
+    second = asyncio.run(call("failing_tool", {"value": 2}))
+    assert "hint" not in first
+    assert "get_tool_schema" in second["hint"]
+    assert '"tool_name": "failing_tool"' in second["hint"]
+
+    # A different target starts a fresh run; its first error has no hint.
+    different = asyncio.run(call("find_files", {}))
+    assert "hint" not in different
+    third = asyncio.run(call("failing_tool"))
+    assert "hint" not in third
+
+    # A successful call clears the failure history.
+    assert asyncio.run(
+        server._tool_manager.call_tool(
+            "invoke_tool",
+            {"tool_name": "get_tool_details", "arguments": {"tool_name": "read_files"}},
+        )
+    )["tool_name"] == "read_files"
+    after_success = asyncio.run(call("failing_tool"))
+    assert "hint" not in after_success
 
 def test_router_caps_nested_results_and_preserves_small_results() -> None:
     """Test router caps nested results and preserves small results function."""

@@ -1,6 +1,6 @@
 # Registered tool inventory
 
-`tools/list` exposes only `get_capabilities`, `get_tool_details`, and `invoke_tool`. The server retains other tools internally. Use `get_capabilities` to find available tools, `get_tool_details(tool_name)` for a compact top-level argument summary, and `get_tool_details(tool_name, full_schema=true)` for nested fields, defaults, constraints, and definitions. Call a selected tool with `invoke_tool(tool_name, arguments)`. The server validates arguments against that tool's original schema and runs it through the normal execution path. Unknown or unavailable names return a structured error. Direct calls to individual tools are not part of the public interface.
+`tools/list` exposes only `get_capabilities`, `get_tool_details`, and `invoke_tool`. The server retains other tools internally. Use `get_capabilities` to find available tools and `get_tool_details(tool_name)` for a compact top-level argument summary. For nested fields, defaults, constraints, and definitions, call the internal `get_tool_schema` through `invoke_tool(tool_name="get_tool_schema", arguments={"tool_name":"..."})`. After two consecutive failed calls to the same target tool, `invoke_tool` adds this schema lookup hint to the error. Call selected tools with `invoke_tool(tool_name, arguments)`. The server validates arguments against that tool's original schema and runs it through the normal execution path. Unknown or unavailable names return a structured error. Direct calls to individual tools are not part of the public interface.
 
 The catalog below is the complete internal tool inventory available to routing.
 
@@ -21,7 +21,7 @@ The catalog below is the complete internal tool inventory available to routing.
 - `capture_url_screenshot` — captures full-page screenshots for URLs via `gowitness` and stores artifacts in `tmp/screenshots/`. "on success, stderr is intentionally empty unless debug=true." When debug is enabled, raw process stderr is included in `stderr_raw` for diagnostics.
 - `code_intel` — unified C# tool: `action='index'` incrementally indexes workspace C# files in `.handy-coder/code_index.sqlite3`; `action='navigate'` performs indexed search/symbol/reference navigation.
 - `get_capabilities`
-- `get_tool_details` — returns full documentation for a currently registered tool.
+- `get_tool_details` — returns compact top-level argument details for a registered tool.
 - `skills_manage`
 - `orchestrator` — unified orchestrator tool with `action='bootstrap'` and `action='update_task_status'`.
 

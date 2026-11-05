@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Return a compact argument summary by default, or the full argument schema when `full_schema=true`.
+Return a compact summary of each top-level argument.
 
 ## When and how to call it
 
-These are stable MCP router tools. Call `get_tool_details` directly through the MCP client.
+Call `get_tool_details` directly through the MCP client. For a full nested schema, call the internal `get_tool_schema` through `invoke_tool`.
 
 ## Parameters and defaults
 
@@ -19,11 +19,6 @@ The JSON Schema below is the registered input contract. Required fields appear i
       "description": "Canonical registered tool name (for example 'read_files'). Prefixed aliases such as 'handy_coder_read_files' are accepted. (Required: True)",
       "title": "Tool Name",
       "type": "string"
-    },
-    "full_schema": {
-      "default": false,
-      "description": "Include nested fields, defaults, and constraints. (Required: False)",
-      "type": "boolean"
     }
   },
   "required": [
@@ -36,11 +31,11 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 ## Results
 
-Returns structured documentation. The default result summarizes each top-level argument; `full_schema=true` includes nested documentation, defaults, constraints, and definitions. Errors use structured `error_code` values.
+Returns structured compact documentation. Nested documentation, defaults, constraints, and definitions are available from `get_tool_schema` through `invoke_tool`; that internal helper is not listed publicly. Errors use structured `error_code` values. After two consecutive failed calls to the same target through `invoke_tool`, the error includes a schema lookup hint.
 
 ## Side effects and runtime requirements
 
-`get_capabilities` and `get_tool_details` are read-only. `invoke_tool` runs the selected tool and can have that tool's side effects.
+`get_capabilities`, `get_tool_details`, and `get_tool_schema` are read-only. `invoke_tool` runs the selected tool and can have that tool's side effects.
 
 ## Technical details
 

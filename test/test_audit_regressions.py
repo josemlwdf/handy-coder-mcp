@@ -183,7 +183,7 @@ class AuditRegressionTests(unittest.TestCase):
         worker_supervisor.supervise_fastmcp_tools(mcp)
         handler = mcp._tool_manager._tools["get_tool_details"].fn
         with patch("lib.worker_supervisor.run_tool_in_worker") as run_worker:
-            details = handler(tool_name="read_files", full_schema=True)
+            details = mcp._tool_manager._tools["get_tool_schema"].fn(tool_name="read_files")
         run_worker.assert_not_called()
         self.assertEqual(details["tool_name"], "read_files")
         self.assertIn("line_ranges", details["arguments"])
@@ -230,7 +230,7 @@ class AuditRegressionTests(unittest.TestCase):
         tool_details.install(mcp)
         skills.register(mcp)
         handler = mcp._tool_manager._tools["get_tool_details"].fn
-        details = handler(tool_name="skills_manage", full_schema=True)
+        details = mcp._tool_manager._tools["get_tool_schema"].fn(tool_name="skills_manage")
         self.assertEqual(details["tool_name"], "skills_manage")
         self.assertNotEqual(details["arguments"]["name"]["type"], "unknown")
         self.assertNotEqual(details["arguments"]["tags"]["type"], "unknown")
@@ -368,7 +368,7 @@ class AuditRegressionTests(unittest.TestCase):
         tool_details.install(mcp)
         skills.register(mcp)
         handler = mcp._tool_manager._tools["get_tool_details"].fn
-        details = handler(tool_name="skills_manage", full_schema=True)
+        details = mcp._tool_manager._tools["get_tool_schema"].fn(tool_name="skills_manage")
         action_description = details["arguments"]["action"]["description"]
         self.assertIn("built-in defaults:", action_description)
         self.assertIn("plan", action_description)

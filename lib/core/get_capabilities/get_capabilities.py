@@ -191,6 +191,7 @@ def get_capabilities() -> dict:
         tools: dict = {
             name: tools.get(name, {"available": True, "note": "registered tool"})
             for name in sorted(registry)
+            if name != "get_tool_schema"
         }
     else:
         for name in (

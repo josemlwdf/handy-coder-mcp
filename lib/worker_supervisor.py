@@ -23,6 +23,8 @@ _NO_WORKER_TOOLS: set = {
     # This handler closes over the live FastMCP registry and is intentionally
     # executed in-process; spawning it would re-import a non-module-level function.
     "get_tool_details",
+    # The schema helper closes over the live registry just like get_tool_details.
+    "get_tool_schema",
     # Capabilities reads the live registry installed during server startup.
     "get_capabilities",
     # Subagent lifecycle uses in-memory task state and cancellation events.

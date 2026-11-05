@@ -510,18 +510,10 @@ def install(mcp: Any) -> None:
             str,
             Field(
                 description=(
-                    "Registered tool name. Prefix aliases accepted. (Required: True)"
+                    "Registered tool name. (Required: True)"
                 )
             ),
         ],
-        full_schema: Annotated[
-            bool,
-            Field(
-                description=(
-                    "Include nested fields, defaults, and constraints. False is default and shall stay like that unless you're stuck. (Required: False)"
-                )
-            ),
-        ] = False,
     ) -> dict:
         """Get tool details function."""
         requested_name = (tool_name or "").strip()
@@ -546,26 +538,22 @@ def install(mcp: Any) -> None:
             }
         schema = copy.deepcopy(entry["inputSchema"])
         arguments = _arguments(schema)
-        if not full_schema:
-            arguments = {
-                name: {
-                    "type": detail["type"],
-                    "required": detail["required"],
-                    "description": _brief(detail["description"]),
-                }
-                for name, detail in arguments.items()
+        arguments = {
+            name: {
+                "type": detail["type"],
+                "required": detail["required"],
+                "description": _brief(detail["description"]),
             }
+            for name, detail in arguments.items()
+        }
         return {
             "tool_name": resolved_name,
-            "description": (
-                entry["description"] if full_schema else _brief(entry["description"])
-            ),
+            "description": _brief(entry["description"]),
             "arguments": arguments,
-            **({"definitions": schema.get("$defs", {})} if full_schema else {}),
         }
 
     # Register through the original FastMCP method so this meta-tool is not shortened.
-    meta_description: str = "Get compact or full documentation and arguments for an available tool. Compact is the default."
+    meta_description: str = "Get compact argument details for an available tool."
     original_tool(name="get_tool_details", description=meta_description)(
         get_tool_details
     )
@@ -575,6 +563,28 @@ def install(mcp: Any) -> None:
     catalog["get_tool_details"] = {
         "description": meta_description,
         "inputSchema": _schema(meta_tool),
+    }
+
+    def get_tool_schema(tool_name: Annotated[str, Field(description="Registered tool name. (Required: True)")]) -> dict:
+        """Return full argument details, including nested fields and constraints."""
+        result = get_tool_details(tool_name)
+        if result.get("error_code"):
+            return result
+        entry = catalog[result["tool_name"]]
+        schema = copy.deepcopy(entry["inputSchema"])
+        return {
+            "tool_name": result["tool_name"],
+            "description": entry["description"],
+            "arguments": _arguments(schema),
+            **({"definitions": schema.get("$defs", {})} if schema.get("$defs") else {}),
+        }
+
+    register_schema_description = f"{_ROUTER_ONLY_GUIDANCE}\n\nInternal full-schema lookup."
+    original_tool(name="get_tool_schema", description=register_schema_description)(get_tool_schema)
+    schema_tool = getattr(getattr(mcp, "_tool_manager", None), "_tools", {}).get("get_tool_schema")
+    catalog["get_tool_schema"] = {
+        "description": register_schema_description,
+        "inputSchema": _schema(schema_tool),
     }
 
     def register_meta(
@@ -594,11 +604,28 @@ def install(mcp: Any) -> None:
             "inputSchema": _schema(runtime),
         }
 
+    last_failed_tool: str | None = None
+    consecutive_failures = 0
+
+    def _with_retry_hint(result: dict, target: str) -> dict:
+        nonlocal last_failed_tool, consecutive_failures
+        if target == last_failed_tool:
+            consecutive_failures += 1
+        else:
+            last_failed_tool, consecutive_failures = target, 1
+        if consecutive_failures >= 2:
+            result = dict(result)
+            result["hint"] = (
+                "Inspect the full schema with invoke_tool(tool_name='get_tool_schema', "
+                f"arguments={json.dumps({'tool_name': target}, ensure_ascii=False)})."
+            )
+        return result
+
     async def invoke_tool(
         tool_name: Annotated[
             str,
             Field(
-                description="Registered tool name to call. Prefix aliases accepted. (Required: True)"
+                description="Registered tool name to call. (Required: True)"
             ),
         ],
         arguments: Annotated[
@@ -608,13 +635,14 @@ def install(mcp: Any) -> None:
             ),
         ],
     ) -> Any:
-        """Use get_capabilities to find tools and get_tool_details to inspect schemas, then invoke a tool here.
+        """Use get_capabilities to find tools and get_tool_details for compact schemas, then invoke a tool here.
 
         Never call internal tools directly; all internal tool calls must go through
         this router with schema-valid arguments.
         """
         requested_name = (tool_name or "").strip()
         canonical = _canonical_tool_name(requested_name)
+        nonlocal last_failed_tool, consecutive_failures
         manager = getattr(mcp, "_tool_manager", None)
         runtime_tools = getattr(manager, "_tools", {})
         if (
@@ -622,26 +650,32 @@ def install(mcp: Any) -> None:
             or canonical not in runtime_tools
             or canonical == "invoke_tool"
         ):
-            return {
+            result = {
                 "error_code": "unknown_tool",
                 "message": f"Unknown or unavailable tool: {requested_name}",
             }
+            return _with_retry_hint(result, canonical)
         if not isinstance(arguments, dict):
-            return {
+            result = {
                 "error_code": "invalid_arguments",
                 "message": "arguments must be a JSON object",
             }
+            return _with_retry_hint(result, canonical)
         try:
             result = await manager.call_tool(canonical, arguments)
+            if isinstance(result, dict) and result.get("error_code"):
+                return _with_retry_hint(result, canonical)
+            last_failed_tool, consecutive_failures = None, 0
             return _trim_routed_result(result)
         except (
             Exception
         ) as exc:  # manager errors are returned as structured router errors
-            return {
+            result = {
                 "error_code": "tool_invocation_failed",
                 "tool_name": canonical,
                 "message": str(exc),
             }
+            return _with_retry_hint(result, canonical)
 
     register_meta(
         "invoke_tool",
