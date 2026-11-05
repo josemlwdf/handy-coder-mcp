@@ -26,7 +26,6 @@ with Path(__file__).with_name("summaries.json").open(encoding="utf-8") as _summa
 TOOL_SUMMARIES = _SUMMARIES["tools"]
 SKILL_SUMMARIES = _SUMMARIES["skills"]
 
-
 def _load_summaries() -> dict:
     """Read curated summaries so newly saved skills appear immediately."""
     with Path(__file__).with_name("summaries.json").open(encoding="utf-8") as handle:
@@ -216,11 +215,7 @@ def get_capabilities() -> dict:
     always_enabled: dict = {
         name: {
             "description": tools[name]["description"],
-            **(
-                {"note": tools[name]["note"]}
-                if name == "skills_manage"
-                else {}
-            ),
+            **({"note": tools[name]["note"]} if name == "skills_manage" else {}),
         }
         for name in tools
         if name not in conditional_names
@@ -231,7 +226,11 @@ def get_capabilities() -> dict:
         if name in conditional_names
         or name in {"build_project", "code_intel", "subagent_manage"}
     }
-    tools_response: dict = {"always_enabled": always_enabled, "runtime": runtime}
+    tools_response: dict = {
+        "_hint": "Consult each tool's details using get_tool_details(tool_name) before using it to understand required arguments and constraints.",
+        "always_enabled": always_enabled,
+        "runtime": runtime,
+    }
     skills: list = [
         {
             "name": item["name"],
