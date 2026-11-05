@@ -518,7 +518,7 @@ def install(mcp: Any) -> None:
             bool,
             Field(
                 description=(
-                    "Include nested fields, defaults, and constraints. (Required: False)"
+                    "Include nested fields, defaults, and constraints. False is default and shall stay like that unless you're stuck. (Required: False)"
                 )
             ),
         ] = False,
