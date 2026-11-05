@@ -36,6 +36,25 @@ _NO_WORKER_TOOLS: set = {
     "invoke_tool",
 }
 
+_TIMEOUT_METADATA_KEYS = ("timed_out", "timeout_reason", "duration_ms")
+
+
+def _omit_non_timeout_metadata(value: Any) -> Any:
+    """Remove timeout metadata from non-timeout tool results."""
+    if isinstance(value, dict):
+        result = {
+            key: _omit_non_timeout_metadata(item) for key, item in value.items()
+        }
+        if result.get("timed_out") is not True:
+            for key in _TIMEOUT_METADATA_KEYS:
+                result.pop(key, None)
+        return result
+    if isinstance(value, list):
+        return [_omit_non_timeout_metadata(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_omit_non_timeout_metadata(item) for item in value)
+    return value
+
 
 def _worker_entrypoint(
     mod_name: str,
@@ -228,7 +247,9 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
                         _tool_name, result, bound_args
                     )
                     project_logs.log_tool_call(_tool_name, bound_args, wrapped)
-                    return project_logs.attach_status_summary_request(wrapped)
+                    return _omit_non_timeout_metadata(
+                        project_logs.attach_status_summary_request(wrapped)
+                    )
                 except Exception as exc:
                     project_logs.log_internal_event(
                         "error",
@@ -295,7 +316,9 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
                     )
                 wrapped = subagent_tools.after_tool_call(_tool_name, result, bound_args)
                 project_logs.log_tool_call(_tool_name, bound_args, wrapped)
-                return project_logs.attach_status_summary_request(wrapped)
+                return _omit_non_timeout_metadata(
+                    project_logs.attach_status_summary_request(wrapped)
+                )
             except Exception as exc:
                 project_logs.log_internal_event(
                     "error",

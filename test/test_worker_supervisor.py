@@ -38,6 +38,30 @@ def sample_raising_task() -> dict:
     raise ValueError("intentional worker error")
 
 
+def sample_non_timeout_metadata() -> dict:
+    """Sample non-timeout metadata in a tool result."""
+    return {
+        "timed_out": False,
+        "timeout_reason": None,
+        "duration_ms": 16,
+        "nested": {
+            "timed_out": False,
+            "timeout_reason": None,
+            "duration_ms": 2,
+            "value": "ok",
+        },
+    }
+
+
+def sample_timeout_metadata() -> dict:
+    """Sample timeout metadata in a tool result."""
+    return {
+        "timed_out": True,
+        "timeout_reason": "Process exceeded 100ms.",
+        "duration_ms": 101,
+    }
+
+
 class MockTool:
     """MockTool class."""
 
@@ -136,8 +160,29 @@ class WorkerSupervisorTests(unittest.TestCase):
         res = t_exec.fn("echo hello", timeout_ms=5000)
         self.assertEqual(res.get("exit_code"), 0)
         self.assertEqual(res.get("stdout").strip(), "hello")
-        self.assertIn("timeout_reason", res)
-        self.assertIsNone(res["timeout_reason"])
+        self.assertNotIn("timed_out", res)
+        self.assertNotIn("timeout_reason", res)
+        self.assertNotIn("duration_ms", res)
+
+    def test_supervise_fastmcp_tools_omits_non_timeout_metadata_recursively(self) -> None:
+        tool = MockTool(sample_non_timeout_metadata, "git_manage")
+        mcp = MockFastMCP([tool])
+        supervise_fastmcp_tools(mcp)
+
+        result = tool.fn()
+
+        self.assertEqual(result, {"nested": {"value": "ok"}})
+
+    def test_supervise_fastmcp_tools_preserves_timeout_metadata(self) -> None:
+        tool = MockTool(sample_timeout_metadata, "git_manage")
+        mcp = MockFastMCP([tool])
+        supervise_fastmcp_tools(mcp)
+
+        result = tool.fn()
+
+        self.assertTrue(result["timed_out"])
+        self.assertEqual(result["timeout_reason"], "Process exceeded 100ms.")
+        self.assertEqual(result["duration_ms"], 101)
 
     def test_inspect_image_executes_in_process_without_worker(self) -> None:
         """Test inspect image executes in process without worker function."""
