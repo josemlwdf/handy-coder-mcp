@@ -15,16 +15,22 @@ The JSON Schema below is the registered input contract. Required fields appear i
 ```json
 {
   "properties": {
-    "include_file_management": {"default": false, "type": "boolean"},
-    "include_code_analysis": {"default": false, "type": "boolean"},
-    "include_build_test": {"default": false, "type": "boolean"},
-    "include_web": {"default": false, "type": "boolean"},
-    "include_system": {"default": false, "type": "boolean"},
-    "include_ai_coordination": {"default": false, "type": "boolean"},
-    "include_image_skills": {"default": false, "type": "boolean"},
-    "include_git_management": {"default": false, "type": "boolean"},
-    "include_workspace_runtime": {"default": false, "type": "boolean"},
-    "include_subagents": {"default": false, "type": "boolean"}
+    "categories": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Capability categories to include: file_management, code_analysis, build_test, web, system, ai_coordination, image_skills, git_management, workspace_runtime, subagents. (Required: False)",
+      "title": "Categories"
+    }
   },
   "title": "get_capabilitiesArguments",
   "type": "object"
@@ -35,7 +41,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 Returns the structured result produced by the implementation. Error results and status fields are tool-specific; inspect the returned object and its documented fields rather than assuming that a process or operation succeeded.
 
-With no flags, the result is a usage hint and does not probe runtime capabilities. Set one or more `include_*` flags to retrieve only those sections. Requested tool categories contain `always_enabled` and/or `runtime` maps; runtime-dependent availability details stay in `runtime`. `include_workspace_runtime` adds `workspace_root`; `include_subagents` adds safe backend/model details; and `include_image_skills` adds both `inspect_image` and `skills_manage`, plus the available skills list. Tool and skill descriptions are maintained in the colocated `summaries.json`.
+With no arguments, the result is a usage hint and does not probe runtime capabilities. Set one or more categories in `categories` (or pass category flags) to retrieve only those sections. Requested tool categories contain `always_enabled` and/or `runtime` maps; runtime-dependent availability details stay in `runtime`. `workspace_runtime` adds `workspace_root`; `subagents` adds safe backend/model details; and `image_skills` adds both `inspect_image` and `skills_manage`, plus the available skills list. Tool and skill descriptions are maintained in the colocated `summaries.json`.
 
 ## Side effects and runtime requirements
 

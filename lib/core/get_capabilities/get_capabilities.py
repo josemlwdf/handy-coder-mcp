@@ -41,53 +41,80 @@ def _five_words(value: str) -> str:
 
 _MCP: None = None
 
+VALID_CATEGORIES = (
+    "file_management",
+    "code_analysis",
+    "build_test",
+    "web",
+    "system",
+    "ai_coordination",
+    "image_skills",
+    "git_management",
+    "workspace_runtime",
+    "subagents",
+)
+
+
 def get_capabilities(
-    include_file_management: Annotated[
+    categories: Annotated[
+        list[str] | None,
+        Field(
+            default=None,
+            description="Capability categories to include: file_management, code_analysis, build_test, web, system, ai_coordination, image_skills, git_management, workspace_runtime, subagents. (Required: False)",
+        ),
+    ] = None,
+    file_management: Annotated[
         bool, Field(description="Include file-management tool summaries. (Required: False)")
     ] = False,
-    include_code_analysis: Annotated[
+    code_analysis: Annotated[
         bool, Field(description="Include code-analysis tool summaries. (Required: False)")
     ] = False,
-    include_build_test: Annotated[
+    build_test: Annotated[
         bool, Field(description="Include build and test tool summaries. (Required: False)")
     ] = False,
-    include_web: Annotated[
+    web: Annotated[
         bool, Field(description="Include web tool summaries. (Required: False)")
     ] = False,
-    include_system: Annotated[
+    system: Annotated[
         bool, Field(description="Include system tool summaries. (Required: False)")
     ] = False,
-    include_ai_coordination: Annotated[
+    ai_coordination: Annotated[
         bool, Field(description="Include AI-coordination tool summaries. (Required: False)")
     ] = False,
-    include_image_skills: Annotated[
+    image_skills: Annotated[
         bool, Field(description="Include image and skills tool summaries. (Required: False)")
     ] = False,
-    include_git_management: Annotated[
+    git_management: Annotated[
         bool, Field(description="Include git-management tool summaries. (Required: False)")
     ] = False,
-    include_workspace_runtime: Annotated[
+    workspace_runtime: Annotated[
         bool, Field(description="Include workspace runtime details. (Required: False)")
     ] = False,
-    include_subagents: Annotated[
+    subagents: Annotated[
         bool, Field(description="Include subagent backend and model details. (Required: False)")
     ] = False,
 ) -> dict:
     """Return only the requested capability sections."""
     requested = {
-        "file_management": include_file_management,
-        "code_analysis": include_code_analysis,
-        "build_test": include_build_test,
-        "web": include_web,
-        "system": include_system,
-        "ai_coordination": include_ai_coordination,
-        "image_skills": include_image_skills,
-        "git_management": include_git_management,
-        "workspace_runtime": include_workspace_runtime,
-        "subagents": include_subagents,
+        "file_management": file_management,
+        "code_analysis": code_analysis,
+        "build_test": build_test,
+        "web": web,
+        "system": system,
+        "ai_coordination": ai_coordination,
+        "image_skills": image_skills,
+        "git_management": git_management,
+        "workspace_runtime": workspace_runtime,
+        "subagents": subagents,
     }
+    if categories:
+        for cat in categories:
+            if cat in requested:
+                requested[cat] = True
     if not any(requested.values()):
-        return {"_hint": "Set one or more include_* flags to retrieve capability sections."}
+        return {
+            "_hint": "Specify one or more categories in 'categories' (e.g. ['file_management']) or set category flags to retrieve capability sections."
+        }
 
     summaries = _load_summaries()
     tool_summaries = summaries["tools"]
@@ -103,10 +130,10 @@ def get_capabilities(
         "git_management": ("git_manage",),
     }
     # Runtime probes are done only for sections that need their results.
-    git_ok = shutil.which("git") is not None if include_git_management else None
-    pytest_ok = shutil.which("pytest") is not None if include_build_test else None
+    git_ok = shutil.which("git") is not None if requested["git_management"] else None
+    pytest_ok = shutil.which("pytest") is not None if requested["build_test"] else None
     python_build_python = python_build_ok = None
-    if include_build_test:
+    if requested["build_test"]:
         python_build_python, python_build_ok = _python_build_runtime()
         workspace = Path(support.ROOT)
         venv_python = workspace / ".venv" / "bin" / "python"
@@ -115,10 +142,10 @@ def get_capabilities(
         if venv_python.is_file():
             python_build_python = str(venv_python)
     screenshot_available = screenshot_note = None
-    if include_web:
+    if requested["web"]:
         screenshot_available, screenshot_note = gowitness_available()
     indexer = None
-    if include_code_analysis:
+    if requested["code_analysis"]:
         try:
             indexer = code_index.index_status()
             worker_pid = indexer.get("worker_pid")
@@ -136,7 +163,7 @@ def get_capabilities(
             indexer = {"state": "unavailable", "worker_alive": None, "message": str(exc)}
     subagent_backend = None
     continue_info = None
-    if include_subagents:
+    if requested["subagents"]:
         subagent_backend = resolve_backend()
         continue_models = resolve_continue_models()
         if subagent_backend.startswith("continue:"):
@@ -170,7 +197,7 @@ def get_capabilities(
         "code_intel": {"available": True, "note": "navigate the automatically maintained multilingual source index with search_code, get_symbol, or find_references", "indexer": indexer},
         "get_tool_details": {"available": True, "note": "gets tool docs and arguments; unknown name: unknown_tool"},
         "web_fetch_docs": {"available": True, "note": "fetch public HTTP(S) text"},
-        "subagent_manage": {"available": True, **({"backend": subagent_backend} if include_subagents else {}), "roles": {name: {"result_format": role.result_format} for name, role in ROLES.items()}, "note": "manage subagents; actions: run, status, result, complete, cancel"},
+        "subagent_manage": {"available": True, **({"backend": subagent_backend} if requested["subagents"] else {}), "roles": {name: {"result_format": role.result_format} for name, role in ROLES.items()}, "note": "manage subagents; actions: run, status, result, complete, cancel"},
         "inspect_image": {"available": True, "note": "inspect workspace image via generalist multimodal backend"},
     }
     result: dict = {}
@@ -202,11 +229,11 @@ def get_capabilities(
             "Use get_tool_details with a tool name to get its full documentation and argument schema."
         )
     result["tools"] = tools_result
-    if include_workspace_runtime:
+    if requested["workspace_runtime"]:
         result["workspace_root"] = str(support.ROOT)
-    if include_image_skills:
+    if requested["image_skills"]:
         result["skills"] = [{"name": item["name"], "description": skill_summaries.get(item["name"], _five_words(item.get("description", "")))} for item in _list_skills()["skills"]]
-    if include_subagents:
+    if requested["subagents"]:
         result["subagents"] = {"backend": subagent_backend, **({"continue": continue_info} if continue_info else {})}
     return result
 
@@ -214,7 +241,7 @@ def register(mcp):
     """Register function."""
     global _MCP
     _MCP = mcp
-    return mcp.tool(
+    registered_tool = mcp.tool(
         description=describe(
             "List available tools, skills, dependencies, and feature status. "
             "Lists all available tools and skills, installed binaries, and active environment-gated features. "
@@ -222,3 +249,11 @@ def register(mcp):
             "Call first to check what you can use."
         )
     )(get_capabilities)
+    manager = getattr(mcp, "_tool_manager", None)
+    tools = getattr(manager, "_tools", {})
+    if "get_capabilities" in tools:
+        tool = tools["get_capabilities"]
+        props = tool.parameters.get("properties", {})
+        if "categories" in props:
+            tool.parameters["properties"] = {"categories": props["categories"]}
+    return registered_tool

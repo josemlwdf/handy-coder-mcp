@@ -16,10 +16,13 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         capabilities_module._MCP = None
         self.addCleanup(setattr, capabilities_module, "_MCP", previous)
 
+        # Test both categories array invocation and boolean flags invocation
         result = capabilities_module.get_capabilities(
-            include_file_management=True, include_code_analysis=True, include_build_test=True,
-            include_web=True, include_system=True, include_ai_coordination=True,
-            include_image_skills=True, include_git_management=True,
+            categories=[
+                "file_management", "code_analysis", "build_test",
+                "web", "system", "ai_coordination",
+                "image_skills", "git_management",
+            ]
         )
         self.assertIn("get_tool_details", result["_hint"])
         tool_descriptions = [
@@ -38,6 +41,14 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         )
         self.assertTrue(all(len(item["description"].split()) == 5 for item in result["skills"]))
 
+        # Also verify boolean arguments without include_
+        bool_result = capabilities_module.get_capabilities(
+            file_management=True, code_analysis=True, build_test=True,
+            web=True, system=True, ai_coordination=True,
+            image_skills=True, git_management=True,
+        )
+        self.assertEqual(set(bool_result["tools"]), set(result["tools"]))
+
     def test_workspace_venv_python_is_displayed_when_present(self):
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)
@@ -47,7 +58,7 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
             with patch.object(support, "ROOT", workspace), patch.object(
                 capabilities_module, "_python_build_runtime", return_value=("/usr/bin/python", True)
             ):
-                result = capabilities_module.get_capabilities(include_build_test=True)
+                result = capabilities_module.get_capabilities(build_test=True)
         self.assertEqual(
             result["tools"]["build_test"]["runtime"]["build_project"]["python_interpreter"],
             str(python),
@@ -59,7 +70,7 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         ), patch.object(
             capabilities_module, "_python_build_runtime", return_value=("/usr/bin/python", True)
         ):
-            result = capabilities_module.get_capabilities(include_build_test=True)
+            result = capabilities_module.get_capabilities(categories=["build_test"])
         self.assertEqual(
             result["tools"]["build_test"]["runtime"]["build_project"]["python_interpreter"],
             "/usr/bin/python",
@@ -75,17 +86,20 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         ):
             result = capabilities_module.get_capabilities()
         self.assertEqual(set(result), {"_hint"})
-        self.assertIn("include_*", result["_hint"])
+        self.assertIn("categories", result["_hint"])
 
     def test_sections_are_independently_gated_and_runtime_is_grouped(self):
-        result = capabilities_module.get_capabilities(include_git_management=True)
+        result = capabilities_module.get_capabilities(git_management=True)
         self.assertEqual(set(result), {"_hint", "tools"})
         self.assertIn("get_tool_details", result["_hint"])
         self.assertEqual(set(result["tools"]), {"git_management"})
         self.assertEqual(set(result["tools"]["git_management"]), {"runtime"})
         self.assertEqual(set(result["tools"]["git_management"]["runtime"]), {"git_manage"})
 
-        image = capabilities_module.get_capabilities(include_image_skills=True)
+        result_cat = capabilities_module.get_capabilities(categories=["git_management"])
+        self.assertEqual(result, result_cat)
+
+        image = capabilities_module.get_capabilities(image_skills=True)
         self.assertIn("get_tool_details", image["_hint"])
         self.assertEqual(set(image["tools"]), {"image_skills"})
         self.assertEqual(
@@ -96,12 +110,12 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         self.assertNotIn("workspace_root", image)
         self.assertNotIn("subagents", image)
 
-        workspace = capabilities_module.get_capabilities(include_workspace_runtime=True)
+        workspace = capabilities_module.get_capabilities(workspace_runtime=True)
         self.assertEqual(set(workspace), {"tools", "workspace_root"})
         self.assertEqual(workspace["tools"], {})
         self.assertNotIn("_hint", workspace)
 
-        subagents = capabilities_module.get_capabilities(include_subagents=True)
+        subagents = capabilities_module.get_capabilities(subagents=True)
         self.assertEqual(set(subagents), {"tools", "subagents"})
         self.assertEqual(set(subagents["tools"]), set())
         self.assertNotIn("_hint", subagents)
@@ -112,7 +126,10 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
 
         signature = inspect.signature(capabilities_module.get_capabilities)
         self.assertTrue(signature.parameters)
-        self.assertTrue(all(param.default is False for param in signature.parameters.values()))
+        self.assertIn("categories", signature.parameters)
+        self.assertIsNone(signature.parameters["categories"].default)
+        bool_params = {k: v for k, v in signature.parameters.items() if k != "categories"}
+        self.assertTrue(all(param.default is False for param in bool_params.values()))
 
         try:
             from mcp.server.fastmcp import FastMCP
@@ -122,5 +139,5 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         server = FastMCP("capabilities-test")
         capabilities_module.register(server)
         properties = server._tool_manager._tools["get_capabilities"].parameters["properties"]
-        self.assertEqual(set(properties), set(signature.parameters))
-        self.assertTrue(all(properties[name].get("default") is False for name in properties))
+        self.assertEqual(set(properties), {"categories"})
+        self.assertIn("categories", properties)
