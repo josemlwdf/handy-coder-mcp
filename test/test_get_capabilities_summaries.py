@@ -21,6 +21,7 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
             include_web=True, include_system=True, include_ai_coordination=True,
             include_image_skills=True, include_git_management=True,
         )
+        self.assertIn("get_tool_details", result["_hint"])
         tool_descriptions = [
             item["description"]
             for category in result["tools"].values()
@@ -78,12 +79,14 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
 
     def test_sections_are_independently_gated_and_runtime_is_grouped(self):
         result = capabilities_module.get_capabilities(include_git_management=True)
-        self.assertEqual(set(result), {"tools"})
+        self.assertEqual(set(result), {"_hint", "tools"})
+        self.assertIn("get_tool_details", result["_hint"])
         self.assertEqual(set(result["tools"]), {"git_management"})
         self.assertEqual(set(result["tools"]["git_management"]), {"runtime"})
         self.assertEqual(set(result["tools"]["git_management"]["runtime"]), {"git_manage"})
 
         image = capabilities_module.get_capabilities(include_image_skills=True)
+        self.assertIn("get_tool_details", image["_hint"])
         self.assertEqual(set(image["tools"]), {"image_skills"})
         self.assertEqual(
             set(image["tools"]["image_skills"]["always_enabled"]),
@@ -96,10 +99,12 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         workspace = capabilities_module.get_capabilities(include_workspace_runtime=True)
         self.assertEqual(set(workspace), {"tools", "workspace_root"})
         self.assertEqual(workspace["tools"], {})
+        self.assertNotIn("_hint", workspace)
 
         subagents = capabilities_module.get_capabilities(include_subagents=True)
         self.assertEqual(set(subagents), {"tools", "subagents"})
         self.assertEqual(set(subagents["tools"]), set())
+        self.assertNotIn("_hint", subagents)
         self.assertNotIn("get_capabilities", str(subagents["tools"]))
 
     def test_default_flags_and_registered_schema(self):
@@ -119,4 +124,3 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         properties = server._tool_manager._tools["get_capabilities"].parameters["properties"]
         self.assertEqual(set(properties), set(signature.parameters))
         self.assertTrue(all(properties[name].get("default") is False for name in properties))
-

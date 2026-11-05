@@ -197,6 +197,10 @@ def get_capabilities(
         if runtime:
             category["runtime"] = runtime
         tools_result[section] = category
+    if any(tools_result.values()):
+        result["_hint"] = (
+            "Use get_tool_details with a tool name to get its full documentation and argument schema."
+        )
     result["tools"] = tools_result
     if include_workspace_runtime:
         result["workspace_root"] = str(support.ROOT)

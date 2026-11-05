@@ -12,7 +12,7 @@ Handy Coder MCP keeps the registered tool catalog internal and publishes three s
 - `get_tool_details(tool_name, full_schema=false)` provides a compact argument summary. Set `full_schema=true` for nested fields, defaults, constraints, and definitions.
 - `invoke_tool(tool_name, arguments)` validates and dispatches a selected tool through its normal execution path.
 
-Use capabilities to find a tool, details to inspect its arguments, then invoke it with a JSON arguments object. Internal tools remain callable through the router and are not individually exposed in `tools/list`.
+Use capabilities to find a tool; its response includes a hint to call `get_tool_details` for full documentation and arguments. Then invoke it with a JSON arguments object. Internal tools remain callable through the router and are not individually exposed in `tools/list`.
 
 See the [internal tool inventory](docs/TOOL_INVENTORY.md) for the complete catalog and [optional setup notes](docs/SETUP.md) for runtime requirements.
 
