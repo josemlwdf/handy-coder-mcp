@@ -193,8 +193,8 @@ class ToolSchemaTests(unittest.TestCase):
         self.assertIn("expand_groups", signature.parameters)
         self.assertIn("expand_groups=true", self.mcp.descriptions["apply_edits"])
 
-    def test_tool_details_preserves_nullable_nested_object_types(self) -> None:
-        """Tool details should expose an object's type alongside its null alternative."""
+    def test_tool_details_omits_null_from_optional_argument_types(self) -> None:
+        """Optional nullable arguments expose their concrete type and remain optional."""
         schema = {
             "$defs": {
                 "Position": {
@@ -212,15 +212,26 @@ class ToolSchemaTests(unittest.TestCase):
                         {"$ref": "#/$defs/Position"},
                         {"type": "null"},
                     ]
-                }
-            }
+                },
+                "caption": {
+                    "anyOf": [
+                        {"type": "string"},
+                        {"type": "null"},
+                    ]
+                },
+            },
+            "required": [],
         }
         tool_details._normalize_schema_types(schema)
         details = tool_details._arguments(schema)
-        self.assertEqual(details["position"]["type"], ["object", "null"])
+        self.assertEqual(details["position"]["type"], "object")
+        self.assertFalse(details["position"]["required"])
         self.assertEqual(
             details["position"]["properties"]["line"]["type"], "integer"
         )
+        self.assertEqual(details["caption"]["type"], "string")
+        self.assertFalse(details["caption"]["required"])
+        self.assertNotIn("anyOf", schema["properties"]["caption"])
 
     def test_fastmcp_registered_apply_edits_schema_accepts_expand_groups(self) -> None:
         """Test fastmcp registered apply edits schema accepts expand groups function."""

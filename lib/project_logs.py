@@ -221,14 +221,12 @@ def log_internal_event(
             return None
 
 
-def attach_tool_log_path(result: Any, log_path: str | None) -> Any:
-    """Attach tool log metadata and periodic status-summary hints to dict responses."""
+def attach_status_summary_request(result: Any) -> Any:
+    """Attach periodic status-summary hints to dict responses."""
     if not isinstance(result, dict):
         return result
 
     wrapped = dict(result)
-    if log_path:
-        wrapped["tool_log_path"] = log_path
 
     tool_call_count: int | None = None
     try:

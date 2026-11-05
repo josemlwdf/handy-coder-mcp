@@ -92,7 +92,7 @@ class ProjectLogsTests(unittest.TestCase):
             finally:
                 support.configure(previous_root)
 
-    def test_attach_tool_log_path_adds_status_summary_request_every_tenth_call(
+    def test_attach_status_summary_request_every_tenth_call(
         self,
     ) -> None:
         """Tool responses include a concise-status reminder every 10 tool calls."""
@@ -105,12 +105,13 @@ class ProjectLogsTests(unittest.TestCase):
                 nineteenth_result: dict | None = None
                 twentieth_result: dict | None = None
                 for call_number in range(1, 21):
-                    log_path = project_logs.log_tool_call(
+                    project_logs.log_tool_call(
                         "example_tool",
                         {"n": call_number},
                         {"ok": True},
                     )
-                    wrapped = project_logs.attach_tool_log_path({"ok": True}, log_path)
+                    wrapped = project_logs.attach_status_summary_request({"ok": True})
+                    self.assertNotIn("tool_log_path", wrapped)
                     if call_number == 9:
                         ninth_result = wrapped
                     if call_number == 10:

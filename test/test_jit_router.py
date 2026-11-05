@@ -107,10 +107,10 @@ def test_router_guidance_and_internal_tool_descriptions() -> None:
     get_details = server._tool_manager._tools["get_tool_details"].fn
     for name in server._tool_details_catalog.keys() - public_tools:
         assert server._tool_manager._tools[name].description.startswith(
-            "Do not call this tool directly; all calls must go through invoke_tool."
+            "all calls must go through invoke_tool."
         )
         assert get_details(name)["description"].startswith(
-            "Do not call this tool directly; all calls must go through invoke_tool."
+            "all calls must go through invoke_tool."
         )
 
 

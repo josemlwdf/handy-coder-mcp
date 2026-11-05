@@ -6,7 +6,9 @@ import json
 import os
 import shutil
 from pathlib import Path
+from typing import Annotated
 
+from pydantic import Field
 from ... import support
 from ... import code_index
 from ...subagents.resolve import (
@@ -40,16 +42,36 @@ def _five_words(value: str) -> str:
 _MCP: None = None
 
 def get_capabilities(
-    include_file_management: bool = False,
-    include_code_analysis: bool = False,
-    include_build_test: bool = False,
-    include_web: bool = False,
-    include_system: bool = False,
-    include_ai_coordination: bool = False,
-    include_image_skills: bool = False,
-    include_git_management: bool = False,
-    include_workspace_runtime: bool = False,
-    include_subagents: bool = False,
+    include_file_management: Annotated[
+        bool, Field(description="Include file-management tool summaries. (Required: False)")
+    ] = False,
+    include_code_analysis: Annotated[
+        bool, Field(description="Include code-analysis tool summaries. (Required: False)")
+    ] = False,
+    include_build_test: Annotated[
+        bool, Field(description="Include build and test tool summaries. (Required: False)")
+    ] = False,
+    include_web: Annotated[
+        bool, Field(description="Include web tool summaries. (Required: False)")
+    ] = False,
+    include_system: Annotated[
+        bool, Field(description="Include system tool summaries. (Required: False)")
+    ] = False,
+    include_ai_coordination: Annotated[
+        bool, Field(description="Include AI-coordination tool summaries. (Required: False)")
+    ] = False,
+    include_image_skills: Annotated[
+        bool, Field(description="Include image and skills tool summaries. (Required: False)")
+    ] = False,
+    include_git_management: Annotated[
+        bool, Field(description="Include git-management tool summaries. (Required: False)")
+    ] = False,
+    include_workspace_runtime: Annotated[
+        bool, Field(description="Include workspace runtime details. (Required: False)")
+    ] = False,
+    include_subagents: Annotated[
+        bool, Field(description="Include subagent backend and model details. (Required: False)")
+    ] = False,
 ) -> dict:
     """Return only the requested capability sections."""
     requested = {

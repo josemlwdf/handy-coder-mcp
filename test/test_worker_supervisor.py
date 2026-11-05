@@ -120,11 +120,10 @@ class WorkerSupervisorTests(unittest.TestCase):
 
         self.assertIsNot(t1.fn, sample_quick_task)
 
-        # Wrapped tool execution calls worker and appends log metadata
+        # Wrapped tool execution calls worker and records a log.
         result = t1.fn(10)
         self.assertEqual(result.get("result"), 20)
-        self.assertIn("tool_log_path", result)
-        self.assertTrue((Path(support.ROOT) / result["tool_log_path"]).is_file())
+        self.assertNotIn("tool_log_path", result)
 
     def test_supervise_fastmcp_tools_preserves_terminal_exec_timeout(self) -> None:
         """Test supervise fastmcp tools preserves terminal exec timeout function."""
@@ -152,8 +151,7 @@ class WorkerSupervisorTests(unittest.TestCase):
 
         run_worker.assert_not_called()
         self.assertEqual(result.get("status"), "ok")
-        self.assertIn("tool_log_path", result)
-        self.assertTrue((Path(support.ROOT) / result["tool_log_path"]).is_file())
+        self.assertNotIn("tool_log_path", result)
 
     def test_supervised_apply_edits_forwards_expand_groups(self) -> None:
         """Test supervised apply edits forwards expand groups function."""

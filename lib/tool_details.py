@@ -23,7 +23,7 @@ _ROOT_TOOLS_MESSAGE = (
     "Check the native tools section for this tool's description and parameters."
 )
 _ROUTER_ONLY_GUIDANCE = (
-    "Do not call this tool directly; all calls must go through invoke_tool."
+    "all calls must go through invoke_tool."
 )
 
 def _serialized_length(value: Any) -> int:
@@ -206,17 +206,19 @@ def _strip_descriptions(value: Any) -> None:
             _strip_descriptions(child)
 
 def _normalize_union_types(value: Any) -> None:
-    """Rewrite simple anyOf/oneOf nullable unions to explicit JSON Schema type lists.
-
-    Some clients only inspect the top-level ``type`` for each argument and render
-    anything else as ``unknown``. Normalizing ``anyOf``/``oneOf`` patterns like
-    ``[{"type": "string"}, {"type": "null"}]`` to ``{"type": ["string", "null"]}``
-    keeps the schema equivalent while preserving concrete argument types for those
-    clients.
-    """
+    """Unwrap simple nullable unions to their concrete schema type."""
     if isinstance(value, dict):
         for child in value.values():
             _normalize_union_types(child)
+
+        schema_types = value.get("type")
+        if isinstance(schema_types, list) and "null" in schema_types:
+            non_null_types = [
+                schema_type for schema_type in schema_types if schema_type != "null"
+            ]
+            if len(non_null_types) == 1:
+                value["type"] = non_null_types[0]
+
         for keyword in ("anyOf", "oneOf"):
             options = value.get(keyword)
             if not isinstance(options, list) or len(options) != 2:
@@ -233,23 +235,16 @@ def _normalize_union_types(value: Any) -> None:
             if null_branch is None or concrete_branch is None:
                 continue
             concrete_type = concrete_branch.get("type")
-            if not isinstance(concrete_type, str):
+            if not isinstance(concrete_type, str) and not isinstance(
+                concrete_branch.get("$ref"), str
+            ):
                 continue
             value.pop(keyword, None)
             for key, branch_value in concrete_branch.items():
                 if key not in value:
                     value[key] = copy.deepcopy(branch_value)
-            existing_type = value.get("type")
-            if isinstance(existing_type, str):
-                value["type"] = [existing_type, "null"]
-            elif isinstance(existing_type, list):
-                value["type"] = (
-                    existing_type
-                    if "null" in existing_type
-                    else [*existing_type, "null"]
-                )
-            else:
-                value["type"] = [concrete_type, "null"]
+            if isinstance(concrete_type, str):
+                value["type"] = concrete_type
     elif isinstance(value, list):
         for child in value:
             _normalize_union_types(child)

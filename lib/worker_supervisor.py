@@ -220,19 +220,15 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
                             "result": scope_block,
                         },
                     )
-                    log_path = project_logs.log_tool_call(
-                        _tool_name, bound_args, scope_block
-                    )
-                    return project_logs.attach_tool_log_path(scope_block, log_path)
+                    project_logs.log_tool_call(_tool_name, bound_args, scope_block)
+                    return project_logs.attach_status_summary_request(scope_block)
                 try:
                     result = await _target_fn(*args, **kwargs)
                     wrapped = subagent_tools.after_tool_call(
                         _tool_name, result, bound_args
                     )
-                    log_path = project_logs.log_tool_call(
-                        _tool_name, bound_args, wrapped
-                    )
-                    return project_logs.attach_tool_log_path(wrapped, log_path)
+                    project_logs.log_tool_call(_tool_name, bound_args, wrapped)
+                    return project_logs.attach_status_summary_request(wrapped)
                 except Exception as exc:
                     project_logs.log_internal_event(
                         "error",
@@ -278,10 +274,8 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
                         "result": scope_block,
                     },
                 )
-                log_path = project_logs.log_tool_call(
-                    _tool_name, bound_args, scope_block
-                )
-                return project_logs.attach_tool_log_path(scope_block, log_path)
+                project_logs.log_tool_call(_tool_name, bound_args, scope_block)
+                return project_logs.attach_status_summary_request(scope_block)
 
             try:
                 if _tool_name in _NO_WORKER_TOOLS:
@@ -300,8 +294,8 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
                         _target_fn, args, kwargs, deadline=deadline, mcp=mcp
                     )
                 wrapped = subagent_tools.after_tool_call(_tool_name, result, bound_args)
-                log_path = project_logs.log_tool_call(_tool_name, bound_args, wrapped)
-                return project_logs.attach_tool_log_path(wrapped, log_path)
+                project_logs.log_tool_call(_tool_name, bound_args, wrapped)
+                return project_logs.attach_status_summary_request(wrapped)
             except Exception as exc:
                 project_logs.log_internal_event(
                     "error",
