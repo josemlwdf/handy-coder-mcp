@@ -185,7 +185,9 @@ class CapabilitiesTests(unittest.TestCase):
         dumped = json.dumps(caps)
         self.assertNotIn(KEY, dumped)
         self.assertNotIn('hdr-secret-9999', dumped)
-        self.assertTrue(caps['env']['SUBAGENT_CONTINUE'])
+        # Capability reports expose resolved backend details without echoing
+        # environment variables, which may contain secrets.
+        self.assertNotIn('env', caps)
 
     def test_opted_out_keeps_cooperative_backend_but_still_lists_models(self):
         # Listing models is intentional: SUBAGENT_CONTINUE=0 only stops auto mode from

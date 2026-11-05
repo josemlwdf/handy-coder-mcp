@@ -8,6 +8,7 @@ import inspect
 import json
 from typing import Annotated, Any
 
+from mcp.types import CallToolResult, TextContent
 from pydantic import Field
 
 _ROUTER_RESULT_CHAR_LIMIT = 16_000
@@ -119,6 +120,21 @@ def _trim_routed_result(value: Any) -> Any:
         changes.pop(0)
         metadata["affected"] = changes
     return result
+
+
+def _as_structured_tool_result(value: Any) -> Any:
+    """Expose object results as MCP structured content with a legacy text fallback."""
+    if not isinstance(value, dict):
+        return value
+    return CallToolResult(
+        content=[
+            TextContent(
+                type="text",
+                text=json.dumps(value, ensure_ascii=False, separators=(",", ":")),
+            )
+        ],
+        structuredContent=value,
+    )
 
 def _brief(description: str) -> str:
     """Return a compact first sentence suitable for tools/list."""
@@ -659,19 +675,21 @@ def install(mcp: Any) -> None:
                 "error_code": "unknown_tool",
                 "message": f"Unknown or unavailable tool: {requested_name}",
             }
-            return _with_retry_hint(result, canonical)
+            return _as_structured_tool_result(_with_retry_hint(result, canonical))
         if not isinstance(arguments, dict):
             result = {
                 "error_code": "invalid_arguments",
                 "message": "arguments must be a JSON object",
             }
-            return _with_retry_hint(result, canonical)
+            return _as_structured_tool_result(_with_retry_hint(result, canonical))
         try:
             result = await manager.call_tool(canonical, arguments)
             if isinstance(result, dict) and result.get("error_code"):
-                return _with_retry_hint(result, canonical)
+                return _as_structured_tool_result(
+                    _with_retry_hint(result, canonical)
+                )
             last_failed_tool, consecutive_failures = None, 0
-            return _trim_routed_result(result)
+            return _as_structured_tool_result(_trim_routed_result(result))
         except (
             Exception
         ) as exc:  # manager errors are returned as structured router errors
@@ -680,7 +698,7 @@ def install(mcp: Any) -> None:
                 "tool_name": canonical,
                 "message": str(exc),
             }
-            return _with_retry_hint(result, canonical)
+            return _as_structured_tool_result(_with_retry_hint(result, canonical))
 
     register_meta(
         "invoke_tool",

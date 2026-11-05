@@ -39,217 +39,150 @@ def _five_words(value: str) -> str:
 
 _MCP: None = None
 
-def get_capabilities() -> dict:
-    """Return the server's runtime capabilities and optional-dependency status."""
+def get_capabilities(
+    include_file_management: bool = False,
+    include_code_analysis: bool = False,
+    include_build_test: bool = False,
+    include_web: bool = False,
+    include_system: bool = False,
+    include_ai_coordination: bool = False,
+    include_image_skills: bool = False,
+    include_git_management: bool = False,
+    include_workspace_runtime: bool = False,
+    include_subagents: bool = False,
+) -> dict:
+    """Return only the requested capability sections."""
+    requested = {
+        "file_management": include_file_management,
+        "code_analysis": include_code_analysis,
+        "build_test": include_build_test,
+        "web": include_web,
+        "system": include_system,
+        "ai_coordination": include_ai_coordination,
+        "image_skills": include_image_skills,
+        "git_management": include_git_management,
+        "workspace_runtime": include_workspace_runtime,
+        "subagents": include_subagents,
+    }
+    if not any(requested.values()):
+        return {"_hint": "Set one or more include_* flags to retrieve capability sections."}
+
     summaries = _load_summaries()
     tool_summaries = summaries["tools"]
     skill_summaries = summaries["skills"]
-    # Core binaries
-    git_ok = shutil.which("git") is not None
-    pytest_ok = shutil.which("pytest") is not None
-    python_build_python, python_build_ok = _python_build_runtime()
-    workspace = Path(support.ROOT)
-    venv_python = workspace / ".venv" / "bin" / "python"
-    if os.name == "nt":
-        venv_python = workspace / ".venv" / "Scripts" / "python.exe"
-    if venv_python.is_file():
-        python_build_python = str(venv_python)
-
-    subagent_backend = resolve_backend()
-    screenshot_available, screenshot_note = gowitness_available()
-    try:
-        indexer = code_index.index_status()
-        worker_pid = indexer.get("worker_pid")
-        if worker_pid:
-            try:
-                os.kill(worker_pid, 0)
-                indexer["worker_alive"] = True
-            except ProcessLookupError:
-                indexer["worker_alive"] = False
-            except PermissionError:
-                indexer["worker_alive"] = True
-        else:
-            indexer["worker_alive"] = None
-    except Exception as exc:
-        indexer: dict = {
-            "state": "unavailable",
-            "worker_alive": None,
-            "message": str(exc),
-        }
-    # Only non-secret identifiers: provider, model name and config path. Never the key.
-    continue_info: None = None
-    continue_models = resolve_continue_models()
-    if subagent_backend.startswith("continue:"):
-        resolved = resolve_continue()
-        if resolved is not None:
-            continue_info: dict = {
-                **resolved.model.safe_summary(),
-                "config_path": resolved.config_path,
+    section_tools = {
+        "file_management": ("read_files", "create_file", "apply_edits", "find_files", "list_dir"),
+        "code_analysis": ("code_polish", "search_text", "code_get_diagnostics", "code_intel"),
+        "build_test": ("build_project", "run_tests"),
+        "web": ("web_search", "web_fetch_docs", "capture_url_screenshot"),
+        "system": ("terminal_exec", "orchestrator", "get_tool_details"),
+        "ai_coordination": ("subagent_manage",),
+        "image_skills": ("inspect_image", "skills_manage"),
+        "git_management": ("git_manage",),
+    }
+    # Runtime probes are done only for sections that need their results.
+    git_ok = shutil.which("git") is not None if include_git_management else None
+    pytest_ok = shutil.which("pytest") is not None if include_build_test else None
+    python_build_python = python_build_ok = None
+    if include_build_test:
+        python_build_python, python_build_ok = _python_build_runtime()
+        workspace = Path(support.ROOT)
+        venv_python = workspace / ".venv" / "bin" / "python"
+        if os.name == "nt":
+            venv_python = workspace / ".venv" / "Scripts" / "python.exe"
+        if venv_python.is_file():
+            python_build_python = str(venv_python)
+    screenshot_available = screenshot_note = None
+    if include_web:
+        screenshot_available, screenshot_note = gowitness_available()
+    indexer = None
+    if include_code_analysis:
+        try:
+            indexer = code_index.index_status()
+            worker_pid = indexer.get("worker_pid")
+            if worker_pid:
+                try:
+                    os.kill(worker_pid, 0)
+                    indexer["worker_alive"] = True
+                except ProcessLookupError:
+                    indexer["worker_alive"] = False
+                except PermissionError:
+                    indexer["worker_alive"] = True
+            else:
+                indexer["worker_alive"] = None
+        except Exception as exc:
+            indexer = {"state": "unavailable", "worker_alive": None, "message": str(exc)}
+    subagent_backend = None
+    continue_info = None
+    if include_subagents:
+        subagent_backend = resolve_backend()
+        continue_models = resolve_continue_models()
+        if subagent_backend.startswith("continue:"):
+            resolved = resolve_continue()
+            if resolved is not None:
+                continue_info = {**resolved.model.safe_summary(), "config_path": resolved.config_path}
+        if continue_models:
+            continue_info = {
+                **(continue_info or {}),
+                "models": [item.model.safe_summary() for item in continue_models],
+                "config_path": continue_models[0].config_path,
             }
-    if continue_models:
-        continue_info: dict = {
-            **(continue_info or {}),
-            "models": [item.model.safe_summary() for item in continue_models],
-            "config_path": continue_models[0].config_path,
-        }
 
-    tools: dict[str, dict] = {
-        # Core tools — always available
+    metadata = {
         "read_files": {"available": True, "note": "always enabled"},
         "create_file": {"available": True, "note": "always enabled"},
         "apply_edits": {"available": True, "note": "always enabled"},
         "code_polish": {"available": True, "note": "always enabled"},
         "terminal_exec": {"available": True, "note": "always enabled"},
-        "search_text": {
-            "available": True,
-            "note": "Python regex or literal search",
-        },
+        "search_text": {"available": True, "note": "Python regex or literal search"},
         "find_files": {"available": True, "note": "always enabled"},
         "list_dir": {"available": True, "note": "always enabled"},
-        "skills_manage": {
-            "available": True,
-            "note": "list, get, or save skills; base dir: HANDY_CODER_SKILLS_DIR",
-        },
-        "orchestrator": {
-            "available": True,
-            "note": "orchestrate tasks; actions: bootstrap, update_task_status",
-        },
-        "run_tests": {
-            "available": pytest_ok,
-            "note": "pytest missing" if not pytest_ok else "pytest installed",
-        },
-        "git_manage": {
-            "available": git_ok,
-            "note": "git missing" if not git_ok else "git installed",
-        },
-        "build_project": {
-            "available": True,
-            "ecosystems": ["python", "node", "dotnet"],
-            "python_build_available": python_build_ok,
-            "python_interpreter": python_build_python,
-            "note": (
-                "checks build tools for selected project; Python build is available"
-                if python_build_ok
-                else "checks build tools for selected project; Python build unavailable: install 'build' in the selected Python interpreter"
-            ),
-        },
-        "code_get_diagnostics": {
-            "available": True,
-            "estimated_checks": [
-                "package.json typecheck/check/lint scripts",
-                "pyproject Ruff/mypy",
-                "Makefile check/lint/typecheck/validate targets",
-            ],
-            "note": "runs first configured, installed check",
-        },
-        "web_search": {
-            "available": True,
-            "note": "web search; DDG Lite first, Bing fallback on error or no hits; fallback=true forces Bing; needs network",
-        },
-        "capture_url_screenshot": {
-            "available": screenshot_available,
-            "note": "screenshots URLs to tmp/ via gowitness; "
-            + (
-                f"binary: {screenshot_note.removeprefix('gowitness found at ')}"
-                if screenshot_available
-                else "gowitness missing; install or add external_bin/gowitness"
-            ),
-        },
-        "code_intel": {
-            "available": True,
-            "note": "navigate the automatically maintained multilingual source index with search_code, get_symbol, or find_references",
-            "indexer": indexer,
-        },
-        "get_tool_details": {
-            "available": True,
-            "note": "gets tool docs and arguments; unknown name: unknown_tool",
-        },
-        # Extras
+        "skills_manage": {"available": True, "note": "list, get, or save skills; base dir: HANDY_CODER_SKILLS_DIR"},
+        "orchestrator": {"available": True, "note": "orchestrate tasks; actions: bootstrap, update_task_status"},
+        "run_tests": {"available": pytest_ok, "note": "pytest missing" if not pytest_ok else "pytest installed"},
+        "git_manage": {"available": git_ok, "note": "git missing" if not git_ok else "git installed"},
+        "build_project": {"available": True, "ecosystems": ["python", "node", "dotnet"], "python_build_available": python_build_ok, "python_interpreter": python_build_python, "note": "checks build tools for selected project; Python build is available" if python_build_ok else "checks build tools for selected project; Python build unavailable: install 'build' in the selected Python interpreter"},
+        "code_get_diagnostics": {"available": True, "estimated_checks": ["package.json typecheck/check/lint scripts", "pyproject Ruff/mypy", "Makefile check/lint/typecheck/validate targets"], "note": "runs first configured, installed check"},
+        "web_search": {"available": True, "note": "web search; DDG Lite first, Bing fallback on error or no hits; fallback=true forces Bing; needs network"},
+        "capture_url_screenshot": {"available": screenshot_available, "note": "screenshots URLs to tmp/ via gowitness; " + (f"binary: {screenshot_note.removeprefix('gowitness found at ')}" if screenshot_available else "gowitness missing; install or add external_bin/gowitness")},
+        "code_intel": {"available": True, "note": "navigate the automatically maintained multilingual source index with search_code, get_symbol, or find_references", "indexer": indexer},
+        "get_tool_details": {"available": True, "note": "gets tool docs and arguments; unknown name: unknown_tool"},
         "web_fetch_docs": {"available": True, "note": "fetch public HTTP(S) text"},
-        "subagent_manage": {
-            "available": True,
-            "backend": subagent_backend,
-            "roles": {
-                name: {
-                    "result_format": role.result_format,
-                }
-                for name, role in ROLES.items()
-            },
-            "note": "manage subagents; actions: run, status, result, complete, cancel",
-        },
-        "inspect_image": {
-            "available": True,
-            "note": "inspect workspace image via generalist multimodal backend",
-        },
+        "subagent_manage": {"available": True, **({"backend": subagent_backend} if include_subagents else {}), "roles": {name: {"result_format": role.result_format} for name, role in ROLES.items()}, "note": "manage subagents; actions: run, status, result, complete, cancel"},
+        "inspect_image": {"available": True, "note": "inspect workspace image via generalist multimodal backend"},
     }
-
-    registry = getattr(getattr(_MCP, "_tool_manager", None), "_tools", {})
-    if isinstance(registry, dict) and registry:
-        # The registry is authoritative for the internal callable catalog; retain
-        # per-tool capability metadata where available and add every registration.
-        tools: dict = {
-            name: tools.get(name, {"available": True, "note": "registered tool"})
-            for name in sorted(registry)
-            if name != "get_tool_schema"
-        }
-    else:
-        for name in (
-            "web_search",
-            "capture_url_screenshot",
-            "code_intel",
-            "get_tool_details",
-            "inspect_image",
-        ):
-            tools.setdefault(name, {"available": True, "note": "registered tool"})
-    tools.setdefault(
-        "get_capabilities", {"available": True, "note": "reports runtime capabilities"}
-    )
-    for name, metadata in tools.items():
-        fallback = metadata.get("note", name.replace("_", " "))
-        metadata["description"] = tool_summaries.get(name, _five_words(fallback))
-    tools: dict = {name: tools[name] for name in sorted(tools)}
-    # Most tools are unconditionally registered and available. Keep their names
-    # together instead of repeating an availability flag and note for each one.
-    # These tools have runtime-dependent availability and retain their details.
-    conditional_names: set = {"run_tests", "git_manage", "capture_url_screenshot"}
-    always_enabled: dict = {
-        name: {
-            "description": tools[name]["description"],
-            **({"note": tools[name]["note"]} if name == "skills_manage" else {}),
-        }
-        for name in tools
-        if name not in conditional_names
-    }
-    runtime: dict = {
-        name: {key: value for key, value in metadata.items() if key != "note"}
-        for name, metadata in tools.items()
-        if name in conditional_names
-        or name in {"build_project", "code_intel", "subagent_manage"}
-    }
-    tools_response: dict = {
-        "_hint": "Consult each tool's details using get_tool_details(tool_name) before using it to understand required arguments and constraints.",
-        "always_enabled": always_enabled,
-        "runtime": runtime,
-    }
-    skills: list = [
-        {
-            "name": item["name"],
-            "description": skill_summaries.get(
-                item["name"], _five_words(item.get("description", ""))
-            ),
-        }
-        for item in _list_skills()["skills"]
-    ]
-    return {
-        # Read at call time: support.configure() rebinds support.ROOT after import.
-        "workspace_root": str(support.ROOT),
-        "tools": tools_response,
-        "skills": skills,
-        "subagents": {
-            "backend": subagent_backend,
-            **({"continue": continue_info} if continue_info else {}),
-        },
-    }
+    result: dict = {}
+    tools_result: dict = {}
+    conditional = {"run_tests", "git_manage", "capture_url_screenshot"}
+    runtime_only = conditional | {"build_project", "code_intel", "subagent_manage"}
+    for section, names in section_tools.items():
+        if not requested[section]:
+            continue
+        always = {}
+        runtime = {}
+        for name in names:
+            item = metadata[name]
+            entry = {"description": tool_summaries.get(name, _five_words(item.get("note", name)))}
+            if name == "skills_manage":
+                entry["note"] = item["note"]
+            if name in runtime_only:
+                runtime[name] = {"description": entry["description"], **{key: value for key, value in item.items() if key != "note"}}
+            else:
+                always[name] = entry
+        category = {}
+        if always:
+            category["always_enabled"] = always
+        if runtime:
+            category["runtime"] = runtime
+        tools_result[section] = category
+    result["tools"] = tools_result
+    if include_workspace_runtime:
+        result["workspace_root"] = str(support.ROOT)
+    if include_image_skills:
+        result["skills"] = [{"name": item["name"], "description": skill_summaries.get(item["name"], _five_words(item.get("description", "")))} for item in _list_skills()["skills"]]
+    if include_subagents:
+        result["subagents"] = {"backend": subagent_backend, **({"continue": continue_info} if continue_info else {})}
+    return result
 
 def register(mcp):
     """Register function."""

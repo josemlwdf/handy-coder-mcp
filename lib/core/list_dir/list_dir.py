@@ -12,8 +12,8 @@ from ...support import describe, inside
 def list_dir(
     path: Annotated[
         str,
-        Field(description="Workspace-relative directory path to list. (Required: True)"),
-    ],
+        Field(description="Workspace-relative directory path to list. (Required: False)"),
+    ] = ".",
 ) -> dict:
     """Return the immediate files and subdirectories of a workspace directory."""
     workspace_root = inside(".")

@@ -11,6 +11,11 @@ from mcp.server.fastmcp import FastMCP
 from lib import error_handler, tool_details, worker_supervisor
 
 
+def _structured(result):
+    """Return the structured MCP payload when the SDK wraps a tool result."""
+    return getattr(result, "structuredContent", None) or result
+
+
 def _server() -> FastMCP:
     """Server function."""
     server = FastMCP("jit-router-test")
@@ -117,31 +122,31 @@ def test_router_dispatch_validates_original_schema_and_unknown_names() -> None:
         """Call function."""
         return await server._tool_manager.call_tool(name, args)
 
-    good = asyncio.run(
+    good = _structured(asyncio.run(
         call(
             "invoke_tool",
             {"tool_name": "get_tool_details", "arguments": {"tool_name": "read_files"}},
         )
-    )
+    ))
     assert good["tool_name"] == "read_files"
-    full = asyncio.run(
+    full = _structured(asyncio.run(
         call(
             "invoke_tool",
             {"tool_name": "get_tool_schema", "arguments": {"tool_name": "read_files"}},
         )
-    )
+    ))
     assert "items" in full["arguments"]["paths"]
 
-    invalid = asyncio.run(
+    invalid = _structured(asyncio.run(
         call(
             "invoke_tool",
             {"tool_name": "get_tool_details", "arguments": {"tool_name": 12}},
         )
-    )
+    ))
     assert isinstance(invalid, dict)
     assert invalid.get("error_code")
 
-    aliased = asyncio.run(
+    aliased = _structured(asyncio.run(
         call(
             "invoke_tool",
             {
@@ -149,12 +154,12 @@ def test_router_dispatch_validates_original_schema_and_unknown_names() -> None:
                 "arguments": {"tool_name": "read_files"},
             },
         )
-    )
+    ))
     assert aliased["tool_name"] == "read_files"
 
-    unknown = asyncio.run(
+    unknown = _structured(asyncio.run(
         call("invoke_tool", {"tool_name": "not_registered", "arguments": {}})
-    )
+    ))
     assert unknown["error_code"] == "unknown_tool"
 
 
@@ -171,26 +176,26 @@ def test_retry_hint_requires_two_consecutive_failures_for_same_tool() -> None:
             "invoke_tool", {"tool_name": name, "arguments": args or {"value": 1}}
         )
 
-    first = asyncio.run(call("failing_tool"))
-    second = asyncio.run(call("failing_tool", {"value": 2}))
+    first = _structured(asyncio.run(call("failing_tool")))
+    second = _structured(asyncio.run(call("failing_tool", {"value": 2})))
     assert "hint" not in first
     assert "get_tool_schema" in second["hint"]
     assert '"tool_name": "failing_tool"' in second["hint"]
 
     # A different target starts a fresh run; its first error has no hint.
-    different = asyncio.run(call("find_files", {}))
+    different = _structured(asyncio.run(call("find_files", {})))
     assert "hint" not in different
-    third = asyncio.run(call("failing_tool"))
+    third = _structured(asyncio.run(call("failing_tool")))
     assert "hint" not in third
 
     # A successful call clears the failure history.
-    assert asyncio.run(
+    assert _structured(asyncio.run(
         server._tool_manager.call_tool(
             "invoke_tool",
             {"tool_name": "get_tool_details", "arguments": {"tool_name": "read_files"}},
         )
-    )["tool_name"] == "read_files"
-    after_success = asyncio.run(call("failing_tool"))
+    ))["tool_name"] == "read_files"
+    after_success = _structured(asyncio.run(call("failing_tool")))
     assert "hint" not in after_success
 
 def test_router_caps_nested_results_and_preserves_small_results() -> None:
@@ -217,9 +222,11 @@ def test_router_caps_nested_results_and_preserves_small_results() -> None:
             "invoke_tool", {"tool_name": name, "arguments": {}}
         )
 
-    small = asyncio.run(call("small_result"))
+    small_result = asyncio.run(call("small_result"))
+    assert small_result.structuredContent == {"status": "ok", "items": [1, 2]}
+    small = _structured(small_result)
     assert small == {"status": "ok", "items": [1, 2]}
-    large = asyncio.run(call("large_result"))
+    large = _structured(asyncio.run(call("large_result")))
     assert len(json.dumps(large, ensure_ascii=False, separators=(",", ":"))) <= 16_000
     assert large["status"] == "ok"
     assert large["truncated"] is True

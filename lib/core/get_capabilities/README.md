@@ -14,7 +14,18 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 ```json
 {
-  "properties": {},
+  "properties": {
+    "include_file_management": {"default": false, "type": "boolean"},
+    "include_code_analysis": {"default": false, "type": "boolean"},
+    "include_build_test": {"default": false, "type": "boolean"},
+    "include_web": {"default": false, "type": "boolean"},
+    "include_system": {"default": false, "type": "boolean"},
+    "include_ai_coordination": {"default": false, "type": "boolean"},
+    "include_image_skills": {"default": false, "type": "boolean"},
+    "include_git_management": {"default": false, "type": "boolean"},
+    "include_workspace_runtime": {"default": false, "type": "boolean"},
+    "include_subagents": {"default": false, "type": "boolean"}
+  },
   "title": "get_capabilitiesArguments",
   "type": "object"
 }
@@ -24,7 +35,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 Returns the structured result produced by the implementation. Error results and status fields are tool-specific; inspect the returned object and its documented fields rather than assuming that a process or operation succeeded.
 
-The `tools.always_enabled` object maps each tool name to a curated five-word description. The `skills_manage` entry also includes a note naming `HANDY_CODER_SKILLS_DIR`, the supported environment variable for overriding the skills directory. Tool and skill descriptions are maintained in the colocated `summaries.json`; `skills_manage(action="save")` registers each new skill's required five-word short description there. `tools.runtime` contains entries with environment-dependent availability or useful runtime details, such as build support, source-index status, and subagent configuration. `build_project.python_interpreter` reports the workspace `.venv` Python when present, otherwise the system Python used by the build capability check. Subagent role summaries omit tool allowlists and call budgets. The top-level `subagents` object reports the resolved backend and safe model details; no environment-presence flags are returned.
+With no flags, the result is a usage hint and does not probe runtime capabilities. Set one or more `include_*` flags to retrieve only those sections. Requested tool categories contain `always_enabled` and/or `runtime` maps; runtime-dependent availability details stay in `runtime`. `include_workspace_runtime` adds `workspace_root`; `include_subagents` adds safe backend/model details; and `include_image_skills` adds both `inspect_image` and `skills_manage`, plus the available skills list. Tool and skill descriptions are maintained in the colocated `summaries.json`.
 
 ## Side effects and runtime requirements
 

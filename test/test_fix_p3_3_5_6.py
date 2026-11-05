@@ -66,8 +66,11 @@ class CapabilityNotesTests(unittest.TestCase):
         result = system_info.get_capabilities()
         tools = result["tools"]
         self.assertEqual(
-            set(tools["always_enabled"]) | set(tools["runtime"]), registered
+            set(tools["always_enabled"]) | set(tools["runtime"]),
+            registered - {"get_tool_schema"},
         )
+        self.assertNotIn("get_tool_schema", tools["always_enabled"])
+        self.assertNotIn("get_tool_schema", tools["runtime"])
         self.assert_capability_summaries(tools)
 
     def test_fallback_branch_has_capability_summaries(self) -> None:
