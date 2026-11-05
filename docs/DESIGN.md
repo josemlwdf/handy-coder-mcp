@@ -1,146 +1,318 @@
-Building a **Model Context Protocol (MCP) server** for a coder assistant requires turning those 20 capabilities into specific JSON-RPC tool declarations, handlers, and security boundaries.
+# Architecture & Design
 
-Structuring your tools into **3 implementation tiers** ensures a smooth development roadmap for your MCP server architecture:
+Handy Coder MCP is a Python-based Model Context Protocol server that implements 20 tools organized into coherent capability groups. This document describes the actual architecture, design decisions, and tool organization.
 
----
+## Overview
 
-## 🛠️ MCP Server Schema & Architecture Blueprint
+The server implements a **workspace-scoped tool execution model** where:
+
+1. **All file operations are confined** to a configured workspace root
+2. **Tools are organized by capability** (file ops, execution, VCS, code navigation, delegation)
+3. **Background workers** handle indexing and enforcement without blocking startup
+4. **Just-in-time tool routing** through three public endpoints (capabilities, details, invoke)
+
+## Tool Organization
+
+### File & Code Operations (9 tools)
+
+Core tools for reading, writing, and analyzing files:
+
+- **read_files** — Read workspace files with line ranges
+- **create_file** — Create files with syntax checks and formatting
+- **apply_edits** — Modify files with search-and-replace or positional edits
+- **code_polish** — Format and lint code (Black, Ruff, ESLint, etc.)
+- **search_text** — Fast regex search using ripgrep
+- **find_files** — Glob-based file discovery
+- **list_dir** — List directory contents
+- **code_get_diagnostics** — Auto-detect and run syntax checkers
+- **code_intel** — Index and navigate source code (C#, Python, JavaScript, Java, etc.)
+
+**Key design:**
+- Path validation prevents `..` and symlink escapes
+- File reads/writes are capped at 256 KiB with 16,000 character result limits
+- HTML files automatically receive syntax checks after creation/edit
+- code_intel runs incremental indexing in a background worker
+
+### Execution & Testing (3 tools)
+
+Tools for running commands and validating code:
+
+- **terminal_exec** — Run shell commands in workspace root
+- **run_tests** — Auto-detect and run tests (pytest, jest, etc.)
+- **build_project** — Build Python, Node, or .NET projects
+
+**Key design:**
+- Default 30-second timeout with configurable overrides
+- stderr/stdout capped at 4,000 characters
+- Results wrapped in worker processes with semaphore limiting (8 concurrent max)
+- Build and test detection is automatic
+
+### Version Control & Workflows (3 tools)
+
+Tools for managing code changes and multi-step workflows:
+
+- **git_manage** — Git operations (status, diff, commit, push, etc.)
+- **orchestrator** — Create and manage task plans
+- **skills_manage** — Store and retrieve reusable agent skills
+
+**Key design:**
+- git_manage auto-creates test/ and tmp/ on init
+- git_manage auto-updates .gitignore before staging
+- orchestrator writes to .handy-coder/tasks.md and implementation-plan.md
+- skills_manage uses configurable storage directory
+
+### Discovery & Integration (5 tools)
+
+Tools for discovering capabilities and integrating external services:
+
+- **get_capabilities** — List tools and runtime requirements
+- **get_tool_details** — Get compact argument documentation
+- **invoke_tool** — Router that dispatches tools
+- **web_search** — DuckDuckGo Lite search
+- **web_fetch_docs** — Fetch text from public URLs
+
+**Key design:**
+- Three public MCP tools (capabilities, details, invoke)
+- Internal tools dispatched through invoke_tool router
+- get_capabilities reports tool availability and missing requirements
+- web_search/web_fetch_docs normalize results and require network access
+
+### Additional Capabilities
+
+- **capture_url_screenshot** — Full-page screenshots via gowitness
+- **inspect_image** — Multimodal image analysis
+- **subagent_manage** — AI task delegation with specialized roles
+
+## Execution Model
+
+### Worker Supervision
+
+Most tool calls execute in bounded worker processes:
 
 ```
-                     ┌─────────────────────────────────────────┐
-                     │          VS Code / Agent Host           │
-                     │  (Copilot, Cline, Cursor, Claude Code)  │
-                     └────────────────────┬────────────────────┘
-                                          │
-                                JSON-RPC 2.0 (stdio or SSE)
-                                          │
-                     ┌────────────────────▼────────────────────┐
-                     │            Your MCP Server              │
-                     └─┬──────────────────┬──────────────────┬─┘
-                       │                  │                  │
-            ┌──────────▼────────┐ ┌───────▼─────────┐ ┌──────▼──────────┐
-            │   Core File Ops   │ │    Execution    │ │   Intelligence   │
-            │ (fs, git, ripgrep)│ │ (terminal, exec)│ │(LSP, AST, Web)   │
-            └───────────────────┘ └─────────────────┘ └────────────────┘
-
+Incoming Tool Call
+       ↓
+   Supervisor Hooks
+   - Validate subagent frame
+   - Check tool scope
+   - Add metadata
+       ↓
+   Worker Process (or In-Process)
+   - Timeout: 30s (default, configurable)
+   - Semaphore: Max 8 concurrent
+       ↓
+   Result (capped at 16,000 chars)
 ```
 
----
+In-process handlers (minimal overhead):
+- get_capabilities
+- get_tool_details
+- invoke_tool
+- skills_manage (read operations)
 
-## Tier 1: Core File & Shell Loop (Build These First)
+Worker-process handlers (isolated execution):
+- read_files, create_file, apply_edits
+- search_text, find_files, list_dir
+- terminal_exec, run_tests, build_project
+- git_manage, code_polish, code_intel
+- web_search, web_fetch_docs, capture_url_screenshot
 
-*These tools form the base capabilities required for your agent to read, edit, run, and commit changes.*
+### Background Processes
 
-The Python modules for these Tier 1 tools are in `lib/core`; optional Tier 2 tool modules are in `lib/extras`.
+1. **C# Code Indexer**
+   - Scans workspace incrementally
+   - Maintains `.handy-coder/code_index.sqlite3`
+   - Runs on-demand or at startup
+   - Skips dot-prefixed directories, generated directories (bin, obj, node_modules)
 
-### 1. `read_files`
+2. **Clean Worktree Enforcer** (optional)
+   - Monitors Git state during subagent tasks
+   - Ensures workspace cleanliness
+   - Only enabled with explicit configuration
 
-* **MCP Tool Name:** `read_files`
-* **Input Schema:** `{ paths: string[], line_ranges?: { path: string, start: number, end: number }[] }`
-* **Implementation:** Read workspace files directly from disk with UTF-8 encoding. Cap file reads at 256 KiB and returned file content at 16,000 characters to prevent context window blowouts.
+## Security Model
 
-### 2. `edit_files`
+### Path Scoping
 
-* **MCP Tool Name:** `apply_edits`
-* **Input Schema:** `{ edits: Array<{ path: string, old_str?: string, new_str: string, position?: { line: number, col: number } }> }`
-* **Implementation:** Perform localized diff updates or search-and-replace patches instead of full-file overwrites. Returns success/failure status with unified diff string.
+All file operations are confined to the workspace root:
 
-### 3. `execute_terminal_command`
+```
+Workspace Root: /home/user/my-project
+  ✓ /home/user/my-project/src/main.py
+  ✓ /home/user/my-project/tests/test.py
+  ✗ /home/user/config.py        (outside root)
+  ✗ /etc/passwd                 (outside root)
+```
 
-* **MCP Tool Name:** `terminal_exec`
-* **Input Schema:** `{ command: string, cwd?: string, timeout_ms?: number }`
-* **Implementation:** Spawn a subshell (`child_process.exec` / `subprocess`). Capture and stream stdout/stderr. Must enforce strict timeout defaults (e.g., 30s) so the tool doesn't hang.
+Path validation checks:
+1. Resolve symbolic links
+2. Check resolved path starts with workspace root
+3. Reject `..` sequences
+4. Reject absolute paths outside workspace
 
-### 4. `search_text_regex`
+**Note:** This is heuristic-based, not OS-level isolation. Only connect trusted workspaces.
 
-* **MCP Tool Name:** `search_text`
-* **Input Schema:** `{ query: string, is_regex?: boolean, path_glob?: string, max_results?: number }`
-* **Implementation:** Execute `rg` (Ripgrep) as a binary subprocess in JSON mode (`--json`) to parse line numbers, matches, and path metadata fast.
+### Command Scope
 
-### 5. `find_files`
+Terminal commands run in the workspace root with heuristic path escape checks. The terminal tool is restricted to the workspace root as the working directory.
 
-* **MCP Tool Name:** `find_files`
-* **Input Schema:** `{ glob_pattern: string, exclude_pattern?: string }`
-* **Implementation:** Use fast glob tools (`fast-glob` in Node or `ignore` library to respect `.gitignore`).
+### Subagent Scope
 
-### 6. `get_workspace_diagnostics`
+When a subagent task is active:
+- Only tools in the subagent's role are allowed
+- Nested subagent calls are rejected
+- Frames expire after 5 minutes
+- File access remains confined to workspace
 
-* **MCP Tool Name:** `code_get_diagnostics`
-* **Input Schema:** `{ path?: string }`
-* **Implementation:** Reads current LSP diagnostic state (syntax errors, missing imports, type mismatches) or parses compiler/linter error output.
+## Configuration
 
-### 7. `run_tests`
+### Workspace Root
 
-* **MCP Tool Name:** `run_tests`
-* **Input Schema:** `{ test_framework?: "jest" | "pytest" | "vitest", filter_path?: string }`
-* **Implementation:** Triggers test framework CLI commands and formats stdout stack traces into readable JSON structures for the LLM.
+Resolution order:
+1. `--root` CLI argument (highest priority)
+2. `HANDY-CODER_ROOT` environment variable
+3. IDE/workspace detection (VS Code, etc.)
+4. Current working directory
+5. Server installation directory (fallback)
 
-### 8. `git_operations`
+### Shell Selection
 
-* **MCP Tool Name:** `git_manage`
-* **Input Schema:** `{ action: "status" | "diff" | "log" | "add" | "commit" | "push" | "checkout" | "init", args?: string[] }`
-* **Implementation:** Wrap local `git` CLI execution. `diff` and `status` are vital so the agent can self-audit before finishing a task.
+```bash
+.venv/bin/handy-coder-mcp --root /path/to/project --shell /bin/bash
+```
 
----
+If not specified, uses system default shell.
 
-## Tier 2: Intelligence & Extended Checks
+### Subagent Backend
 
-*These tools reduce hallucinations and give the agent context across external tools, codebases, and docs.*
+Priority order:
+1. `SUBAGENT_CONFIG_FILE` — standalone Continue-format config
+2. Continue automatic discovery (`~/.continue/config.yaml`)
+3. Environment provider keys (OPENAI_API_KEY, etc.)
+4. Local Ollama
+5. Client-side sampling
 
-The Python server registers local/configurable tools without requiring external services at startup. `mcp_gateway_integration` is intentionally excluded. See the README for configuration and security boundaries.
+Disable automatic Continue discovery:
+```bash
+SUBAGENT_CONTINUE=0 .venv/bin/handy-coder-mcp
+```
 
-### 10. `web_fetch_docs`
+## Result Limits
 
-* **MCP Tool Name:** `web_fetch_docs`
-* **Input Schema:** `{ url: string, offset?: number }`
-* **Implementation:** Fetch public HTTP(S) URLs and convert HTML into readable text.
+All tool results are capped to prevent context window overflow:
 
-### 13. `mcp_gateway_integration`
+| Result Type | Limit | Continuation |
+|---|---|---|
+| File content | 16,000 chars per file (files up to 256 KiB) | Line ranges |
+| Search results | 4,000 chars per match | offset parameter |
+| Terminal I/O | 4,000 chars per stdout/stderr | None |
+| Web pages | 4,000 chars per fetch | offset parameter |
+| Subagent results | 4,000 chars per page | offset parameter |
+| Tool details | No limit | N/A |
 
-* **MCP Tool Name:** `mcp_external_call`
-* **Input Schema:** `{ target_service: "github" | "jira" | "postgres", action: string, payload: object }`
-* **Implementation:** Acts as a bridge to delegate specific external tasks (like checking GitHub PRs or executing DB schema migrations) to specialized secondary MCP servers.
+Truncated results include:
+- `truncated: true` flag
+- `truncation` metadata object
+- Optional `next_offset` or `final_next_offset` for continuation
 
----
+## Tool Selection Decision Tree
 
-## Tier 3: Safety & Structuring Tools
+### Reading Files
+```
+read_files (general file reading)
+```
 
-*These tools protect the environment and maintain task stability during complex, multi-step runs.*
+### Modifying Files
+```
+apply_edits (targeted changes via pattern matching)
+OR
+create_file (complete rewrites or new files)
+OR
+code_polish (automatic formatting)
+```
 
-### 16. `task_plan_tracker`
+### Finding Things
+```
+search_text (fast regex, returns line numbers)
+OR
+find_files (glob-based discovery)
+OR
+code_intel (navigate source code symbols)
+```
 
-* **MCP Tool Name:** `planner_update_todos`
-* **Input Schema:** `{ tasks: Array<{ id: string, description: string, status: "pending" | "in_progress" | "completed" }> }`
-* **Implementation:** Persists a structured TODO/Plan JSON array in local state to help the agent maintain multi-file refactoring contexts across model turns.
+### Running Code
+```
+terminal_exec (arbitrary commands)
+OR
+run_tests (framework-aware test execution)
+OR
+build_project (language-aware building)
+```
 
-### 17. `sandbox_execution`
+### Understanding Errors
+```
+code_get_diagnostics (syntax/type errors)
+OR
+run_tests (test failures)
+OR
+capture_url_screenshot (visual inspection)
+```
 
-* **MCP Tool Name:** `sandbox_run`
-* **Input Schema:** `{ image: string, command: string, mount_workspace?: boolean }`
-* **Implementation:** Runs code commands inside isolated Docker / Dev Containers rather than on host machines.
+### External Integration
+```
+web_search (discover information)
+OR
+web_fetch_docs (fetch known documentation)
+OR
+subagent_manage (delegate specialized tasks)
+OR
+inspect_image (analyze images)
+```
 
-### 18. `request_human_approval`
+## Deployment Considerations
 
-* **MCP Tool Name:** `safety_prompt_user`
-* **Input Schema:** `{ action_type: "file_delete" | "git_push" | "package_install", description: string }`
-* **Implementation:** Returns an MCP elicitation message or pauses execution until the user grants explicit terminal/UI authorization.
+### Multi-IDE Setup
 
-### 19. `checkpoint_undo`
+Multiple VS Code instances can cause IDE root detection conflicts. **Always use explicit `--root` configuration:**
 
-* **MCP Tool Name:** `workspace_snapshot`
-* **Input Schema:** `{ action: "create" | "restore", snapshot_id?: string }`
-* **Implementation:** Uses Git stashes or temporary shadow directories to restore files if an agent edit breaks tests or fails syntax validation.
+```json
+{
+  "servers": {
+    "handy-coder-mcp": {
+      "type": "stdio",
+      "command": "/path/to/.venv/bin/handy-coder-mcp",
+      "args": ["--root", "${workspaceFolder}"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
+```
 
-### 20. `tree_sitter_ast_parse`
+### Large Workspaces
 
-* **MCP Tool Name:** `ast_parse_and_query`
-* **Input Schema:** `{ path: string, tree_sitter_query: string }`
-* **Implementation:** Uses Tree-sitter bindings to extract AST nodes (e.g., extract all class methods, imports, or variable declarations cleanly without relying on regex).
+For workspaces with 100K+ files:
+- Background indexing may take time on first run
+- .gitignore and generated-directory skipping reduce scan overhead
+- Use `.handy-coder/.logs/` to monitor indexer progress
 
----
+### Network Tools
 
-## Recommended MCP Server Tech Stack
+web_search and web_fetch_docs require network access:
+- Block private, local, and reserved addresses
+- Normalize DuckDuckGo results
+- Support continuation with offset parameter
 
-* **Language:** TypeScript/Node.js (using `@modelcontextprotocol/sdk`) or Python (using `mcp`)
-* **Transport:** `stdio` (for local extension setups in VS Code / Cursor) or `Streamable HTTP` (for remote hosted agent runners).
-* **Safety Pattern:** Group tool approvals by tier. Auto-approve Tier 1 read/search tools, but set human-in-the-loop triggers for Tier 1 `terminal_exec` and Tier 3 safety tools.
+## Evolution Path
+
+The current 20-tool design prioritizes:
+1. **Local workspace operations** — fast, deterministic
+2. **Code understanding** — local indexing, no embedding service
+3. **Task coordination** — orchestrator, skills, subagents
+4. **Extensibility** — invoke_tool router, capability discovery
+
+Future enhancements could include:
+- Caching for frequently-accessed files
+- Differential indexing for very large codebases
+- Explicit approval workflows for destructive operations
+- Multi-workspace support
+- Offline embedding-based code search

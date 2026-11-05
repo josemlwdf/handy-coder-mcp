@@ -1,12 +1,21 @@
-# Handy Coder MCP 🛡️
+# Handy Coder MCP for AI Agents 🛡️
 
-Handy Coder MCP is a Python Model Context Protocol server for coding agents. It exposes workspace file, shell, search, diagnostics, test, and Git tools. File paths and command working directories are confined to the configured root, and tool descriptions explain the workspace path rules.
+Handy Coder MCP is a Python Model Context Protocol server for AI coding agents. It exposes 20 workspace tools organized by capability: file operations, code execution, search, diagnostics, testing, version control, code navigation, and task delegation.
 
-## Requirements and installation
+**Key Features:**
+- ✅ Workspace-scoped file operations (prevented path escapes)
+- ✅ Multi-language source code indexing and navigation
+- ✅ Auto-detecting build, test, and diagnostics tools
+- ✅ Git integration with automatic .gitignore management
+- ✅ AI subagent task delegation with specialized roles
+- ✅ Web search and documentation fetching
+- ✅ Result size limits prevent context window overflow
 
-- Python 3.11 or newer
+## Requirements and Installation
 
-Install from a checkout:
+**Python 3.11 or newer**
+
+Install from the repository:
 
 ```bash
 git clone https://github.com/josemlwdf/handy-coder-mcp.git
@@ -15,21 +24,39 @@ python -m venv .venv
 .venv/bin/python -m pip install .
 ```
 
-On Windows, use `.venv\Scripts\python.exe` in place of `.venv/bin/python`.
-
-Run against the current directory or select a workspace root:
-
+On Windows:
 ```bash
-.venv/bin/handy-coder-mcp
-.venv/bin/handy-coder-mcp --root /home/user/my-app
-.venv/bin/handy-coder-mcp --root /home/user/my-app --shell /bin/bash
+.venv\Scripts\python.exe -m pip install .
 ```
 
-`HANDY-CODER_ROOT` can provide the root when `--root` is omitted. A valid CLI `--root` takes precedence; invalid environment paths are ignored by normal detection. `--shell` retains the shell override behavior. The server uses the configured root as its working directory and reports the authorized root in every tool description. Only the command-execution tool reports the working directory.
+## Running the Server
 
-## MCP client configuration
+### Basic Usage
 
-For VS Code, configure the server in the workspace's `.vscode/mcp.json`. Set both `cwd` and `--root` to `${workspaceFolder}` so the server uses the open project rather than the directory where the VS Code process was started:
+```bash
+# Use current directory as workspace
+.venv/bin/handy-coder-mcp
+
+# Specify workspace root
+.venv/bin/handy-coder-mcp --root /path/to/project
+
+# With custom shell
+.venv/bin/handy-coder-mcp --root /path/to/project --shell /bin/bash
+```
+
+### Environment Configuration
+
+- `HANDY-CODER_ROOT` — set default workspace root (overridden by `--root`)
+- `SUBAGENT_CONFIG_FILE` — path to standalone Continue config (JSON/YAML)
+- `SUBAGENT_CONTINUE=0` — disable automatic Continue discovery
+
+The server logs the resolved workspace root and shell to stderr on startup.
+
+## MCP Client Configuration
+
+### VS Code
+
+Create or edit `.vscode/mcp.json` in your workspace:
 
 ```json
 {
@@ -44,201 +71,382 @@ For VS Code, configure the server in the workspace's `.vscode/mcp.json`. Set bot
 }
 ```
 
-Replace the command with the installed entry point's path on your system. This configuration sets the authorized root and command working directory to the same open workspace. Use workspace-relative paths with path-taking tools; they resolve from the configured root. The `terminal_exec` description also reports its working directory.
+**Important:** Using `${workspaceFolder}` ensures the server uses the open workspace, not the directory where VS Code was launched.
 
-For Kiro, Cursor, Claude Desktop, and other stdio MCP clients, point the server at the installed Python module or checkout:
+### Cursor, Claude Desktop, Kiro
 
-```json
-{
-  "mcpServers": {
-    "handy-coder-mcp": {
-      "command": "/path/to/handy-coder-mcp/.venv/bin/python",
-      "args": [
-        "/path/to/handy-coder-mcp/handy-coder_mcp.py"
-      ]
-    }
-  }
-}
-```
-
-The configured Python executable must be the same one used to install the project dependencies. On Windows, use `/path/to/handy-coder-mcp/.venv/Scripts/python.exe` as the command.
-
-Alternatively, use the installed entry point:
+Create a config file in your client's MCP servers directory:
 
 ```json
 {
   "mcpServers": {
     "handy-coder-mcp": {
-      "command": "/path/to/handy-coder-mcp/.venv/bin/handy-coder-mcp"
+      "type": "stdio",
+      "command": "/path/to/.venv/bin/handy-coder-mcp",
+      "args": ["--root", "/path/to/project"]
     }
   }
 }
 ```
 
-The public `tools/list` contains only `get_capabilities`, `get_tool_details`, and `invoke_tool`. Use `get_capabilities` to find available internal tools and `get_tool_details(tool_name)` for compact top-level argument types, required flags, and brief descriptions. For nested fields, defaults, and constraints, call the internal `get_tool_schema` through `invoke_tool`. `invoke_tool(tool_name, arguments)` dispatches through the selected tool's original schema validation and execution controls. After two consecutive failures for the same target, it adds a full-schema lookup hint. Individual tools are not directly exposed to clients. See the [tool inventory](docs/TOOL_INVENTORY.md) for the complete internal catalog.
+### Continue with WSL (Windows)
 
-Tool modules are organized by tier: Tier 1 tools live in `lib/core`, and optional Tier 2 tools live in `lib/extras`.
+Add to `~/.continue/mcpServers/handy-coder-mcp.yaml`:
 
-For optional-feature and C# indexing setup, see [SETUP.md](./SETUP.md). For the canonical registered-tool list, see [TOOL_INVENTORY.md](./TOOL_INVENTORY.md).
-
-
-### Check a stdio connection
-
-If an MCP client reports request timeouts for every tool, first check that the configured command can start, complete the MCP handshake, list its tools, and answer a harmless read request. From this checkout, run:
-
-```bash
-.venv/bin/python test/scripts/mcp_smoke_check.py \
-  --command .venv/bin/handy-coder-mcp \
-  --root "$PWD" \
-  --cwd "$PWD"
+```yaml
+name: handy-coder-mcp
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: Handy Coder
+    type: stdio
+    command: wsl
+    args:
+      - -d
+      - ubuntu
+      - /path/to/handy-coder-mcp/.venv/bin/handy-coder-mcp
+      - --root
+      - /mnt/c/path/to/project
+    env: {}
 ```
 
-To check the exact installed command and workspace used by a client, pass them explicitly:
+## 20 Registered Tools
 
-```bash
-.venv/bin/python test/scripts/mcp_smoke_check.py \
-  --command /path/to/handy-coder-mcp/.venv/bin/handy-coder-mcp \
-  --root /path/to/workspace \
-  --cwd /path/to/workspace
+### File & Code Operations (9 tools)
+
+1. **read_files** — Read files with optional line ranges
+2. **create_file** — Create files with syntax checks and optional formatting
+3. **apply_edits** — Modify files with search-and-replace or positional edits
+4. **code_polish** — Format and lint code
+5. **search_text** — Fast regex search (uses ripgrep)
+6. **find_files** — Find files by glob patterns (respects .gitignore)
+7. **list_dir** — List directory contents
+8. **code_get_diagnostics** — Run syntax checks and linters (auto-detects)
+9. **code_intel** — Navigate source code (C#, Python, JavaScript, Java, etc.)
+
+### Execution & Testing (3 tools)
+
+10. **terminal_exec** — Run shell commands
+11. **run_tests** — Run tests (auto-detects pytest, jest, etc.)
+12. **build_project** — Build projects (Python, Node, .NET)
+
+### Version Control & Workflows (3 tools)
+
+13. **git_manage** — Git operations (status, diff, commit, push, etc.)
+14. **orchestrator** — Create and manage task plans
+15. **skills_manage** — Manage reusable agent skills
+
+### Discovery & Integration (5 tools)
+
+16. **get_capabilities** — List available tools and runtime requirements
+17. **get_tool_details** — Get tool parameter documentation
+18. **invoke_tool** — Route/dispatch tools
+19. **web_search** — Search DuckDuckGo
+20. **web_fetch_docs** — Fetch text from public URLs
+
+### Additional Tools
+
+- **capture_url_screenshot** — Full-page screenshots
+- **inspect_image** — Analyze images with AI
+- **subagent_manage** — Delegate tasks to AI subagents
+
+## Using the Tools
+
+All tools are dispatched through the router:
+
+```python
+# Step 1: Discover available tools
+get_capabilities()
+
+# Step 2: Get tool documentation
+get_tool_details(tool_name="read_files", full_schema=False)
+
+# Step 3: Invoke the tool
+invoke_tool(tool_name="read_files", arguments={
+    "paths": ["/path/to/file.py"]
+})
 ```
 
-The check initializes the server, lists registered tool names, and calls `read_files` on `README.md`. A successful check means the configured server and stdio transport responded locally; if the client still times out, compare its launch command, arguments, working directory, and Python environment with this invocation, then inspect the client’s server stderr log. The MCP server registers names such as `read_files`; clients may display them with an additional server-name prefix.
+### Common Patterns
 
-### Workspace paths and tool errors
+**Read a file:**
+```python
+invoke_tool("read_files", {"paths": ["src/main.py"]})
+```
 
-Use workspace-relative paths, which resolve from the configured `--root`. Path operations are strictly validated against that root before any filesystem access occurs. Read and edit responses retain their existing `path` field and include `resolved_path`. `read_files` returns `total_lines`, `applied_start`, and `applied_end` alongside the content.
+**Search for code:**
+```python
+invoke_tool("search_text", {
+    "query": "def calculate",
+    "is_regex": False
+})
+```
 
-`apply_edits` validates and stages the entire batch of edits in memory before writing any changes to disk. If any edit in the batch contains an invalid regular expression, fails to match, or encounters a filesystem write failure, all changes are rolled back so no partial edits remain applied. Each edit requires `pattern` and `replacement`; legacy `old_str`/`new_str` aliases are rejected. Matching uses Python regex (`re` module). Replacement text is literal by default, including backslashes; set top-level `expand_groups=true` to interpret Python replacement templates such as `\1` or `\g<name>`. Invalid references return `invalid_replacement`. `replace_all=true` can be bounded per edit with `max_replacements`; `case_insensitive=true` enables case-insensitive matching. A `position` is an object with 1-based `line` and `col` keys (for example, `{"line": 3, "col": 5}`); it starts searching at or after that coordinate and replaces the first match there.
+**Make a change:**
+```python
+invoke_tool("apply_edits", {
+    "edits": [{
+        "path": "src/main.py",
+        "pattern": "old_code",
+        "replacement": "new_code"
+    }],
+    "summary": "Refactor calculate function"
+})
+```
 
-If your client also exposes a separate `multi_edit` helper, use this quick guide:
+**Run a test:**
+```python
+invoke_tool("run_tests", {
+    "filter_path": "test/test_main.py"
+})
+```
 
-| Tool | Match mode | Replacement mode | Best for |
-|---|---|---|---|
-| `multi_edit` (client helper) | Literal substring | Literal substring | Simple exact-text swaps |
-| `apply_edits` (this server) | Python `re` regex | Literal by default; regex-template when `expand_groups=true` | Structured/targeted edits with validation and match counts |
+**Commit changes:**
+```python
+invoke_tool("git_manage", {
+    "action": "commit",
+    "args": ["-m", "Fix bug in calculate"]
+})
+```
 
-`apply_edits` contract highlights:
+## Features in Detail
 
-- Entire edit batches are validated and staged before write; failures leave files unchanged.
-- Edits are processed in input order against staged content; repeated or overlapping edits on the same file are order-sensitive.
-- `replace_all=false` replaces the first match per edit; `replace_all=true` replaces all matches.
-- `replacement` is literal unless `expand_groups=true`, where `\\1` and `\\g<name>` are expanded.
-- `max_replacements` limits each edit when `replace_all=true`; `case_insensitive=true` ignores case.
-- Errors are structured (`error_code`, `edit_index`, message) and include a unified diff for successful staged edits.
+### Workspace-Scoped Operations
 
-`apply_edits` failure-mode matrix:
+All file operations are confined to the configured workspace root:
 
-| Scenario | Typical `error_code` | Outcome |
+```
+Workspace Root: /home/user/my-project/
+✓ src/main.py (allowed)
+✓ tests/test.py (allowed)
+✗ ../config.py (outside root, blocked)
+✗ /etc/passwd (outside root, blocked)
+```
+
+Path validation prevents:
+- `..` sequences (path traversal)
+- Symlink escapes
+- Absolute paths outside workspace
+
+### Source Code Navigation
+
+`code_intel` maintains a local SQLite index (`.handy-coder/code_index.sqlite3`) that supports:
+
+- **Lexical search** — full-text search across indexed files
+- **Symbol navigation** — find definitions and declarations
+- **Reference finding** — syntactic candidates (not compiler-resolved)
+
+Supported languages: C#, Python, JavaScript, TypeScript, Java, C, C++, Go, Rust, PHP, Ruby, Swift, Kotlin, Scala, Dart, Lua, R, Shell, SQL
+
+### Multi-Language Diagnostics
+
+`code_get_diagnostics` auto-detects and runs:
+
+- **Python:** Pylint, Flake8, or Ruff (first available)
+- **JavaScript/TypeScript:** ESLint
+- **.NET/C#:** MSBuild diagnostics
+- **HTML/CSS:** Syntax checks
+
+Returns: File path, line number, severity, and message
+
+### Build & Test Automation
+
+- `build_project` — detects Python/Node/C# projects and builds them
+- `run_tests` — auto-detects pytest (Python), jest (Node), etc.
+- Both return structured output with failure summaries
+
+### Git Integration
+
+`git_manage` operations:
+- `status` — current repo state
+- `diff` — see changes before committing
+- `add` — stages files (auto-updates .gitignore)
+- `commit` — create commits with messages
+- `push` — push to remote
+- `init` — initialize Git (creates test/ and tmp/)
+
+Key features:
+- Automatic .gitignore management
+- Structured output for agent interpretation
+- Self-audit support (diff before changes)
+
+### Web Integration
+
+- **web_search** — DuckDuckGo Lite with normalized results
+- **web_fetch_docs** — fetch and extract text from known URLs
+- Both require network access
+- Block private addresses (127.0.0.1, 10.x.x.x, etc.)
+
+### Task Orchestration
+
+`orchestrator` creates task workflows:
+- `bootstrap` — create implementation plan and task list
+- `update_task_status` — mark tasks complete/failed
+
+Creates:
+- `.handy-coder/implementation-plan.md`
+- `.handy-coder/tasks.md`
+
+### Subagent Delegation
+
+`subagent_manage` delegates specialized work:
+
+**Roles:**
+- `generalist` — general-purpose reasoning
+- `explorer` — investigation and evidence gathering
+- `planner` — task decomposition
+- `coder` — code changes with validation
+- `reviewer` — code review
+- `committer` — Git commit management
+
+**Backends:**
+1. Standalone `SUBAGENT_CONFIG_FILE` (highest priority)
+2. Continue automatic discovery (`~/.continue/config.yaml`)
+3. Environment provider keys (OPENAI_API_KEY, etc.)
+4. Local Ollama
+5. Client-side sampling (fallback)
+
+## Result Size Limits
+
+All results are capped to prevent context window overflow:
+
+| Type | Limit | Continuation |
 |---|---|---|
-| Missing target file | `not_found` | Batch stops at that edit index; no files are written. |
-| Path escapes workspace root | `path_escape` | Batch stops; no files are written. |
-| Target is not a UTF-8 text file | `binary_file` | Batch stops; no files are written. |
-| Duplicate/overlapping edits where a later pattern no longer matches staged text | `no_match` | Batch stops at the failing edit; earlier staged changes are discarded (atomic rollback). |
-| Invalid regex in `pattern` | `invalid_regex` | Batch stops; no files are written. |
-| Invalid group reference/template with `expand_groups=true` | `invalid_replacement` | Batch stops; no files are written. |
-| Invalid edit shape (missing/contradictory aliases) | `invalid_edit` | Batch stops; no files are written. |
-| Filesystem access/write failure | `io_error` (staging) or raised write failure with rollback | Any writes already performed are reverted to original content. |
+| File reads | 16,000 chars per file (256 KiB max) | line_ranges |
+| Search results | 4,000 chars per match | offset |
+| Terminal output | 4,000 chars per stdout/stderr | None |
+| Web pages | 4,000 chars per fetch | offset |
+| Subagent results | 4,000 chars per page | offset |
 
-`find_files` and `search_text` return successful partial results when a workspace directory cannot be scanned. Their `errors` arrays identify skipped workspace-relative paths and explain the filesystem error. For `find_files`, `glob_pattern` and `exclude_pattern` are case-insensitive strings matched against file and directory names and extensions throughout the workspace; generated and dot-prefixed directories are searched by default. `list_dir` lists immediate files and subdirectories for one workspace-relative directory. `search_text` supports `extensions` as an array of strings (for example, `[".py", ".md"]`), `case_insensitive`, and optional `context_lines` returning `context_before` and `context_after`; match entries contain the actual 1-based line number. `read_files` supports either `line_ranges` or `start_line`/`end_line` shorthand for one file, a selectable encoding, and optional size/time metadata. `create_file` supports POSIX permissions and an optional `.bak` backup on overwrite. The agent-facing diffs from `create_file` and `apply_edits` describe the exact submitted edits before any automatic formatting or Python post-processing; subsequent formatter changes are not included in those diffs. Submitted content is preserved by default in `create_file`; `format_content=true` enables supported formatting and `post_process_python=true` enables Python source processing. C#, C, JavaScript, Python, and HTML writes and edits automatically run a syntax checker that alerts the agent to syntax errors in `syntax_check` and `warning`; HTML writes also suggest organizing web assets under `static/html`, `static/js`, and `static/css` without creating those directories; use `code_get_diagnostics` with `check: "html_syntax_sweep"` to run HTML structural checks.
+Truncated results include:
+- `truncated: true` flag
+- `truncation` metadata
+- `next_offset` or `final_next_offset` for continuation
 
-Unfiltered `run_tests` runs require a recognized test setup (for example, pytest configuration or actual test files); a generic `pyproject.toml` alone is not enough. Supplying both a framework and `filter_path` allows a targeted run without workspace-wide test discovery. `run_tests` parses test outcomes (e.g. `passed`, `failed`, `errors`, `skipped`) into a structured `parsed` metadata dictionary, and for pytest may include `hints`/`preflight_notes` for common import-path issues. If tests import local modules (for example `from lib import support`), adding `test/__init__.py` is recommended for reliable collection across environments.
+## Security Model
 
-`code_get_diagnostics` executes recipes and includes the process `exit_code` in its response; `path`, `check`, and `timeout_ms` select its directory, configured check, and execution limit. `terminal_exec` accepts optional `env` as an object whose values are strings (for example, `{"MODE": "test"}`), `stdin`, and per-call `shell`; its `exit_code` is the process status, with 124 indicating timeout. Its terminal escape checks are heuristic lexical checks for recognizable path escapes, not a complete sandbox or OS isolation. `web_fetch_docs` retains its direct HTTP(S) and pagination design and includes `http_status`, `final_url`, and `truncated`; it does not provide browser/editor state.
+### Path Scope
 
-`build_project` detects Python, Node, and .NET configurations. It asks for `path` when more than one candidate exists, uses a Node lockfile to select the package manager, and returns parsed diagnostics and raw output. `timeout_ms` accepts 1–600000 milliseconds (default 30000). `git_manage` discovers Git repositories when first called. When several repositories are found, pass `repo_path`; relative file operands resolve from the selected repository root and remain confined there. Status returns staged, working-tree, and untracked summaries. The untracked summary includes matching pending change summaries persisted in `.handy-coder/state.json`. Diff accepts `mode` (`unstaged`, `staged`, or `both`) and `file_paths`, while preserving raw diff text. Diff `args` support `--cached` (equivalent to `mode="staged"` when `mode` is omitted), `--stat`, and `--name-only`; log includes recent commits. A successful `init` creates `test/` and `tmp/`, then creates or updates the root `.gitignore` with `.handy-coder/`, `tmp/`, and rules for common generated directories found in the repository. `add` applies the same idempotent update before staging and preserves existing ignore content; pass specific repository-relative paths in `args` to stage only those paths, or `args: ["all"]` to stage every change. Existing branch, stash, and blame actions remain available.
+File operations confined to workspace root via:
+1. Symlink resolution
+2. Path prefix validation
+3. `..` sequence rejection
+4. Absolute path checks
 
-### Change summaries
+**Note:** Heuristic-based, not OS-level isolation. Only connect trusted workspaces.
 
-`orchestrator(action="bootstrap")` accepts `output_dir`, a workspace-relative destination for `implementation-plan.md` and `tasks.md` (default `.handy-coder`); paths outside the workspace are rejected. `code_polish` automatically inserts missing Python module and function docstrings, including when `all_files=true`, and reports those changes. `git_manage(action="init")` stages repository defaults and creates a `chore: add repository defaults` commit when defaults were added.
+### Command Scope
 
-`create_file` and `apply_edits` require a `summary` argument: a one-line, concise description of the change (single line, at most 200 characters). A missing, blank, or multi-line summary is rejected with `error_code: "invalid_summary"` and nothing is written.
+Terminal commands run in workspace root with path escape heuristics.
 
-Every 10th logged tool call, dict tool responses include `status_summary_request` with a short reminder to provide a concise user update (what was found, what changed, what comes next).
+### Subagent Scope
 
-Committing is left to the user by default. `create_file` and `apply_edits` accept `automatic_commit=true` to opt successful changes into the automatic committer workflow, which dispatches after five opted-in file changes; the default is false. `git_manage` `action="commit"` remains available as an ordinary action. When commit is used, `git_manage` includes guidance to use meaningful commit messages that accurately summarize staged changes.
+When delegating:
+- Only allowed tools for the role can be called
+- Nested delegation is rejected
+- Frames expire after 5 minutes
+- File access remains confined to workspace
 
-### Skills
+## Troubleshooting
 
-`skills_manage` stores and retrieves reusable skills as Markdown files with frontmatter fields `name`, `description`, and `tags` at `skills/<skill-name>/SKILL.md`. Set `HANDY_CODER_SKILLS_DIR` to use a different base directory. The skills directory is not tied to `--root`.
+### Connection Issues
 
-- `action: "list"` returns every skill's `name`, `description`, and `tags`, plus an `errors` array for files that could not be read.
-- `action: "get"` with `name` returns the full `content` and the `body` without frontmatter.
-- `action: "save"` requires `name`, `description`, `body`, one or more `tags`, and an exactly five-word `short_description`. Pass tags as a list; they are written to the `tags` frontmatter field. The short description is registered in the package `summaries.json` for `get_capabilities`. It fails with `already_exists` unless `overwrite: true` is passed. `search`, `delete`, and `export` provide discovery, removal, and full Markdown retrieval.
+**Problem:** Client cannot connect or times out
 
-Names must be 1-64 characters of lowercase letters, digits and hyphens, which also prevents path traversal. Failures return an `error_code`: `missing_argument`, `invalid_name`, `invalid_description`, `content_has_frontmatter`, `skill_too_large`, `not_found`, `already_exists`, `binary_file` or `io_error`.
+**Solution:**
+1. Confirm MCP client launches the same Python environment
+2. Verify workspace path is valid
+3. Call `get_capabilities` after connecting
 
-### Subagents
+### Tools Report Unavailable
 
-Subagent delegation is exposed through a single tool, `subagent_manage`, without requiring any new credentials. Use `action` = `run|status|result|complete|cancel` with the fields for that action. `get_capabilities` reports each role's allowed tools, tool-call budget, and result format. Result pages include `final_offset`, `final_total_length`, `final_next_offset`, and `trace`; cancellation requires `confirm: true`. Cooperative frames expire after five minutes. A successful `git_manage` commit by a committer closes its frame automatically; other delegated runs require explicit completion through `subagent_manage(action='complete', ...)`. Streaming and checkpoint/resume are unsupported.
+**Problem:** Tool shows `setup_required` or missing requirements
 
-- `subagent_manage(action='run', role, task, ...)`: starts delegated work and returns `completed`, `running`, `delegated_to_host` (only with explicit `SUBAGENT_BACKEND=cooperative`), or `unavailable`.
-- Add `dry_run=true` to validate the role, task setup, and backend without creating a task/frame or invoking a model.
-- `subagent_manage(action='status', task_id)`: checks current state and usage.
-- `subagent_manage(action='result', task_id, offset?)`: fetches full or paged result text.
-- `subagent_manage(action='complete', task_id, result)`: closes a cooperative delegated frame.
-- `subagent_manage(action='cancel', task_id, confirm, reason?)`: cancels a task.
+**Solution:**
+1. Run `get_capabilities` to see missing requirements
+2. Follow remediation commands
+3. Check [Setup & Optional Features](./SETUP.md)
 
-Role tool access is scoped: `generalist`/`explorer` stay read-only, `reviewer` adds diagnostics/test execution, `planner`/`coder` can also use `create_file` + `apply_edits` when the task requires writing files, and `committer` can use `git_manage`. Loop prompts include compact argument examples for the allowed tools. The loop runtime can internally check and retrieve task status/results when useful.
+### Source Indexing Slow
 
-Every subagent response includes a `backend` field. Default selection is `auto`, resolved in this order: sampling capability, existing provider key in the current process environment, a model from your Continue config (on by default; `SUBAGENT_CONTINUE=0` turns it off), local Ollama when `SUBAGENT_LOCAL=1`, then no backend (`subagent_manage(action='run')` returns `unavailable`).
+**Problem:** code_intel indexing is slow on large workspaces
 
-`get_capabilities` lists supported Continue models under `subagents.continue.models` using only safe identifiers (`name`, `provider`, `model`). Pass a model's name or model identifier to the optional `model` argument on `subagent_manage(action='run', ...)` to route that task through its direct API provider, regardless of automatic backend precedence. Task responses, status, and result metadata include the selected model summary when known; orchestrators should report it when summarizing delegated work. Without an explicit choice, existing automatic resolution applies.
+**Solution:**
+1. Indexing runs in background; initial scan takes time
+2. Check `.handy-coder/.logs/` for progress
+3. Large generated directories (node_modules, bin, obj) are auto-skipped
 
-Loop-capable backends (`sampling`, `direct:*`, `local:ollama`, `continue:<provider>`) run an internal JSON-action loop and can return `completed` directly from `subagent_manage(action='run', ..., wait=true)` when the run finishes quickly; otherwise they return `running` and should be polled with `subagent_manage(action='status', task_id=...)`. The loop accepts JSON actions, text-wrapped Continue `<function_calls>` tool calls, and plain-text final answers. Wrapped tool calls are executed in order up to the role's tool-call budget; extra calls in that response are skipped and the model is asked to return its final answer.
+### IDE Root Detection (VS Code)
 
-Optional overrides:
+**Problem:** Multiple VS Code instances cause wrong root detection
 
-- `SUBAGENT_BACKEND=cooperative|sampling|direct|local|continue` chooses the backend family. `continue` forces Continue discovery even when `SUBAGENT_CONTINUE=0`; if no Continue model is usable it resolves to no backend.
-- `SUBAGENT_CONTINUE=0` (also `false`, `no` or `off`) stops `auto` selection from reading your Continue config (see below). Unset or any other value leaves discovery on.
-- `SUBAGENT_CONTINUE_MODEL` picks a Continue model by `name` or `model` (case-insensitive). An unknown value selects nothing; it never falls back to another model.
-- `SUBAGENT_CONTINUE_CONFIG` points at a specific Continue config file and is searched first among discovered Continue configs, after `SUBAGENT_CONFIG_FILE`.
-- `SUBAGENT_CONFIG_FILE` points at a standalone Continue-format JSON or YAML model config. It is tried before Continue config discovery and works without a Continue installation. It remains active when `SUBAGENT_CONTINUE=0`; if missing, malformed, or without a supported usable model, selection continues with the normal discovery and fallback behavior.
-- `SUBAGENT_WAIT_SECONDS` controls the synchronous wait budget for `subagent_manage(action='run')` (default 15).
-- `SUBAGENT_MODEL_OPENAI`, `SUBAGENT_MODEL_ANTHROPIC`, `SUBAGENT_MODEL_LOCAL` override default model ids per backend.
-- `SUBAGENT_SAMPLING_URL` (plus optional `SUBAGENT_SAMPLING_MODEL` and `SUBAGENT_SAMPLING_API_KEY`) enables HTTP sampling in runtimes without a native sampling bridge.
+**Solution:**
+1. Use explicit `--root ${workspaceFolder}` in client config
+2. Avoids ambiguity between multiple open workspaces
 
-Use subagents for broad searches, independent reviews, and large-input summaries; avoid delegation only for single quick lookups. In practice, prefer an orchestrator-first style while `subagent_manage(action='run')` is available: keep parent context minimal and delegate non-trivial work to subagents. When it returns `unavailable`, do the work yourself in the conversation.
+## Performance Considerations
 
-#### Continue backend
+### Worker Model
 
-By default (unless `SUBAGENT_CONTINUE=0`) the server reuses a chat model from your [Continue](https://continue.dev) config, so you do not configure a second set of credentials. `SUBAGENT_CONFIG_FILE`, when set, is checked first independently of Continue installation and discovery settings. Remaining config files are searched in this order: `SUBAGENT_CONTINUE_CONFIG`, `$CONTINUE_GLOBAL_DIR/config.yaml`, `~/.continue/config.yaml`, `~/.continue/config.json`, `/mnt/c/Users/<profile>/.continue/` for every Windows profile visible under WSL (current user first; `Public`, `Default`, `Default User` and `All Users` are skipped, symlinked profiles are ignored, at most 32 profiles), `%USERPROFILE%\.continue\`, then `<workspace>/.continue/config.yaml`. Files over 1 MiB are skipped.
+Most tools run in isolated worker processes:
+- **Timeout:** 30 seconds (default, configurable)
+- **Concurrency:** Max 8 concurrent workers
+- **Supervision:** Automatic deadline enforcement
 
-Only models with a chat role, a key (literal `apiKey`, an `Authorization` header or a `${{ secrets.X }}` reference resolved from the environment or a `.env` next to the config) and a supported provider are used; local providers such as Ollama need no key. The workspace config is untrusted and cannot resolve secret references. Keys are never logged or returned; `get_capabilities` reports only provider, model name and config path.
+In-process tools (minimal latency):
+- get_capabilities
+- get_tool_details
+- invoke_tool
 
-**Running in Docker.** A container cannot see your host's Continue directory. Mount it read-only and point `SUBAGENT_CONTINUE_CONFIG` at the mounted file, for example `-v ~/.continue:/continue:ro -e SUBAGENT_CONTINUE_CONFIG=/continue/config.yaml`. Secret references need the matching variables in the container environment or a `.env` file in the mounted directory.
+### Caching
 
-- **Cost:** this spends your own provider credits or hits your own local model. Loops can take several turns per task, so the cost is not one request.
-- **Models:** only entries with the `chat` role (or no `roles`) and a supported provider are used: `openai`, `anthropic`, `openrouter`, `deepseek`, `mistral`, `groq`, `together`, `lmstudio`, `ollama`. Hub entries (`uses:`), other providers and remote models without a resolvable key are skipped.
-- **Keys:** a literal `apiKey`, an `Authorization` header under `requestOptions.headers`, or a `${{ secrets.NAME }}` reference resolved from the process environment, then from a `.env` next to the config file. Whether Continue itself reads that `.env` is unverified. Anthropic keys are sent as `x-api-key`.
-- **Workspace configs are untrusted:** `<workspace>/.continue/config.yaml` can be shipped by a repository, so `${{ secrets.* }}` references in it are never resolved. Literal keys in it still work.
-- **Secrets stay out of output:** keys and header values are redacted from error text (backend HTTP errors and failed-task messages), and `get_capabilities` reports only the provider, model name and config path. The text of a completed task's result is the model's own output and is not scrubbed, so a key can appear there if the model obtains it some other way, for example by reading a workspace `.continue/config.yaml` that contains a literal key with `read_files`. Prefer `${{ secrets.NAME }}` references or a config outside the workspace.
-- **YAML needs PyYAML:** install it with `pip install .[continue]`. Without it YAML configs are skipped and only JSON configs work.
-- **Limits:** loop tool calls use the worker subprocess supervisor when the called tool function is worker-eligible, with a 60-second deadline by default in loop calls. `subagent_status` and `subagent_result` stay in-process because they must read in-memory task state. `subagent_manage(action='cancel', ...)` stops a task before its next turn or tool call, but an HTTP request already in flight still finishes. A model's `maxTokens` only lowers the per-request limit, never raises it.
+- code_intel maintains incremental index (no full re-scan)
+- Search results are not cached (always fresh)
+- Diagnostic checks are always fresh (detect config changes)
 
-### Orchestrator
+## Configuration Best Practices
 
-`orchestrator` merges orchestration bootstrap and task-status tracking behind an action selector:
+### Always use explicit `--root`
 
-- `action="bootstrap"` creates `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md` from a high-level request. By default (`overwrite=false`), it is non-destructive and returns `error_code="already_exists"` if either file already exists; set `overwrite=true` to replace existing bootstrap files.
-- `action="update_task_status"` atomically updates one Markdown task line (selected by `line_number` or `task_contains`). It accepts `- [ ] <task>` / `- [x] <task>` with zero or one `[status: ...]` marker; status markers may appear in prefix (`- [ ] [status: ...] <task>`) or suffix (`- [ ] <task> [status: ...]`) position. If no marker exists, it infers current status from checkbox and appends a suffix marker. It sets checkbox to `[x]` for `complete` and `[ ]` otherwise.
+```bash
+# Good
+.venv/bin/handy-coder-mcp --root /path/to/project
 
-### Optional Tier 2 integrations
+# Risky (detects based on working directory)
+.venv/bin/handy-coder-mcp
+```
 
-Tier 2 tools are registered without requiring external services. Tools report a clear unsupported/configuration message when their optional backend is unavailable.
+### Set client working directory
 
-- `create_file`: Python files receive automatic processing and formatting during creation; HTML files receive a syntax check.
-- When creating a Python file or applying edits to one, review `requirements.txt` and add any new third-party dependencies the Python change introduces. The file-writing tools include this reminder in successful Python write responses.
-- `web_fetch_docs`: direct public HTTP(S) fetching is available without credentials. Requests to private, local, or reserved addresses are blocked.
+```json
+{
+  "cwd": "${workspaceFolder}",
+  "args": ["--root", "${workspaceFolder}"]
+}
+```
 
-This server does not include the Tier 2 external MCP gateway tool.
+### Use specialized subagent roles
 
-## Security and limits
+Different roles for different tasks:
+- `coder` for implementation
+- `reviewer` for code review
+- `planner` for decomposition
 
-- `--root` is the authorization boundary. Use workspace-relative file paths, which resolve from it. Read and edit responses include a `resolved_path`. Paths are validated lexically before any filesystem access: paths that reference parent directories (`../`), absolute paths, or home-directory expansions that would escape the authorized root are rejected immediately.
-- Shell execution in `terminal_exec` applies a heuristic lexical guard that rejects recognizable path escapes, home-directory references (`~`), common `$HOME`/`$PWD`-style escapes, and redirection targets that look like they escape the workspace root. This guard catches common patterns but is not a complete sandbox. Treat `terminal_exec` as trusted-input-only and use operating-system isolation if untrusted command input is possible.
-- File reads are capped at 256 KiB per file and 16,000 returned characters per file. Terminal stdout and stderr are each capped at 4,000 characters. Every result routed through invoke_tool is capped at 16,000 serialized characters with truncation metadata; use file line ranges, web offsets, and subagent result offsets to retrieve later content.
-- **Worker deadline:** All tool calls execute in an isolated worker subprocess. The default server-side deadline is **30 seconds**. `terminal_exec` may extend its own worker deadline by passing `timeout_ms`; the maximum accepted is 600,000 ms (10 minutes), adding a 5-second grace period over the subprocess deadline. Timed-out workers have their entire process group killed.
-- `find_files` and repository discovery impose a 15-second scan time limit and a 5,000-entry ceiling; results are marked `incomplete: true` if either limit is reached.
-- Use relative paths inside the workspace. Commands such as `npm test`, `git status`, `ls`, and `python scripts/build.py` run with the workspace as their default directory.
+### Check capabilities first
 
-`terminal_exec` and `git_manage` can modify the workspace. Review changes with `git_manage` actions `status` and `diff` before committing, and review `.gitignore` for missing generated artifact rules. `git_manage` can also push to a configured remote when using the `push` action.
+```python
+caps = get_capabilities()
+# Verify tools are available before using
+if 'git_manage' in caps:
+    # Use git_manage
+```
+
+## Documentation
+
+- [Main README](../README.md) — overview and quick start
+- [Tool Inventory](./TOOL_INVENTORY.md) — complete 20-tool catalog
+- [Architecture & Design](./DESIGN.md) — implementation details
+- [Setup & Optional Features](./SETUP.md) — runtime requirements
+- [Code Navigation](./SEMANTIC_SEARCH.md) — indexing details
+- [Application Flow](./APPLICATION_FLOW_FINDINGS.md) — system overview
+- [Subagent Design](./SUB_AGENTS_DESIGN.md) — delegation patterns

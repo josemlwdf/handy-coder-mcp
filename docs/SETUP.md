@@ -1,55 +1,411 @@
-# Optional feature setup
+# Setup & Optional Features
 
-Install JavaScript formatting support with `pip install '.[javascript-format]'`. This provides jsbeautifier formatting for `.js`, `.mjs`, and `.cjs` files; ESLint remains independently optional.
+Handy Coder MCP comes with core tools enabled by default. Optional features and enhancements require additional setup.
 
-HTML files created or modified by `create_file` and `apply_edits` are automatically prettified with BeautifulSoup (`html.parser`). BeautifulSoup is installed as a required project dependency; formatter failures are reported while the requested file write is kept.
+## Core Requirements
 
-The main server registers `web_fetch_docs` from `lib/extras`, plus `web_search` and local C# navigation tools.
+- Python 3.11 or newer
+- MCP client (VS Code, Cursor, Claude Desktop, Continue, etc.)
 
-Use `get_capabilities` first to confirm what is configured and currently available. Its `tools.always_enabled` list names the tools available in every session; `tools.runtime` contains availability and feature details for tools whose support depends on the environment.
+## Optional Dependencies
 
-Tools blocked by missing packages, binaries, environment variables, or adapters return `status: "setup_required"` with `missing_requirements`, `remediation_commands`, and `documentation_url`. Tool-specific `error_code` values may be included for compatibility. Diagnostics and test execution responses include a `detection_trace` describing configured checks or the selected framework.
+### Code Formatting (JavaScript)
 
-## Local multilingual code navigation
+Enable JavaScript/TypeScript formatting:
 
-The server stores the workspace-specific SQLite database at `.handy-coder/code_index.sqlite3`. Call `index_codebase` to index C# source files; it updates changed files and removes entries for deleted files. Every dot-prefixed directory is skipped during indexing, along with generated directories such as `Library`, `Temp`, `obj`, and `bin`. These directories remain present in the workspace and visible to file listing tools.
+```sh
+pip install '.[javascript-format]'
+```
 
-The local source index covers registered extensions for C#, Python, JavaScript, TypeScript, Java, C, C++, Go, Rust, PHP, Ruby, Swift, Kotlin, Scala, Dart, Lua, R, Shell, and SQL. Tree-sitter grammars provide syntax-derived symbols and reference candidates where available; otherwise the index reports lexical fallback. SQLite FTS5 is used for local search. No remote index, embedding service, or vector database is used.
+This provides jsbeautifier for `.js`, `.mjs`, and `.cjs` files. ESLint remains independently optional.
 
-`code_navigator` supports `search_code`, `get_symbol`, and `find_references`. Search is lexical, not embedding-based; reference results are syntactic candidates and are not compiler-resolved. See [SEMANTIC_SEARCH.md](./SEMANTIC_SEARCH.md) for tool details.
+### HTML Auto-Formatting
 
-## Web tools
+HTML files created or modified by `create_file` and `apply_edits` are automatically prettified using BeautifulSoup's HTML parser.
 
-`web_search` uses DuckDuckGo Lite and normalizes wrapper-style result URLs into direct destinations in the primary `link` field, stripping common tracking query parameters; when a provider wrapper is unwrapped, results may also include optional `provider_link`. `web_fetch_docs` retrieves a known public HTTP(S) URL. Both need network access when called; web fetch blocks private, local, and reserved addresses. Use `web_search` to discover public pages and `web_fetch_docs` to read a known URL.
+**Status:** Included as required dependency (no extra install needed)
 
-## Web fetching (`web_fetch_docs`)
+**Note:** Formatter failures are reported while the file write succeeds.
 
-`web_fetch_docs` fetches text from a known public HTTP(S) URL. Requests to private, local, or reserved addresses are blocked. Use `offset` to page through long responses.
+## Optional Tools
 
-## Test execution setup (`run_tests` / pytest)
+### web_fetch_docs
 
-For reliable pytest execution via `run_tests`:
+Fetch text from public HTTP(S) documentation pages.
 
-- run from the workspace root
-- keep tests in `test/` or `tests/`
-- when tests import local packages (for example `from lib import support`), add `test/__init__.py`
+**Status:** Registered automatically (in `lib/extras`)
 
-Common pytest import failure:
+**Requirements:** Network access (called when invoked)
 
-- `ModuleNotFoundError: No module named 'lib'`
+**Limitations:**
+- Blocks private addresses (127.0.0.1, 10.x.x.x, 172.16.x.x, 192.168.x.x)
+- Blocks localhost and reserved addresses
+- HTTP(S) only
 
-Recommended fixes:
+### web_search
 
-1. create `test/__init__.py` (package marker)
-2. ensure the tool invokes pytest as `python -m pytest` (the server does this)
-3. run `run_tests` with `filter_path` to isolate failing targets while troubleshooting
+Search the public web using DuckDuckGo Lite.
 
-## Quick verification
+**Status:** Registered automatically
 
-After configuration, call `get_capabilities` and verify expected flags under:
+**Requirements:** Network access (called when invoked)
 
-- `tools.*.available`
-- `tools.*.configured` (where applicable)
-- `tools.*.missing_requirements` (empty for fully configured optional tools)
-- `tools.*.setup_docs` (for quick setup references)
-- `env.*`
+**Features:**
+- Normalizes result URLs
+- Strips tracking query parameters
+- Unwraps provider redirects
+
+## Diagnostics & Linting
+
+Tools auto-detect and use the first available checker:
+
+### Python Diagnostics
+
+One of:
+- `pylint` — comprehensive Python linter
+- `flake8` — simpler, PEP 8 focused
+- `ruff` — very fast Rust-based linter
+
+Install any one:
+```sh
+pip install pylint
+# or
+pip install flake8
+# or
+pip install ruff
+```
+
+### JavaScript/TypeScript Linting
+
+ESLint is independently optional:
+```sh
+npm install eslint
+```
+
+### Code Formatting
+
+**Python:**
+- `black` — auto-formatting
+- `ruff format` — fast auto-formatting
+
+Install:
+```sh
+pip install black
+# or
+pip install ruff
+```
+
+**JavaScript:**
+- `prettier` — auto-formatting
+- ESLint with `--fix`
+
+Install:
+```sh
+npm install prettier
+# or
+npm install eslint
+```
+
+## Project Build Support
+
+### Python Projects
+
+`build_project` auto-detects:
+- setuptools (`setup.py` or `pyproject.toml`)
+- Poetry (`poetry.lock` or `pyproject.toml`)
+
+No additional setup required.
+
+### Node.js Projects
+
+`build_project` auto-detects:
+- npm (`package.json` and `node_modules/`)
+- yarn (`yarn.lock`)
+
+No additional setup required.
+
+### .NET Projects
+
+`build_project` auto-detects:
+- MSBuild (`.csproj`, `.fsproj`, `.vbproj`)
+
+Requires .NET SDK installed.
+
+## Test Framework Support
+
+### Python
+
+`run_tests` auto-detects:
+- pytest
+- unittest
+- nose
+
+Install:
+```sh
+pip install pytest
+```
+
+**Configuration:**
+- Keep tests in `test/` or `tests/` directory
+- Add `test/__init__.py` if tests import local packages
+- Run from workspace root
+
+**Common issue:** `ModuleNotFoundError: No module named 'lib'`
+
+Fix:
+1. Create `test/__init__.py` (package marker)
+2. Tool uses `python -m pytest` (proper path setup)
+3. Use `filter_path` to isolate failing tests during troubleshooting
+
+### JavaScript/Node
+
+`run_tests` auto-detects:
+- Jest
+- Vitest
+- Mocha
+
+Install:
+```sh
+npm install jest
+# or
+npm install vitest
+```
+
+## Version Control (Git)
+
+`git_manage` requires Git to be installed and available on PATH.
+
+### Setup
+
+```sh
+# Ubuntu/Debian
+sudo apt-get install git
+
+# macOS
+brew install git
+
+# Windows (from https://git-scm.com)
+```
+
+### Auto-Git Init
+
+When `git_manage(action='init')` is called:
+- Initializes Git repository
+- Creates `test/` and `tmp/` directories
+- Adds rules to `.gitignore`:
+  - `.handy-coder/`
+  - `tmp/`
+  - Auto-detected generated directories (bin, obj, node_modules, etc.)
+
+## Local Code Indexing
+
+`code_intel` maintains a local SQLite database at `.handy-coder/code_index.sqlite3`.
+
+### Index Behavior
+
+- **Incremental:** Only scans changed/new files
+- **Auto-skip:** Ignores dot-prefixed directories (`.git`, `.venv`, etc.)
+- **Auto-skip:** Ignores generated directories (bin, obj, Library, Temp, node_modules)
+- **On-demand:** Indexing runs when `code_intel(action='index')` is called
+- **Background:** Initial scan runs in a worker process
+
+### Supported Languages
+
+C#, Python, JavaScript, TypeScript, Java, C, C++, Go, Rust, PHP, Ruby, Swift, Kotlin, Scala, Dart, Lua, R, Shell, SQL
+
+### Search Behavior
+
+- **Lexical search** — full-text FTS5 search (not embedding-based)
+- **Symbol navigation** — uses Tree-sitter grammars where available, lexical fallback otherwise
+- **Reference finding** — syntactic candidates only (not compiler-resolved)
+
+## Web Scraping & Screenshots
+
+### Full-Page Screenshots
+
+`capture_url_screenshot` requires `gowitness` binary:
+
+```sh
+# Ubuntu/Debian
+sudo apt-get install gowitness
+
+# macOS
+brew install gowitness
+
+# Or download from https://github.com/sensepost/gowitness
+```
+
+Screenshots are stored in `tmp/screenshots/`.
+
+## Subagent Configuration
+
+### Automatic Discovery (Default)
+
+Subagents automatically discover Continue:
+1. Look for `~/.continue/config.yaml`
+2. Check for environment provider keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
+3. Check for local Ollama
+4. Use client-side sampling (fallback)
+
+### Standalone Configuration
+
+Provide a standalone Continue-format config without installing Continue:
+
+```bash
+SUBAGENT_CONFIG_FILE=/path/to/config.yaml .venv/bin/handy-coder-mcp
+```
+
+**config.yaml example:**
+```yaml
+models:
+  - title: GPT-4
+    model: gpt-4
+    provider: openai
+    apiKey: ${OPENAI_API_KEY}
+
+  - title: Claude
+    model: claude-3-opus-20240229
+    provider: anthropic
+    apiKey: ${ANTHROPIC_API_KEY}
+```
+
+**config.json example:**
+```json
+{
+  "models": [
+    {
+      "title": "GPT-4",
+      "model": "gpt-4",
+      "provider": "openai",
+      "apiKey": "${OPENAI_API_KEY}"
+    }
+  ]
+}
+```
+
+### Disable Continue Discovery
+
+```bash
+SUBAGENT_CONTINUE=0 .venv/bin/handy-coder-mcp
+```
+
+Still allows explicit `SUBAGENT_CONFIG_FILE`.
+
+## Environment Provider Keys
+
+Subagents can use environment variables for API keys:
+
+```bash
+export OPENAI_API_KEY=sk-...
+export ANTHROPIC_API_KEY=sk-ant-...
+export GOOGLE_API_KEY=...
+export COHERE_API_KEY=...
+
+.venv/bin/handy-coder-mcp
+```
+
+## Capability Verification
+
+After configuration, call `get_capabilities` to verify:
+
+```python
+caps = get_capabilities()
+
+# Check what's available
+print(caps['tools']['runtime'])
+print(caps['tools']['always_enabled'])
+
+# Check for missing requirements
+for tool_name, tool_info in caps['tools'].items():
+    if tool_info.get('missing_requirements'):
+        print(f"{tool_name} missing: {tool_info['missing_requirements']}")
+        print(f"Remediation: {tool_info.get('remediation_commands')}")
+```
+
+Tools with missing requirements:
+- Show `available: false` or `setup_required: true`
+- Include `missing_requirements` list
+- Include `remediation_commands` with install instructions
+- Include `setup_docs` URL for details
+
+## Quick Verification Checklist
+
+After installation:
+
+1. ✅ Python 3.11+ available
+   ```sh
+   python --version
+   ```
+
+2. ✅ MCP server running
+   ```sh
+   .venv/bin/handy-coder-mcp --root /path/to/project
+   ```
+
+3. ✅ Client connected
+   - Check client logs
+   - Confirm stdio connection
+
+4. ✅ Tools available
+   ```python
+   get_capabilities()
+   ```
+
+5. ✅ Read workspace
+   ```python
+   invoke_tool("read_files", {"paths": ["README.md"]})
+   ```
+
+6. ✅ Optional tools
+   ```python
+   caps = get_capabilities()
+   # Check for web_search, git_manage, code_intel, etc.
+   ```
+
+## Troubleshooting
+
+### Tool Shows `setup_required`
+
+1. Call `get_capabilities` to see what's missing
+2. Follow `remediation_commands`
+3. Verify with `get_capabilities` again
+
+### Tests Import Local Packages Fail
+
+```
+ModuleNotFoundError: No module named 'lib'
+```
+
+**Fix:**
+1. Create `test/__init__.py` (empty file is fine)
+2. Tool invokes as `python -m pytest` (sets up PYTHONPATH)
+3. Run from workspace root
+
+### Large Workspaces Slow to Index
+
+- Indexing runs in background
+- Large first scan takes time
+- Check `.handy-coder/.logs/` for progress
+- Generated directories auto-skipped
+
+### Git Commands Fail
+
+- Ensure Git is installed: `git --version`
+- Ensure Git is on PATH
+- Check workspace is a Git repository (or use `git_manage(action='init')`)
+
+### Subagent Model Not Found
+
+1. Check `SUBAGENT_CONFIG_FILE` path is valid
+2. Check environment variables (OPENAI_API_KEY, etc.)
+3. Check Continue config (`~/.continue/config.yaml`)
+4. Check for local Ollama
+5. Fallback to client-side sampling
+
+## Documentation References
+
+- [Main README](../README.md) — overview and quick start
+- [Tool Inventory](./TOOL_INVENTORY.md) — all 20 tools
+- [Architecture](./DESIGN.md) — design and implementation
+- [Code Navigation](./SEMANTIC_SEARCH.md) — indexing details
+- [Application Flow](./APPLICATION_FLOW_FINDINGS.md) — system overview

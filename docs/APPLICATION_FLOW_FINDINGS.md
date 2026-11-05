@@ -1,78 +1,477 @@
-# Application Flow Findings
+# Application Flow & System Overview
 
-## Scope
+## Architecture at a Glance
 
-Handy Coder MCP is a local coding-assistant server, not a graphical application. Its primary flow runs between an MCP client (such as VS Code or another agent host), the server process, and a configured project workspace. This review follows the implemented path through startup and representative tool use. It is based on the repository code and documentation; it does not include an interactive client session.
+Handy Coder MCP is a Python-based Model Context Protocol server that acts as a bridge between AI coding agents and local workspaces. It provides 20 tools organized into five capability groups, with workspace-scoped file operations, background indexing, and task coordination.
 
-## Main flow
+```
+┌─────────────────────────────────────────┐
+│  MCP Client (VS Code, Cursor, etc.)     │
+│  (Request tools via stdio JSON-RPC)     │
+└────────────────┬────────────────────────┘
+                 │
+           JSON-RPC 2.0
+           stdio transport
+                 │
+┌────────────────▼────────────────────────┐
+│     Handy Coder MCP Server              │
+│  ┌─────────────────────────────────┐   │
+│  │  Public Router (3 tools)        │   │
+│  │  - get_capabilities             │   │
+│  │  - get_tool_details             │   │
+│  │  - invoke_tool                  │   │
+│  └─────────────────────────────────┘   │
+│  ┌─────────────────────────────────┐   │
+│  │  Internal Tools (20 registered) │   │
+│  │  - File ops (9)                 │   │
+│  │  - Execution (3)                │   │
+│  │  - VCS & Workflows (3)          │   │
+│  │  - Discovery & Web (5)          │   │
+│  └─────────────────────────────────┘   │
+│  ┌─────────────────────────────────┐   │
+│  │  Worker Supervision             │   │
+│  │  - 30s timeouts                 │   │
+│  │  - Max 8 concurrent             │   │
+│  │  - Path validation              │   │
+│  └─────────────────────────────────┘   │
+│  ┌─────────────────────────────────┐   │
+│  │  Background Workers             │   │
+│  │  - C# Code Indexer              │   │
+│  │  - Clean Worktree Monitor       │   │
+│  └─────────────────────────────────┘   │
+└────────────────┬────────────────────────┘
+                 │
+        Workspace Root (scoped)
+                 │
+┌────────────────▼────────────────────────┐
+│     Configured Project Workspace        │
+│  ┌─────────────────────────────────┐   │
+│  │  .handy-coder/                  │   │
+│  │  - code_index.sqlite3           │   │
+│  │  - tasks.md                     │   │
+│  │  - implementation-plan.md       │   │
+│  │  - .logs/                       │   │
+│  └─────────────────────────────────┘   │
+│  ┌─────────────────────────────────┐   │
+│  │  Source Code Files              │   │
+│  │  Version Control (.git/)        │   │
+│  │  Tests & Builds                 │   │
+│  └─────────────────────────────────┘   │
+└─────────────────────────────────────────┘
+```
 
-1. **Install and configure.** The user installs the Python package, then configures an MCP client to launch `handy-coder-mcp` over stdio. The client can supply `--root` (or `HANDY-CODER_ROOT`) and optionally a shell. If root is omitted, IDE/work-directory detection is attempted, then the server's script directory is the fallback.
-2. **Server startup.** The server resolves and validates the workspace directory, creates `.handy-coder/`, configures the shell, and logs the authorized root to stderr. It registers the tools, checks that their JSON schemas use supported argument types, and starts the stdio MCP server without scanning C# files.
-3. **Route tools.** Once connected, the assistant can call `get_capabilities` to see registered tools and optional runtime dependencies. `get_tool_details` supplies compact top-level argument summaries; full argument documentation is available through the internal `get_tool_schema` helper invoked with `invoke_tool`. Ordinary tool descriptions and schema descriptions are shortened to keep the public listing compact.
-4. **Inspect and navigate.** Typical entry points are `find_files`, `search_text`, and `read_files`. For C#, `code_navigator` searches the local index, retrieves current symbol source, or finds likely syntactic references. File operations are workspace-relative, with reads capped at 256 KiB per file and 16,000 returned characters per file.
-5. **Make a change.** `apply_edits` modifies existing content (a one-line `summary` is required, as for `create_file`); `create_file` creates files and refuses to overwrite an existing path unless asked. The server checks resolved paths against the configured root. Tool handlers generally run in worker processes with a 30 second deadline. The supervisor also checks subagent tool scope around calls.
-6. **Check the result.** The assistant can run `code_get_diagnostics` (including `html_syntax_sweep` for HTML), `run_tests`, and `build_project`, depending on the project and installed tools. `git_manage` provides repository operations. Capabilities indicate optional binaries such as Git, pytest, Ruff, Black, ESLint, and jsbeautifier.
-7. **Coordinate larger work.** `orchestrator(action='bootstrap', ...)` writes plan and task files under `.handy-coder/`. The subagent tools run a loop on an available backend (client sampling, a provider key in the environment, a model from the user's Continue config (on by default; `SUBAGENT_CONTINUE=0` disables it), or local Ollama). When none is available, `subagent_manage(action='run')` returns `unavailable`, starts no task and opens no frame, and the parent does the work itself. Cooperative host delegation happens only with an explicit `SUBAGENT_BACKEND=cooperative`. Optional web search and documentation fetching make outbound requests.
+## Main Application Flow
 
-## Observations
+### 1. Installation & Configuration
 
-- **Clear operational boundary:** The workspace root is configured centrally and path resolution checks both lexical and resolved paths, which helps prevent `..` and symlink escapes for file tools. Terminal command safety is explicitly described as heuristic, not OS isolation.
-- **Good routing layering:** Capability status and on-demand tool details help an assistant choose tools without loading every long description at once.
-- **C# indexing is on demand:** A large workspace no longer delays MCP startup. The `index_codebase` tool runs the scan in an isolated worker process when requested.
-- **IDE root selection is a critical branch:** The README records a known issue where multiple VS Code instances can cause the wrong working directory to be selected. Since this root governs file access and command working directories, client configuration with an explicit `--root` is the clearest route.
-- **Optional availability is not uniform:** Some tools are always registered but may report unavailable runtime support; others are registered only in the main inventory and their capabilities are environment-dependent. Calling `get_capabilities` first reduces dead ends.
-- **Validation is a user/assistant-driven loop:** Tools report results, but the code does not impose a universal sequence requiring diagnostics or tests after each edit. The client or assistant has to choose and interpret checks.
-- **The architecture docs are partly aspirational:** `docs/DESIGN.md` describes proposed tiers and includes legacy/placeholder concepts. `docs/TOOL_INVENTORY.md` and the actual registration in `handy_coder_mcp.py` are better guides to the shipped flow.
+**User Actions:**
+```bash
+git clone https://github.com/josemlwdf/handy-coder-mcp.git
+cd handy-coder-mcp
+python -m venv .venv
+.venv/bin/python -m pip install .
+```
 
-## Suggested flow improvements
+**Client Configuration:**
+The user configures their MCP client (VS Code, Cursor, etc.) to launch the server:
+- Set `command` to the installed executable
+- Set `--root` to the workspace directory
+- Set `cwd` to the workspace directory
 
-1. Make C# index startup non-fatal, or make indexing explicitly configurable, so failure of an auxiliary navigation feature does not block core file and terminal tools.
-2. Surface the resolved root prominently in the client onboarding flow and encourage explicit `--root` configuration, especially for multiple IDE instances.
-3. Keep the tool inventory synchronized with registered tools and label which capabilities depend on installed binaries, environment variables, or MCP client features.
-4. Consider a concise end-to-end setup walkthrough that includes connection verification with `get_capabilities`, a workspace read, and a simple check.
+### 2. Server Startup
 
-## Automatic actions performed by the MCP
+**Initialization Steps:**
 
-This section separates actions the server performs as part of normal operation from actions that only happen when the assistant requests a particular tool or option.
+1. **Resolve workspace root**
+   - Priority: `--root` CLI > `HANDY-CODER_ROOT` env > IDE detection > cwd > script dir
+   - Validate: Must be a valid directory
+   - Warn: If root is home directory or `/` (large scope)
 
-### Automatic during server startup
+2. **Create workspace state**
+   - Create `.handy-coder/` directory
+   - Create `.handy-coder/.logs/` for diagnostics
+   - Log root and shell to stderr
 
-- **Resolve the workspace root.** The server tries the supplied `--root`, environment/configured IDE working directory, then falls back to the server directory. It resolves the path and fails startup if the result is not a directory.
-- **Create workspace state.** Startup creates `.handy-coder/` under the selected workspace, even before the assistant requests orchestration or indexing.
-- **Log the active boundary.** The resolved root and shell are written to stderr. Home-directory or filesystem-root workspaces also produce a warning because scans may be large.
-- **Register and validate tools.** The server registers the tool modules, checks tool argument schemas for unsupported types, and terminates startup if the schema check fails.
-- **Start the stdio server and worker supervisor.** The server accepts MCP calls without scanning C# files. Tool handlers are wrapped so most execute in bounded worker processes. A semaphore limits concurrent workers to eight; the default worker deadline is 30 seconds, with a longer deadline derived from the requested timeout for terminal/build tools. A small set of handlers runs in-process.
+3. **Register tools**
+   - Load 20 internal tools
+   - Validate JSON schemas
+   - Check for unsupported argument types
+   - Fail startup if validation fails
 
-### Automatic around tool calls
+4. **Start support systems**
+   - Initialize worker supervisor (semaphore: 8 max)
+   - Start C# code indexer (background process)
+   - Start clean worktree enforcer (optional)
+   - Configure stdio MCP server
 
-Every incoming call goes through the supervisor hooks before its handler runs:
+5. **Report status**
+   ```
+   [handy-coder-mcp] Authorized root: /path/to/project; shell: /bin/bash
+   ```
 
-- **Enforce an open subagent frame.** While a cooperative subagent frame is active, calls outside that role's allowed tool list are rejected. Nested subagent runs are rejected. The manager sweeps expired tasks/frames when task state is accessed; cooperative frames expire after five minutes.
-- **Add subagent reminders/completion metadata.** Calls made in a delegated frame can receive a reminder to complete the frame. A successful commit by a `committer` closes its cooperative frame automatically; other roles, skipped commits, and unsuccessful commits require `subagent_manage(action='complete', ...)` (or cancellation via `subagent_manage(action='cancel', confirm=true)`).
+### 3. Tool Discovery & Routing
 
-### Automatic actions tied to a requested tool
+**Three public endpoints:**
 
-- **`create_file`:** Creates missing parent directories by default. It refuses to overwrite unless `overwrite=true`. HTML files always receive a structural syntax check after saving. Python processing or formatting only runs when its corresponding option is enabled; content formatting defaults off. A one-line `summary` argument is required.
-- **`git_manage` with `init`:** Initializes Git, creates `test/` and `tmp/`, and maintains `.gitignore` with required `.handy-coder/` and `tmp/` rules plus detected generated-directory rules.
-- **`git_manage` with `add`:** Updates `.gitignore` with those rules before staging the requested files. This means an add request can also modify `.gitignore`.
-- **`git_manage` with `status` or `log`:** Enriches Git output with parsed untracked-file summaries or structured recent commit metadata.
-- **`code_get_diagnostics`:** Inspects project configuration and selects the first configured/available check in its detection order. If an earlier configured binary is missing, it records that and tries the next candidate where possible.
-- **`run_tests` and build/check tools:** Start the selected local process with bounded execution and return structured output. The MCP does not automatically run these after every edit; the assistant must request them.
-- **`orchestrator` (`action='bootstrap'`):** Creates `.handy-coder/implementation-plan.md` and `.handy-coder/tasks.md` when explicitly called. With `overwrite=false` (default), the operation is non-destructive and fails with `already_exists` if either file exists; with `overwrite=true`, existing bootstrap files are replaced.
-- **`orchestrator` (`action='update_task_status'`):** Atomically updates one tasks line status marker (`non_started`, `interrupted`, `complete`, `failed`) selected by `line_number` or `task_contains` and adjusts `[x]`/`[ ]` based on status.
-- **`skills_manage` save:** Creates the configured skills directory if needed. Saving or deleting skills is explicit; neither happens automatically at startup.
-- **C# indexing:** Can also be refreshed explicitly with `index_codebase`; it is not automatically refreshed after each code edit in the described main flow.
+```python
+# Step 1: Get capabilities
+caps = get_capabilities()
+# Returns: available tools, runtime status, missing requirements
 
-### Actions that are not automatic
+# Step 2: Get tool details
+details = get_tool_details("read_files", full_schema=False)
+# Returns: compact argument documentation
 
-The server does not automatically run tests or diagnostics after every edit, format files by default, commit or push after every write, invoke web tools, or create orchestration plans. It never prompts for, tracks, or blocks on commits; committing is left to the agent or user.
+# Step 3: Invoke tool
+result = invoke_tool("read_files", {
+    "paths": ["src/main.py"]
+})
+# Returns: tool result or error
+```
 
-## Evidence reviewed
+**Tool Categories:**
+- **Read-only** (safe, idempotent): find_files, read_files, search_text, etc.
+- **Destructive** (modifying): apply_edits, create_file, git_manage, etc.
+- **Open-world** (external state): terminal_exec, run_tests, web_search, etc.
 
-- `README.md` — installation, client setup, workspace scope, and known VS Code issue.
-- `handy_coder_mcp.py` — startup, tool registration, index initialization, and stdio transport.
-- `lib/support.py` — root configuration, path checks, and subprocess support.
-- `lib/worker_supervisor.py` — worker execution, deadlines, and call hooks.
-- `lib/core/system_info.py` and `lib/tool_details.py` — capability and tool documentation endpoints.
-- `lib/core/code_navigator.py`, `lib/core/orchestrator.py`, and `lib/subagents/tools.py` — indexing, orchestration, and delegation paths.
-- `docs/TOOL_INVENTORY.md` and `docs/DESIGN.md` — documented inventory and architecture context.
+### 4. Typical Workflow
+
+**Example: Bug Fix & Commit**
+
+```
+1. Search for bug location
+   → search_text(query="error handling")
+   
+2. Read affected file
+   → read_files(paths=["src/handler.py"])
+   
+3. View diagnostics
+   → code_get_diagnostics(path="src/handler.py")
+   
+4. Make change
+   → apply_edits(edits=[{path, pattern, replacement}], summary="Fix error handling")
+   
+5. Run tests
+   → run_tests(filter_path="test/test_handler.py")
+   
+6. Review changes
+   → git_manage(action="diff")
+   
+7. Commit
+   → git_manage(action="commit", args=["-m", "Fix error handling"])
+```
+
+### 5. Worker Execution Model
+
+**Most tools run in isolated worker processes:**
+
+```
+Incoming request
+      ↓
+Supervisor validation
+- Check workspace scope
+- Validate subagent frame
+      ↓
+Worker process spawned
+- Timeout: 30 seconds (configurable)
+- Semaphore: Max 8 concurrent
+- Deadline: Extended for long-running tools
+      ↓
+Tool execution
+- Full isolation from server
+- Process-level error handling
+      ↓
+Result capping
+- 16,000 char limit (invoke_tool)
+- Include truncation metadata
+      ↓
+Response to client
+```
+
+**In-process tools** (minimal latency):
+- get_capabilities
+- get_tool_details
+- invoke_tool
+- skills_manage (read)
+
+### 6. Path Validation & Security
+
+**All file operations are confined to workspace root:**
+
+```
+Workspace Root: /home/user/project/
+
+✓ ALLOWED
+  /home/user/project/src/main.py
+  /home/user/project/tests/test.py
+  project/README.md (relative)
+  ./docs/guide.md (relative)
+
+✗ BLOCKED
+  /home/user/config.py (outside root)
+  /etc/passwd (outside root)
+  ../../../etc/passwd (.. escape)
+  /home/user/project/../../../etc/passwd (resolved outside)
+```
+
+**Validation checks:**
+1. Resolve symlinks
+2. Check resolved path starts with workspace root
+3. Reject `..` sequences
+4. Reject absolute paths outside workspace
+5. Reject resolved paths outside workspace
+
+**Note:** Heuristic-based, not OS-level isolation.
+
+### 7. Background Processes
+
+**C# Code Indexer**
+- Runs in separate process
+- Scans workspace incrementally
+- Maintains `.handy-coder/code_index.sqlite3`
+- Auto-skips: `.` prefixed dirs, bin/, obj/, node_modules/, etc.
+- Supports 19 languages (C#, Python, JavaScript, Java, etc.)
+- Updates on demand via `code_intel(action='index')`
+
+**Clean Worktree Enforcer** (optional)
+- Monitors Git state during subagent tasks
+- Ensures workspace cleanliness
+- Only enabled with explicit `SUBAGENT_BACKEND=cooperative`
+- Enforces before delegating write-capable subagent roles
+
+### 8. Subagent Delegation
+
+**When `subagent_manage` is used:**
+
+```python
+# Start a delegated task
+frame = subagent_manage(
+    action="run",
+    role="coder",
+    instruction="Fix the bug in handler.py"
+)
+
+# Check progress
+status = subagent_manage(action="status", frame_id=frame['id'])
+
+# Get results when complete
+result = subagent_manage(action="result", frame_id=frame['id'])
+
+# Mark frame complete
+subagent_manage(action="complete", frame_id=frame['id'])
+```
+
+**During delegation:**
+- Only allowed tools for the role can be called
+- File access confined to workspace
+- Nested delegation rejected
+- Frame expires after 5 minutes
+- Successful commit auto-closes `committer` role
+
+**Roles:**
+- `generalist` — general reasoning and implementation
+- `explorer` — investigation and evidence
+- `planner` — task decomposition
+- `coder` — code changes with validation
+- `reviewer` — code review and analysis
+- `committer` — Git operations
+
+## Tool-Specific Behaviors
+
+### File Operations
+
+**read_files**
+- Cap: 256 KiB per file, 16,000 chars returned
+- Supports line ranges for large files
+- Returns: content, line count, encoding
+
+**create_file**
+- Auto-creates parent directories
+- HTML syntax check always runs
+- Python/JavaScript formatting (optional)
+- Refuses overwrite unless `overwrite=true`
+- Requires `summary` argument
+
+**apply_edits**
+- Pattern-based or position-based edits
+- Returns unified diff of changes
+- Requires `summary` argument
+- Multiple edits per call
+
+### Code Understanding
+
+**search_text**
+- Uses ripgrep for speed
+- Regex or plain-text patterns
+- Glob pattern support
+- Returns: 4,000 chars per match
+
+**code_intel**
+- Lexical search (not embedding-based)
+- Symbol navigation (definitions)
+- Reference finding (syntactic candidates)
+- Incremental indexing
+- 19+ language support
+
+**code_get_diagnostics**
+- Auto-detects Python (Pylint/Flake8/Ruff)
+- Auto-detects JavaScript (ESLint)
+- Auto-detects .NET (MSBuild)
+- Auto-detects HTML/CSS (built-in)
+- Returns: file, line, severity, message
+
+### Build & Test
+
+**run_tests**
+- Auto-detects pytest (Python), jest (Node)
+- Supports test filtering
+- Returns structured output with traces
+- Workspace root required
+
+**build_project**
+- Auto-detects Python (setuptools/poetry)
+- Auto-detects Node (npm/yarn)
+- Auto-detects .NET (MSBuild)
+- Returns: build status and output
+
+### Version Control
+
+**git_manage**
+- Actions: status, diff, log, add, commit, push, init
+- Auto-creates test/ and tmp/ on init
+- Auto-updates .gitignore on add
+- Returns structured output
+
+### Task Coordination
+
+**orchestrator**
+- Creates implementation-plan.md and tasks.md
+- Non-destructive by default (overwrite=false)
+- Updates task status (pending, in_progress, complete, failed)
+- Uses `.handy-coder/` for storage
+
+**skills_manage**
+- Store and retrieve reusable skills
+- Explicit save/delete (no auto-save)
+- Configurable storage directory
+
+## Result Size Limits
+
+All results capped to prevent context window overflow:
+
+| Type | Limit | Continuation |
+|---|---|---|
+| File reads | 16,000 chars per file (256 KiB max) | line_ranges |
+| Search results | 4,000 chars per match | offset |
+| Terminal output | 4,000 chars per stdout/stderr | None |
+| Web pages | 4,000 chars per fetch | offset |
+| Subagent results | 4,000 chars per page | offset |
+| Tool details | No limit | N/A |
+
+**Truncation metadata:**
+```json
+{
+  "truncated": true,
+  "truncation": {
+    "reason": "router_result_limit",
+    "limit_chars": 16000,
+    "affected": [{"path": "$.content", "omitted_chars": 5000}]
+  },
+  "next_offset": 10000
+}
+```
+
+## Performance Characteristics
+
+### Latency
+
+- **In-process tools**: < 100ms (get_capabilities, get_tool_details)
+- **Local file ops**: 10-100ms (read_files, search_text)
+- **Worker spawn**: ~200ms (tool startup)
+- **Diagnostics**: 1-5s (depends on tool)
+- **Large indexing**: 5-30s (initial scan, background)
+
+### Scalability
+
+- **Concurrent tools**: Max 8 workers (configurable via semaphore)
+- **File size**: Up to 256 KiB per file
+- **Result size**: Capped at 16,000 chars (prevents LLM overflow)
+- **Index size**: SQLite, grows with codebase (incremental)
+
+### Resource Usage
+
+- **Memory**: ~50-100MB base + tool overhead
+- **Disk**: Workspace + .handy-coder/code_index.sqlite3
+- **CPU**: Minimal idle, spikes during indexing/builds
+- **Network**: Only for web_search, web_fetch_docs
+
+## Known Limitations & Trade-offs
+
+### Path Validation
+- **Limitation**: Heuristic-based, not OS-level isolation
+- **Trade-off**: Portability vs. absolute security
+- **Mitigation**: Only use trusted workspaces
+
+### Code Navigation
+- **Limitation**: Syntactic references only, not compiler-resolved
+- **Trade-off**: Speed vs. accuracy
+- **Benefit**: No compilation required, works on incomplete code
+
+### Index Staleness
+- **Limitation**: Index not updated after every code edit
+- **Trade-off**: Startup speed vs. real-time accuracy
+- **Benefit**: Incremental updates only scan changed files
+
+### Result Limits
+- **Limitation**: Large files/searches truncated
+- **Trade-off**: Context window preservation vs. completeness
+- **Mitigation**: Continue with line_ranges or offset
+
+## Architecture Decisions
+
+### Why Python?
+- Easy to install and distribute
+- Good standard library support
+- Rich ecosystem for file operations and language tools
+- Simpler subprocessing than Node.js
+
+### Why Worker Processes?
+- Isolation from server process
+- Automatic deadline enforcement
+- Recoverable from tool crashes
+- Semaphore prevents resource exhaustion
+
+### Why Local Indexing?
+- No external dependencies (no vector DB, embedding service)
+- Works offline
+- Incremental updates
+- Respects workspace .gitignore
+
+### Why Just-in-Time Routing?
+- Compact tool list (3 public vs. 20 internal)
+- Discovery before invocation
+- Reduces context needed to describe tools
+- Enables dynamic tool registration
+
+## Future Enhancements
+
+1. **Caching** — cache frequently-accessed file content
+2. **Differential indexing** — even faster updates for huge workspaces
+3. **Approval workflows** — explicit human approval for destructive ops
+4. **Multi-workspace** — coordinate across multiple projects
+5. **Offline embeddings** — local code search without API
+6. **Streaming results** — SSE transport alternative to stdio
+7. **Tool plugins** — user-defined custom tools
+
+## Summary
+
+Handy Coder MCP provides a **simple, workspace-scoped execution environment** for AI agents:
+
+- **20 tools** organized by capability
+- **Workspace confinement** with heuristic path validation
+- **Worker isolation** with 30s default timeouts
+- **Result capping** to prevent context overflow
+- **Background indexing** without blocking startup
+- **Subagent delegation** with role-based access control
+
+The architecture prioritizes **locality** (no remote services), **determinism** (no randomness in tool behavior), and **safety** (workspace scoping, result limits, supervision).
