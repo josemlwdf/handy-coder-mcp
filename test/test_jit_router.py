@@ -95,8 +95,9 @@ def test_router_guidance_and_internal_tool_descriptions() -> None:
     short_description = server._tool_manager._tools["invoke_tool"].description
     details = server._tool_manager._tools["get_tool_details"].fn("invoke_tool")
     assert "Do not call internal tools directly" in short_description
-    assert "get_capabilities" in details["description"]
-    assert "compact schemas" in details["description"]
+    assert details["message"] == (
+        "Check the native tools section for this tool's description and parameters."
+    )
     public_tools = {"get_capabilities", "get_tool_details", "invoke_tool"}
     get_details = server._tool_manager._tools["get_tool_details"].fn
     for name in server._tool_details_catalog.keys() - public_tools:

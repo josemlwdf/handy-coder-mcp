@@ -18,6 +18,9 @@ _ROUTER_PUBLIC_TOOLS = frozenset(
         "invoke_tool",
     }
 )
+_ROOT_TOOLS_MESSAGE = (
+    "Check the native tools section for this tool's description and parameters."
+)
 _ROUTER_ONLY_GUIDANCE = (
     "Do not call this tool directly; all calls must go through invoke_tool."
 )
@@ -536,6 +539,8 @@ def install(mcp: Any) -> None:
                 "error_code": "unknown_tool",
                 "message": message,
             }
+        if resolved_name in _ROUTER_PUBLIC_TOOLS:
+            return {"tool_name": resolved_name, "message": _ROOT_TOOLS_MESSAGE}
         schema = copy.deepcopy(entry["inputSchema"])
         arguments = _arguments(schema)
         arguments = {
@@ -613,7 +618,7 @@ def install(mcp: Any) -> None:
             consecutive_failures += 1
         else:
             last_failed_tool, consecutive_failures = target, 1
-        if consecutive_failures >= 2:
+        if consecutive_failures >= 2 and target not in _ROUTER_PUBLIC_TOOLS:
             result = dict(result)
             result["hint"] = (
                 "Inspect the full schema with invoke_tool(tool_name='get_tool_schema', "
