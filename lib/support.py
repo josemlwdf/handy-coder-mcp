@@ -295,7 +295,7 @@ def run_process(
     argv = command
     use_shell = shell
     if shell:
-        validate_shell_command(command, work)
+        validate_shell_command(command, work, env=env)
         selected_shell = shell_executable or SHELL
         if os.name == "nt":
             argv: list = [selected_shell, "-Command", command]
@@ -395,13 +395,22 @@ def run_process(
     }
 
 
-def validate_shell_command(command: str, cwd: Path) -> None:
-    """Reject obvious shell path escapes, including redirection and nested commands."""
+def validate_shell_command(
+    command: str, cwd: Path, *, env: dict[str, str] | None = None
+) -> None:
+    """Reject obvious shell path escapes, blacklisted commands, and escape hatch tampering."""
     if not command.strip():
         raise ValueError("command cannot be empty")
+    from .command_blacklist import (
+        check_tampering,
+        check_blacklisted_command,
+        is_blacklist_disabled_by_user,
+    )
+
+    check_tampering(command, env)
     if re.search(r"(?:\$\((.*?)\)|`([^`]+)`)", command):
         for m in re.finditer(r"\$\((.*?)\)|`([^`]+)`", command):
-            validate_shell_command(m.group(1) or m.group(2), cwd)
+            validate_shell_command(m.group(1) or m.group(2), cwd, env=env)
     if _HOME_ESCAPE_RE.search(command) or re.search(r"~(?:/|\\|\b)", command):
         raise ValueError(
             "Command references a home-directory escape outside the authorized workspace"
@@ -438,6 +447,28 @@ def validate_shell_command(command: str, cwd: Path) -> None:
                             f"Redirection target escapes authorized workspace: {target}"
                         )
 
+    # Check command blacklist on all command segments before checking path boundaries
+    if not is_blacklist_disabled_by_user():
+        current_cmd: list[str] = []
+        for token in tokens:
+            if (
+                token
+                and all(ch in _SHELL_PUNCTUATION for ch in token)
+                and "<" not in token
+                and ">" not in token
+            ):
+                if current_cmd:
+                    check_blacklisted_command(current_cmd)
+                    current_cmd = []
+            elif not (
+                token
+                and all(ch in _SHELL_PUNCTUATION for ch in token)
+                and ("<" in token or ">" in token)
+            ):
+                current_cmd.append(token)
+        if current_cmd:
+            check_blacklisted_command(current_cmd)
+
     at_command: bool = (
         True  # next word is a command name (start, or after ; && || | ( ))
     )
@@ -472,33 +503,33 @@ def validate_shell_command(command: str, cwd: Path) -> None:
                 requires_directory_target, saw_directory_target = False, False
             continue
         if expect_target:
-            expect_target: bool = False
+            expect_target = False
             _check_shell_token(token, cwd)
             continue
         if expect_script:
-            expect_script: bool = False
-            validate_shell_command(token, cwd)
+            expect_script = False
+            validate_shell_command(token, cwd, env=env)
             continue
         if at_command:
             if re.match(r"[A-Za-z_]\w*=", token):  # leading VAR=value assignment
                 _check_shell_token(token, cwd)
                 continue
-            at_command: bool = False
+            at_command = False
             command_name = re.sub(
                 r"\.exe$", "", Path(token.replace("\\", "/")).name.lower()
             )
             requires_directory_target = command_name in _DIR_CHANGE_COMMANDS
-            saw_directory_target: bool = False
+            saw_directory_target = False
             _check_shell_token(token, cwd, command_position=True)
             continue
         if command_name in _SHELL_INTERPRETERS and (
             re.fullmatch(r"-[A-Za-z]*c", token)
             or token.lower() in ("-command", "/c", "/k")
         ):
-            expect_script: bool = True
+            expect_script = True
             continue
         if command_name == "eval":
-            validate_shell_command(token, cwd)
+            validate_shell_command(token, cwd, env=env)
             continue
         if command_name in _LITERAL_ARG_COMMANDS:
             continue  # echo/printf arguments are text, not paths (redirections are still checked)
@@ -509,7 +540,7 @@ def validate_shell_command(command: str, cwd: Path) -> None:
                 raise ValueError(
                     f"'{command_name} {token}' is not allowed outside a fully isolated shell"
                 )
-            saw_directory_target: bool = True
+            saw_directory_target = True
         _check_shell_token(token, cwd)
 
     _finish_command()

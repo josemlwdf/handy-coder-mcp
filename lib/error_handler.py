@@ -16,6 +16,7 @@ from typing import Any
 
 from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import ValidationError
+from .command_blacklist import UnauthorizedCommandError
 
 _URL_NOTE = re.compile(
     r"\s*For further information visit https?://errors\.pydantic\.dev\S*"
@@ -86,6 +87,14 @@ def error_payload(exc: BaseException, tool_name: str | None = None) -> dict:
     cause = exc.__cause__
     if isinstance(cause, ValidationError):
         payload = _validation_payload(cause, tool_name)
+    elif isinstance(cause, UnauthorizedCommandError):
+        payload = {
+            "error_code": "unauthorized_command",
+            "message": _clean(cause),
+            "suggested_tool": cause.suggested_tool,
+        }
+        if cause.suggested_action:
+            payload["suggested_action"] = cause.suggested_action
     elif isinstance(cause, ValueError):
         payload: dict = {
             "error_code": "invalid_argument",

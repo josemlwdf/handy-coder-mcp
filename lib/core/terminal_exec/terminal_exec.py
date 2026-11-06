@@ -67,7 +67,9 @@ def register(mcp):
         description=describe(
             "Run a shell command in the workspace or a confined subdirectory. "
             "Stdout and stderr are each limited to 4,000 characters; timeout defaults to 30 seconds (up to 600s). "
-            'Accepts optional env as an object of string values (for example {"MODE": "test"}) and stdin; response exit_code is the process exit status (124 on timeout). Uses heuristic lexical checks to prevent recognizable path escapes, but this is not a complete sandbox; checks can be bypassed and are not OS isolation. Shell selection defaults to configured shell.',
+            'Accepts optional env as an object of string values (for example {"MODE": "test"}) and stdin; response exit_code is the process exit status (124 on timeout). '
+            "Commands covered by dedicated lifecycle tools (git_manage, run_tests, build_project, code_get_diagnostics, code_polish) are unauthorized in shell execution; use the dedicated MCP tools instead. "
+            "Uses heuristic lexical checks to prevent recognizable path escapes, but this is not a complete sandbox; checks can be bypassed and are not OS isolation. Shell selection defaults to configured shell.",
             include_working_directory=True,
         )
     )(terminal_exec)
