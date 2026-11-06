@@ -11,6 +11,43 @@ capabilities_module = importlib.import_module(
 
 
 class GetCapabilitiesSummaryTests(unittest.TestCase):
+    def test_usage_signatures_come_from_registered_schemas(self):
+        class Tool:
+            def __init__(self, parameters):
+                self.parameters = parameters
+
+        class Manager:
+            _tools = {
+                "sample": Tool({"type": "object", "properties": {
+                    "name": {"type": "string"}, "count": {"type": "integer", "default": 3},
+                    "mystery": {"type": "boolean"},
+                }, "required": ["name"]}),
+                "empty": Tool({"type": "object", "properties": {}}),
+            }
+        class Server:
+            _tool_manager = Manager()
+        previous = capabilities_module._MCP
+        capabilities_module._MCP = Server()
+        self.addCleanup(setattr, capabilities_module, "_MCP", previous)
+        self.assertEqual(capabilities_module._tool_usage_signature("sample"),
+                         '(name: string, count?: int = 3, mystery?: bool)')
+        self.assertEqual(capabilities_module._tool_usage_signature("empty"), "()")
+
+    def test_list_dir_signature_and_router_guidance(self):
+        from mcp.server.fastmcp import FastMCP
+        from lib.core.list_dir.list_dir import register
+        mcp = FastMCP("capability-signature")
+        register(mcp)
+        previous = capabilities_module._MCP
+        capabilities_module._MCP = mcp
+        self.addCleanup(setattr, capabilities_module, "_MCP", previous)
+        result = capabilities_module.get_capabilities(categories=["file_management"])
+        self.assertEqual(result["tools"]["file_management"]["always_enabled"]["list_dir"]["usage"],
+                         "(path?: string = '.')")
+        hint = result["_hint"]
+        self.assertIn("directly", hint)
+        self.assertIn("get_tool_details", hint)
+
     def test_curated_tool_and_skill_summaries_are_five_words(self):
         previous = capabilities_module._MCP
         capabilities_module._MCP = None

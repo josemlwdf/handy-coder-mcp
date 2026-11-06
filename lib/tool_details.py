@@ -545,16 +545,23 @@ def install(mcp: Any) -> None:
             entry = catalog.get(resolved_name)
             runtime_tool = manager_tools.get(resolved_name)
 
-        if entry is None or runtime_tool is None:
+        if (
+            entry is None
+            or runtime_tool is None
+            or canonical_name in _ROUTER_PUBLIC_TOOLS
+            or resolved_name in _ROUTER_PUBLIC_TOOLS
+        ):
             message = f"Unknown or unavailable tool: {requested_name}"
-            if canonical_name and canonical_name != requested_name:
+            if (
+                canonical_name
+                and canonical_name != requested_name
+                and canonical_name not in _ROUTER_PUBLIC_TOOLS
+            ):
                 message = f"{message}. Try canonical tool name '{canonical_name}'."
             return {
                 "error_code": "unknown_tool",
                 "message": message,
             }
-        if resolved_name in _ROUTER_PUBLIC_TOOLS:
-            return {"tool_name": resolved_name, "message": _ROOT_TOOLS_MESSAGE}
         schema = copy.deepcopy(entry["inputSchema"])
         arguments = _arguments(schema)
         arguments = {
@@ -654,10 +661,10 @@ def install(mcp: Any) -> None:
             ),
         ],
     ) -> Any:
-        """Use get_capabilities to find tools and get_tool_details for compact schemas, then invoke a tool here.
+        """Use get_capabilities to find tools, then invoke simple, clearly described tools here.
 
-        Never call internal tools directly; all internal tool calls must go through
-        this router with schema-valid arguments.
+        Call every internal tool through this router with schema-valid arguments.
+        Use get_tool_details when arguments, behavior, or constraints remain unclear.
         """
         requested_name = (tool_name or "").strip()
         canonical = _canonical_tool_name(requested_name)
@@ -701,8 +708,8 @@ def install(mcp: Any) -> None:
     register_meta(
         "invoke_tool",
         (
-            "Do not call internal tools directly; select a tool and its arguments, "
-            "then call it only through invoke_tool."
+            "Invoke simple, clearly described tools through invoke_tool. "
+            "Use get_tool_details when arguments, behavior, or constraints remain unclear."
         ),
         invoke_tool,
         detailed_description=inspect.getdoc(invoke_tool),

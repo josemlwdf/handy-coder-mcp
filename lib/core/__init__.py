@@ -18,7 +18,6 @@ _tools = {
     "web_search_tool": "web_search",
     "gowitness_screenshot": "capture_url_screenshot",
     "code_navigator": "code_intel",
-    "system_info": "get_capabilities",
     "skills": "skills_manage",
     "orchestrator": "orchestrator",
     "code_polish": "code_polish",
@@ -31,6 +30,11 @@ for _legacy, _public in _tools.items():
     _sys.modules[f"lib.core.{_public}"] = _module
     if _legacy != _public:
         _sys.modules[f"lib.core.{_legacy}"] = _module
+
+# Preserve the legacy system_info adapter while exposing get_capabilities as
+# the category-based implementation module.
+system_info = _importlib.import_module(".system_info", __name__)
+_sys.modules["lib.core.system_info"] = system_info
 
 html_syntax_check = _importlib.import_module(".html_syntax_check", __name__)
 syntax_checker = _importlib.import_module(".syntax_checker", __name__)

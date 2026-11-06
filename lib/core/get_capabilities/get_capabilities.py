@@ -39,6 +39,40 @@ def _five_words(value: str) -> str:
     words.extend(["tool", "capability", "summary"][: 5 - len(words)])
     return " ".join(words)
 
+
+def _tool_usage_signature(name: str) -> str:
+    """Summarize a registered tool's top-level inputs without guessing defaults."""
+    manager = getattr(_MCP, "_tool_manager", None)
+    tool = getattr(manager, "_tools", {}).get(name)
+    schema = getattr(tool, "parameters", None)
+    if not isinstance(schema, dict):
+        schema = getattr(tool, "input_schema", None)
+    if not isinstance(schema, dict):
+        return "()"
+    properties = schema.get("properties", {})
+    if not isinstance(properties, dict) or not properties:
+        return "()"
+    required = set(schema.get("required", []))
+    short_types = {"integer": "int", "number": "float", "boolean": "bool"}
+    arguments = []
+    for arg, definition in properties.items():
+        definition = definition if isinstance(definition, dict) else {}
+        arg_type = definition.get("type", "any")
+        if isinstance(arg_type, list):
+            arg_type = "|".join(short_types.get(t, t) for t in arg_type)
+        else:
+            arg_type = short_types.get(arg_type, arg_type)
+        if arg in required:
+            arguments.append(f"{arg}: {arg_type}")
+        else:
+            value = f"{arg}?: {arg_type}"
+            if "default" in definition:
+                default = definition["default"]
+                rendered_default = repr(default) if isinstance(default, str) else json.dumps(default, ensure_ascii=False)
+                value += f" = {rendered_default}"
+            arguments.append(value)
+    return "(" + ", ".join(arguments) + ")"
+
 _MCP: None = None
 
 VALID_CATEGORIES = (
@@ -272,11 +306,11 @@ def get_capabilities(
         runtime = {}
         for name in names:
             item = metadata[name]
-            entry = {"description": tool_summaries.get(name, _five_words(item.get("note", name)))}
+            entry = {"description": tool_summaries.get(name, _five_words(item.get("note", name))), "usage": _tool_usage_signature(name)}
             if name == "skills_manage":
                 entry["note"] = item["note"]
             if name in runtime_only:
-                runtime[name] = {"description": entry["description"], **{key: value for key, value in item.items() if key != "note"}}
+                runtime[name] = {"description": entry["description"], "usage": entry["usage"], **{key: value for key, value in item.items() if key != "note"}}
             else:
                 always[name] = entry
         category = {}
@@ -312,7 +346,7 @@ def get_capabilities(
             result["skills"] = matched_skills
     if any(tools_result.values()) or result.get("skills"):
         result["_hint"] = (
-            "Use get_tool_details for tool schemas and skills_manage to retrieve full skill content."
+            "Invoke simple tools with clear descriptions directly through invoke_tool. Use get_tool_details when arguments, behavior, or constraints remain unclear; use skills_manage to retrieve full skill content."
         )
     if requested["ai_coordination"]:
         result["subagents"] = {"backend": subagent_backend, **({"continue": continue_info} if continue_info else {})}

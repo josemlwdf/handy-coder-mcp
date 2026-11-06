@@ -71,11 +71,10 @@ def test_schema_helper_is_hidden_from_capabilities() -> None:
     previous_mcp = capabilities_module._MCP
     capabilities_module._MCP = server
     try:
-        capabilities = capabilities_module.get_capabilities()
+        capabilities = capabilities_module.get_capabilities(categories=["file_management"])
     finally:
         capabilities_module._MCP = previous_mcp
-    assert "get_tool_schema" not in capabilities["tools"]["always_enabled"]
-    assert "get_tool_schema" not in capabilities["tools"]["runtime"]
+    assert "get_tool_schema" not in capabilities["tools"]["file_management"]["always_enabled"]
 
 
 def test_get_tool_details_is_compact_and_schema_helper_returns_full_details() -> None:
@@ -98,13 +97,22 @@ def test_get_tool_details_is_compact_and_schema_helper_returns_full_details() ->
 def test_router_guidance_and_internal_tool_descriptions() -> None:
     server = _server()
     short_description = server._tool_manager._tools["invoke_tool"].description
-    details = server._tool_manager._tools["get_tool_details"].fn("invoke_tool")
-    assert "Do not call internal tools directly" in short_description
-    assert details["message"] == (
-        "Check the native tools section for this tool's description and parameters."
-    )
+    assert "Invoke simple, clearly described tools" in short_description
+    assert "simple, clearly described tools" in short_description
+    assert "get_tool_details when arguments, behavior, or constraints remain unclear" in short_description
     public_tools = {"get_capabilities", "get_tool_details", "invoke_tool"}
     get_details = server._tool_manager._tools["get_tool_details"].fn
+    get_schema = server._tool_manager._tools["get_tool_schema"].fn
+    for public_tool in public_tools:
+        result = get_details(public_tool)
+        assert result.get("error_code") == "unknown_tool"
+        assert f"Unknown or unavailable tool: {public_tool}" in result.get("message", "")
+        schema_result = get_schema(public_tool)
+        assert schema_result.get("error_code") == "unknown_tool"
+    prefixed_result = get_details("handy_coder_invoke_tool")
+    assert prefixed_result.get("error_code") == "unknown_tool"
+    assert "Unknown or unavailable tool: handy_coder_invoke_tool" in prefixed_result.get("message", "")
+    assert "Try canonical tool name" not in prefixed_result.get("message", "")
     for name in server._tool_details_catalog.keys() - public_tools:
         assert server._tool_manager._tools[name].description.startswith(
             "all calls must go through invoke_tool."
