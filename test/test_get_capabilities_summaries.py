@@ -21,7 +21,7 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
             categories=[
                 "file_management", "code_analysis", "build_test",
                 "web", "system", "ai_coordination",
-                "image_skills", "git_management",
+                "image", "git_management", "skills",
             ]
         )
         self.assertIn("get_tool_details", result["_hint"])
@@ -45,7 +45,7 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         bool_result = capabilities_module.get_capabilities(
             file_management=True, code_analysis=True, build_test=True,
             web=True, system=True, ai_coordination=True,
-            image_skills=True, git_management=True,
+            image=True, git_management=True, skills=True,
         )
         self.assertEqual(set(bool_result["tools"]), set(result["tools"]))
 
@@ -99,27 +99,92 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         result_cat = capabilities_module.get_capabilities(categories=["git_management"])
         self.assertEqual(result, result_cat)
 
-        image = capabilities_module.get_capabilities(image_skills=True)
+        image = capabilities_module.get_capabilities(image=True)
         self.assertIn("get_tool_details", image["_hint"])
-        self.assertEqual(set(image["tools"]), {"image_skills"})
+        self.assertEqual(set(image["tools"]), {"image"})
         self.assertEqual(
-            set(image["tools"]["image_skills"]["always_enabled"]),
-            {"inspect_image", "skills_manage"},
+            set(image["tools"]["image"]["always_enabled"]),
+            {"inspect_image"},
         )
-        self.assertTrue(image["skills"])
+        self.assertNotIn("skills", image)
         self.assertNotIn("workspace_root", image)
         self.assertNotIn("subagents", image)
 
-        workspace = capabilities_module.get_capabilities(workspace_runtime=True)
+        skills_tool = capabilities_module.get_capabilities(categories=["skills"])
+        self.assertEqual(set(skills_tool["tools"]), {"skills"})
+        self.assertEqual(
+            set(skills_tool["tools"]["skills"]["always_enabled"]),
+            {"skills_manage"},
+        )
+        self.assertNotIn("skills", skills_tool)
+
+        workspace = capabilities_module.get_capabilities(workspace_context=True)
         self.assertEqual(set(workspace), {"tools", "workspace_root"})
         self.assertEqual(workspace["tools"], {})
         self.assertNotIn("_hint", workspace)
 
-        subagents = capabilities_module.get_capabilities(subagents=True)
-        self.assertEqual(set(subagents), {"tools", "subagents"})
-        self.assertEqual(set(subagents["tools"]), set())
-        self.assertNotIn("_hint", subagents)
-        self.assertNotIn("get_capabilities", str(subagents["tools"]))
+        ai_coordination = capabilities_module.get_capabilities(ai_coordination=True)
+        self.assertEqual(
+            set(ai_coordination), {"_hint", "tools", "skills", "subagents"}
+        )
+        self.assertEqual(set(ai_coordination["tools"]), {"ai_coordination"})
+        self.assertEqual(
+            set(ai_coordination["tools"]["ai_coordination"]["runtime"]),
+            {"subagent_manage"},
+        )
+        self.assertIn("backend", ai_coordination["subagents"])
+        self.assertEqual(
+            {skill["name"] for skill in ai_coordination["skills"]},
+            {"handoff", "plan"},
+        )
+        self.assertNotIn("get_capabilities", str(ai_coordination["tools"]))
+
+    def test_category_schema_keeps_subagents_visible_and_workspace_context_clear(self):
+        from typing import get_type_hints
+
+        annotation = get_type_hints(
+            capabilities_module.get_capabilities, include_extras=True
+        )["categories"]
+        description = annotation.__metadata__[0].description
+        self.assertIn("ai_coordination (subagent tools and backend/models)", description)
+        self.assertIn("workspace_context (root only)", description)
+        self.assertNotIn("workspace_runtime", description)
+        self.assertNotIn("workspace_runtime", capabilities_module.VALID_CATEGORIES)
+
+        old_category = capabilities_module.get_capabilities(categories=["workspace_runtime"])
+        self.assertEqual(set(old_category), {"_hint"})
+        self.assertNotIn("subagents", capabilities_module.VALID_CATEGORIES)
+        self.assertNotIn("subagents", description)
+        self.assertIn("image", capabilities_module.VALID_CATEGORIES)
+        self.assertNotIn("image_skills", capabilities_module.VALID_CATEGORIES)
+
+    def test_selected_tool_categories_include_matching_skills_only(self):
+        skills = [
+            {"name": "python-tests", "description": "Test skill", "tags": ["Python", "testing"]},
+            {"name": "planning", "description": "Planning skill", "tags": ["planning"]},
+            {"name": "web-api", "description": "Web API skill", "tags": ["web-api"]},
+        ]
+        with patch.object(
+            capabilities_module, "_list_skills", return_value={"skills": skills}
+        ):
+            tests = capabilities_module.get_capabilities(categories=["build_test"])
+            planning = capabilities_module.get_capabilities(categories=["planning"])
+            web = capabilities_module.get_capabilities(categories=["web"])
+
+        self.assertEqual(
+            [skill["name"] for skill in tests["skills"]], ["python-tests"]
+        )
+        self.assertEqual(
+            [skill["name"] for skill in planning["skills"]], ["planning"]
+        )
+        self.assertEqual(
+            [skill["name"] for skill in web["skills"]], ["web-api"]
+        )
+        self.assertIn("web_search", web["tools"]["web"]["always_enabled"])
+        self.assertNotIn("web_development", capabilities_module.VALID_CATEGORIES)
+        self.assertEqual(tests["tools"]["build_test"]["runtime"]["run_tests"]["description"],
+                         "Run project tests and report")
+        self.assertEqual(planning["tools"], {"planning": {}})
 
     def test_default_flags_and_registered_schema(self):
         import inspect
@@ -141,3 +206,6 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         properties = server._tool_manager._tools["get_capabilities"].parameters["properties"]
         self.assertEqual(set(properties), {"categories"})
         self.assertIn("categories", properties)
+        description = properties["categories"]["description"]
+        self.assertIn("communication. Skills are included with matching categories.", description)
+        self.assertGreater(len(description), 160)

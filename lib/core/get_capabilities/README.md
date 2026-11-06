@@ -28,7 +28,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
         }
       ],
       "default": null,
-      "description": "Capability categories to include: file_management, code_analysis, build_test, web, system, ai_coordination, image_skills, git_management, workspace_runtime, subagents. (Required: False)",
+      "description": "Categories: ai_coordination (subagent tools and backend/models), workspace_context (root only), file_management, code_analysis, build_test, web, system, image, git_management, skills (skills management tool), planning, documentation, communication. Skills are included with matching categories. (Required: False)",
       "title": "Categories"
     }
   },
@@ -41,7 +41,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 Returns the structured result produced by the implementation. Error results and status fields are tool-specific; inspect the returned object and its documented fields rather than assuming that a process or operation succeeded.
 
-With no arguments, the result is a usage hint and does not probe runtime capabilities. Set one or more categories in `categories` (or pass category flags) to retrieve only those sections. Requested tool categories contain `always_enabled` and/or `runtime` maps; runtime-dependent availability details stay in `runtime`. `workspace_runtime` adds `workspace_root`; `subagents` adds safe backend/model details; and `image_skills` adds both `inspect_image` and `skills_manage`, plus the available skills list. Tool and skill descriptions are maintained in the colocated `summaries.json`.
+With no arguments, the result is a usage hint and does not probe runtime capabilities. Set one or more categories in `categories` (or pass category flags) to retrieve only those sections. Requested tool categories contain `always_enabled` and/or `runtime` maps; runtime-dependent availability details stay in `runtime`. Skills tagged for a selected category are returned in the top-level `skills` list. `ai_coordination` includes the `subagent_manage` tool and safe backend/model details in the top-level `subagents` field. `workspace_context` adds only the configured `workspace_root` path; it does not describe runtime or execution tools. `image` contains only `inspect_image`. `skills` contains only `skills_manage` and does not list skills. `planning`, `documentation`, and `communication` provide categories for skills that do not fit existing tool categories. Web and web-development tools and skills are grouped in `web`. Tool and skill descriptions are maintained in the colocated `summaries.json`.
 
 ## Side effects and runtime requirements
 

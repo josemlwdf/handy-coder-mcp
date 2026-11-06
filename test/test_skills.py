@@ -235,7 +235,7 @@ class SkillsToolTests(unittest.TestCase):
             "_load_summaries",
             return_value=json.loads(self.summary_file.read_text(encoding="utf-8")),
         ):
-            result = capabilities.get_capabilities()
+            result = capabilities.get_capabilities(categories=["build_test"])
         description = next(
             item["description"] for item in result["skills"] if item["name"] == "my-skill"
         )

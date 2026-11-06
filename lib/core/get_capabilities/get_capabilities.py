@@ -42,16 +42,61 @@ def _five_words(value: str) -> str:
 _MCP: None = None
 
 VALID_CATEGORIES = (
+    "workspace_context",
     "file_management",
     "code_analysis",
     "build_test",
     "web",
     "system",
     "ai_coordination",
-    "image_skills",
+    "image",
     "git_management",
-    "workspace_runtime",
-    "subagents",
+    "skills",
+    "planning",
+    "documentation",
+    "communication",
+)
+
+SKILL_TAG_CATEGORIES = {
+    "architecture": {"code_analysis"},
+    "backend": {"web"},
+    "coding": {"code_analysis"},
+    "communication": {"communication"},
+    "continuity": {"ai_coordination", "documentation"},
+    "critical-thinking": {"planning"},
+    "debugging": {"code_analysis"},
+    "decision-making": {"planning"},
+    "delegation": {"ai_coordination", "planning"},
+    "diagnostics": {"code_analysis"},
+    "documentation": {"documentation"},
+    "evidence": {"code_analysis"},
+    "handoff": {"ai_coordination", "documentation"},
+    "interview": {"planning"},
+    "mtp": {"build_test"},
+    "modules": {"code_analysis"},
+    "openapi": {"web"},
+    "optimization": {"code_analysis"},
+    "performance": {"code_analysis"},
+    "planning": {"planning"},
+    "python": {"code_analysis"},
+    "pytest": {"build_test"},
+    "refactoring": {"code_analysis"},
+    "reporting": {"build_test"},
+    "research": {"web"},
+    "task-management": {"planning"},
+    "testability": {"code_analysis"},
+    "test-runner": {"build_test"},
+    "testing": {"build_test"},
+    "troubleshooting": {"code_analysis"},
+    "triage": {"build_test"},
+    "vstest": {"build_test"},
+    "web-api": {"web"},
+    "writing": {"communication"},
+}
+SKILL_CATEGORIES = frozenset(
+    category
+    for categories_for_tag in SKILL_TAG_CATEGORIES.values()
+    for category in categories_for_tag
 )
 
 
@@ -60,7 +105,7 @@ def get_capabilities(
         list[str] | None,
         Field(
             default=None,
-            description="Capability categories to include: file_management, code_analysis, build_test, web, system, ai_coordination, image_skills, git_management, workspace_runtime, subagents. (Required: False)",
+            description="Categories: ai_coordination (subagent tools and backend/models), workspace_context (root only), file_management, code_analysis, build_test, web, system, image, git_management, skills (skills management tool), planning, documentation, communication. Skills are included with matching categories. (Required: False)",
         ),
     ] = None,
     file_management: Annotated[
@@ -81,17 +126,26 @@ def get_capabilities(
     ai_coordination: Annotated[
         bool, Field(description="Include AI-coordination tool summaries. (Required: False)")
     ] = False,
-    image_skills: Annotated[
-        bool, Field(description="Include image and skills tool summaries. (Required: False)")
+    image: Annotated[
+        bool, Field(description="Include image-inspection tool summaries. (Required: False)")
     ] = False,
     git_management: Annotated[
         bool, Field(description="Include git-management tool summaries. (Required: False)")
     ] = False,
-    workspace_runtime: Annotated[
-        bool, Field(description="Include workspace runtime details. (Required: False)")
+    skills: Annotated[
+        bool, Field(description="Include the skill-management tool only. (Required: False)")
     ] = False,
-    subagents: Annotated[
-        bool, Field(description="Include subagent backend and model details. (Required: False)")
+    planning: Annotated[
+        bool, Field(description="Include planning skills. (Required: False)")
+    ] = False,
+    documentation: Annotated[
+        bool, Field(description="Include documentation skills. (Required: False)")
+    ] = False,
+    communication: Annotated[
+        bool, Field(description="Include communication skills. (Required: False)")
+    ] = False,
+    workspace_context: Annotated[
+        bool, Field(description="Include the configured workspace root path. (Required: False)")
     ] = False,
 ) -> dict:
     """Return only the requested capability sections."""
@@ -102,10 +156,13 @@ def get_capabilities(
         "web": web,
         "system": system,
         "ai_coordination": ai_coordination,
-        "image_skills": image_skills,
+        "image": image,
         "git_management": git_management,
-        "workspace_runtime": workspace_runtime,
-        "subagents": subagents,
+        "skills": skills,
+        "planning": planning,
+        "documentation": documentation,
+        "communication": communication,
+        "workspace_context": workspace_context,
     }
     if categories:
         for cat in categories:
@@ -126,8 +183,12 @@ def get_capabilities(
         "web": ("web_search", "web_fetch_docs", "capture_url_screenshot"),
         "system": ("terminal_exec", "orchestrator", "get_tool_details"),
         "ai_coordination": ("subagent_manage",),
-        "image_skills": ("inspect_image", "skills_manage"),
+        "image": ("inspect_image",),
         "git_management": ("git_manage",),
+        "skills": ("skills_manage",),
+        "planning": (),
+        "documentation": (),
+        "communication": (),
     }
     # Runtime probes are done only for sections that need their results.
     git_ok = shutil.which("git") is not None if requested["git_management"] else None
@@ -163,7 +224,7 @@ def get_capabilities(
             indexer = {"state": "unavailable", "worker_alive": None, "message": str(exc)}
     subagent_backend = None
     continue_info = None
-    if requested["subagents"]:
+    if requested["ai_coordination"]:
         subagent_backend = resolve_backend()
         continue_models = resolve_continue_models()
         if subagent_backend.startswith("continue:"):
@@ -197,7 +258,7 @@ def get_capabilities(
         "code_intel": {"available": True, "note": "navigate the automatically maintained multilingual source index with search_code, get_symbol, or find_references", "indexer": indexer},
         "get_tool_details": {"available": True, "note": "gets tool docs and arguments; unknown name: unknown_tool"},
         "web_fetch_docs": {"available": True, "note": "fetch public HTTP(S) text"},
-        "subagent_manage": {"available": True, **({"backend": subagent_backend} if requested["subagents"] else {}), "roles": {name: {"result_format": role.result_format} for name, role in ROLES.items()}, "note": "manage subagents; actions: run, status, result, complete, cancel"},
+        "subagent_manage": {"available": True, **({"backend": subagent_backend} if requested["ai_coordination"] else {}), "roles": {name: {"result_format": role.result_format} for name, role in ROLES.items()}, "note": "manage subagents; actions: run, status, result, complete, cancel"},
         "inspect_image": {"available": True, "note": "inspect workspace image via generalist multimodal backend"},
     }
     result: dict = {}
@@ -224,16 +285,36 @@ def get_capabilities(
         if runtime:
             category["runtime"] = runtime
         tools_result[section] = category
-    if any(tools_result.values()):
-        result["_hint"] = (
-            "Use get_tool_details with a tool name to get its full documentation and argument schema."
-        )
     result["tools"] = tools_result
-    if requested["workspace_runtime"]:
+    if requested["workspace_context"]:
         result["workspace_root"] = str(support.ROOT)
-    if requested["image_skills"]:
-        result["skills"] = [{"name": item["name"], "description": skill_summaries.get(item["name"], _five_words(item.get("description", "")))} for item in _list_skills()["skills"]]
-    if requested["subagents"]:
+    selected_categories = {
+        category for category, selected in requested.items() if selected
+    }
+    if selected_categories & SKILL_CATEGORIES:
+        matched_skills = []
+        for item in _list_skills()["skills"]:
+            categories_for_skill = set()
+            for tag in item.get("tags", []):
+                categories_for_skill.update(
+                    SKILL_TAG_CATEGORIES.get(tag.casefold(), set())
+                )
+            if categories_for_skill & selected_categories:
+                matched_skills.append(
+                    {
+                        "name": item["name"],
+                        "description": skill_summaries.get(
+                            item["name"], _five_words(item.get("description", ""))
+                        ),
+                    }
+                )
+        if matched_skills:
+            result["skills"] = matched_skills
+    if any(tools_result.values()) or result.get("skills"):
+        result["_hint"] = (
+            "Use get_tool_details for tool schemas and skills_manage to retrieve full skill content."
+        )
+    if requested["ai_coordination"]:
         result["subagents"] = {"backend": subagent_backend, **({"continue": continue_info} if continue_info else {})}
     return result
 

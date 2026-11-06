@@ -188,22 +188,23 @@ def _schema(tool: Any) -> dict:
         return {}
     return copy.deepcopy(schema)
 
-def _strip_descriptions(value: Any) -> None:
+def _strip_descriptions(value: Any, *, preserve_full: bool = False) -> None:
     """Strip descriptions function."""
     if isinstance(value, dict):
         if isinstance(value.get("description"), str):
             desc = value["description"]
-            brief = _brief(desc)
-            if "Required: True" in desc and "Required: True" not in brief:
-                brief = f"{brief} (Required: True)"
-            elif "Required: False" in desc and "Required: False" not in brief:
-                brief = f"{brief} (Required: False)"
-            value["description"] = brief
+            if not preserve_full:
+                brief = _brief(desc)
+                if "Required: True" in desc and "Required: True" not in brief:
+                    brief = f"{brief} (Required: True)"
+                elif "Required: False" in desc and "Required: False" not in brief:
+                    brief = f"{brief} (Required: False)"
+                value["description"] = brief
         for child in value.values():
-            _strip_descriptions(child)
+            _strip_descriptions(child, preserve_full=preserve_full)
     elif isinstance(value, list):
         for child in value:
-            _strip_descriptions(child)
+            _strip_descriptions(child, preserve_full=preserve_full)
 
 def _normalize_union_types(value: Any) -> None:
     """Unwrap simple nullable unions to their concrete schema type."""
@@ -492,7 +493,9 @@ def install(mcp: Any) -> None:
             }
             if runtime_tool is not None:
                 brief_schema = copy.deepcopy(full_schema)
-                _strip_descriptions(brief_schema)
+                _strip_descriptions(
+                    brief_schema, preserve_full=name == "get_capabilities"
+                )
                 _normalize_schema_types(brief_schema)
                 _inline_local_refs(brief_schema)
                 if hasattr(runtime_tool, "parameters"):
