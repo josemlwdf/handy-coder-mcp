@@ -256,8 +256,7 @@ class CommandBlacklistTests(unittest.TestCase):
         self.assertEqual(payload["error_code"], "unauthorized_command")
         self.assertEqual(payload["suggested_tool"], "git_manage")
         self.assertEqual(payload["suggested_action"], "commit")
-        self.assertIn("Prefer the 'git_manage' tool instead.", payload["message"])
-        self.assertIn("unauthorized", payload["message"])
+        self.assertEqual(payload["message"], "'git commit' command is unauthorized.")
 
     def test_worker_preserves_unauthorized_command_error(self) -> None:
         """A blocked terminal command remains an authorization error across worker IPC."""

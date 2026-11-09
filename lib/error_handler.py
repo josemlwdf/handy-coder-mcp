@@ -89,16 +89,11 @@ def error_payload(exc: BaseException, tool_name: str | None = None) -> dict:
         payload = _validation_payload(cause, tool_name)
     elif isinstance(cause, UnauthorizedCommandError):
         message = _clean(cause)
-        recommendation = (
-            f"Prefer the '{cause.suggested_tool}' tool instead."
-        )
-        existing_recommendation = (
-            f"Use the '{cause.suggested_tool}' tool instead."
-        )
-        if existing_recommendation in message:
-            message = message.replace(existing_recommendation, recommendation)
-        elif cause.suggested_tool != tool_name:
-            message = f"{message} {recommendation}".strip()
+        # Tool/action guidance is already represented in structured fields. Keep
+        # the human-readable message focused on the command that was rejected.
+        if tool_name == "terminal_exec" and cause.suggested_tool != "terminal_exec":
+            message = re.split(r"\s+Use the '\w+' tool instead", message, maxsplit=1)[0]
+            message = message.rstrip(" .") + "."
         payload = {
             "error_code": "unauthorized_command",
             "message": message,
