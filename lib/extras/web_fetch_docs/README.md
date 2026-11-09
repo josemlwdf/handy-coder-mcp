@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Fetch and extract text from a public HTTP(S) documentation page.
+Fetch content from a public HTTP(S) documentation page. HTML/XHTML is returned as decoded source by default; set `html2text` to extract readable text instead.
 
 ## When and how to call it
 
@@ -26,6 +26,12 @@ The JSON Schema below is the registered input contract. Required fields appear i
       "minimum": 0,
       "title": "Offset",
       "type": "integer"
+    },
+    "html2text": {
+      "default": false,
+      "description": "For HTML/XHTML responses, convert the page to readable text and omit tags, comments, scripts, styles, and hidden content. Defaults to false, which returns the decoded HTML source. Other supported text formats are unchanged. (Required: False)",
+      "title": "Html2Text",
+      "type": "boolean"
     }
   },
   "required": [

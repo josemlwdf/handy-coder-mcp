@@ -93,6 +93,18 @@ class UnauthorizedCommandError(ValueError):
         self.suggested_tool = tool
         self.suggested_action = action
 
+    def __reduce__(self) -> tuple:
+        return (
+            _restore_unauthorized_command_error,
+            (str(self), self.suggested_tool, self.suggested_action),
+        )
+
+
+def _restore_unauthorized_command_error(
+    message: str, tool: str, action: str | None
+) -> UnauthorizedCommandError:
+    return UnauthorizedCommandError(message, tool=tool, action=action)
+
 
 def check_tampering(command: str, env: dict[str, str] | None = None) -> None:
     """Ensure the agent is not attempting to set the escape hatch environment variable.

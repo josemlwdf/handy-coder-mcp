@@ -62,10 +62,74 @@ class Tier2ToolTests(unittest.TestCase):
                 False,
             ),
         ):
-            result = web_fetch._fetch("https://example.com/docs")
+            result = web_fetch._fetch("https://example.com/docs", html2text=True)
         self.assertEqual(result["title"], "Docs")
         self.assertIn("Useful text", result["content"])
         self.assertNotIn("secret", result["content"])
+
+    def test_web_fetch_html2text_modes_and_pagination(self) -> None:
+        """HTML mode controls content, metadata length, and pagination."""
+        html = (
+            "<html><head><title>Docs</title><style>.secret{}</style>"
+            "<script>secret()</script></head><!-- comment -->"
+            "<body><p>" + ("A" * 20_010) + "</p></body></html>"
+        )
+        response = (
+            html.encode(),
+            "https://example.com/docs",
+            "text/html",
+            200,
+            False,
+        )
+        with patch.object(web_fetch, "_request", return_value=response):
+            default = web_fetch.web_fetch_docs(url="https://example.com/docs")
+            explicit_raw = web_fetch.web_fetch_docs(
+                url="https://example.com/docs", html2text=False
+            )
+            extracted = web_fetch.web_fetch_docs(
+                url="https://example.com/docs", html2text=True
+            )
+            raw_later = web_fetch.web_fetch_docs(
+                url="https://example.com/docs", offset=20_000
+            )
+            text_later = web_fetch.web_fetch_docs(
+                url="https://example.com/docs", offset=20_000, html2text=True
+            )
+
+        self.assertEqual(default["content"], html[:20_000])
+        self.assertEqual(explicit_raw["content"], default["content"])
+        self.assertEqual(default["title"], "Docs")
+        self.assertEqual(extracted["title"], "Docs")
+        self.assertIn("<script>", default["content"])
+        self.assertIn("<style>", default["content"])
+        self.assertIn("<!-- comment -->", default["content"])
+        self.assertNotIn("<", extracted["content"])
+        self.assertNotIn("secret", extracted["content"])
+        self.assertEqual(default["total_length"], len(html))
+        self.assertEqual(extracted["total_length"], len("Docs\n" + ("A" * 20_010)))
+        self.assertEqual(default["next_offset"], 20_000)
+        self.assertEqual(extracted["next_offset"], 20_000)
+        self.assertEqual(raw_later["content"], html[20_000:])
+        self.assertEqual(text_later["content"], "A" * 15)
+        self.assertIsNone(text_later["next_offset"])
+
+    def test_web_fetch_html2text_leaves_non_html_text_unchanged(self) -> None:
+        """HTML conversion option does not affect other text content types."""
+        response = (
+            b"<p>plain text payload</p>",
+            "https://example.com/data",
+            "text/plain",
+            200,
+            False,
+        )
+        with patch.object(web_fetch, "_request", return_value=response):
+            raw_default = web_fetch.web_fetch_docs(url="https://example.com/data")
+            extracted_flag = web_fetch.web_fetch_docs(
+                url="https://example.com/data", html2text=True
+            )
+        self.assertEqual(raw_default["content"], "<p>plain text payload</p>")
+        self.assertEqual(extracted_flag["content"], raw_default["content"])
+        self.assertEqual(extracted_flag["total_length"], raw_default["total_length"])
 
     def test_format_lint_requires_paths_and_confines_them(self) -> None:
         """Test format lint requires paths and confines them function."""

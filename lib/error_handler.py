@@ -88,9 +88,20 @@ def error_payload(exc: BaseException, tool_name: str | None = None) -> dict:
     if isinstance(cause, ValidationError):
         payload = _validation_payload(cause, tool_name)
     elif isinstance(cause, UnauthorizedCommandError):
+        message = _clean(cause)
+        recommendation = (
+            f"Prefer the '{cause.suggested_tool}' tool instead."
+        )
+        existing_recommendation = (
+            f"Use the '{cause.suggested_tool}' tool instead."
+        )
+        if existing_recommendation in message:
+            message = message.replace(existing_recommendation, recommendation)
+        elif cause.suggested_tool != tool_name:
+            message = f"{message} {recommendation}".strip()
         payload = {
             "error_code": "unauthorized_command",
-            "message": _clean(cause),
+            "message": message,
             "suggested_tool": cause.suggested_tool,
         }
         if cause.suggested_action:

@@ -15,6 +15,7 @@ from lib.command_blacklist import (
     UnauthorizedCommandError,
 )
 from lib.core import terminal_exec
+from lib.worker_supervisor import run_tool_in_worker
 
 
 class CommandBlacklistTests(unittest.TestCase):
@@ -255,4 +256,13 @@ class CommandBlacklistTests(unittest.TestCase):
         self.assertEqual(payload["error_code"], "unauthorized_command")
         self.assertEqual(payload["suggested_tool"], "git_manage")
         self.assertEqual(payload["suggested_action"], "commit")
+        self.assertIn("Prefer the 'git_manage' tool instead.", payload["message"])
         self.assertIn("unauthorized", payload["message"])
+
+    def test_worker_preserves_unauthorized_command_error(self) -> None:
+        """A blocked terminal command remains an authorization error across worker IPC."""
+        with self.assertRaises(UnauthorizedCommandError) as ctx:
+            run_tool_in_worker(terminal_exec.terminal_exec, args=("pytest",))
+
+        self.assertEqual(ctx.exception.suggested_tool, "run_tests")
+        self.assertIn("unauthorized", str(ctx.exception).lower())

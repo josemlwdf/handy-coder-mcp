@@ -176,6 +176,19 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         )
         self.assertNotIn("get_capabilities", str(ai_coordination["tools"]))
 
+    def test_discovery_endpoints_are_not_listed_as_capabilities(self):
+        result = capabilities_module.get_capabilities(
+            categories=["system", "ai_coordination"]
+        )
+        listed_tools = {
+            name
+            for category in result["tools"].values()
+            for group in category.values()
+            for name in group
+        }
+        self.assertNotIn("get_tool_details", listed_tools)
+        self.assertNotIn("invoke_tool", listed_tools)
+
     def test_category_schema_keeps_subagents_visible_and_workspace_context_clear(self):
         from typing import get_type_hints
 

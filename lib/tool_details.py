@@ -25,6 +25,21 @@ _ROOT_TOOLS_MESSAGE = (
 _ROUTER_ONLY_GUIDANCE = (
     "all calls must go through invoke_tool."
 )
+_CONTINUE_ONLY_TOOLS = frozenset({"subagent_manage", "orchestrator"})
+
+
+def _continue_client(context: Any = None, mcp: Any = None) -> bool:
+    """Return whether the current MCP session identified itself as Continue."""
+    try:
+        if context is None and mcp is not None:
+            context = mcp.get_context()
+        request_context = getattr(context, "request_context", None)
+        session = getattr(request_context, "session", None)
+        params = getattr(session, "client_params", None)
+        client_info = getattr(params, "clientInfo", None)
+        return getattr(client_info, "name", None) == "continue-client"
+    except Exception:  # malformed or unavailable request context must fail closed
+        return False
 
 def _serialized_length(value: Any) -> int:
     """Serialized length function."""
@@ -681,6 +696,11 @@ def install(mcp: Any) -> None:
                 "message": f"Unknown or unavailable tool: {requested_name}",
             }
             return _as_structured_tool_result(_with_retry_hint(result, canonical))
+        if canonical in _CONTINUE_ONLY_TOOLS and not _continue_client(mcp=mcp):
+            return _as_structured_tool_result({
+                "error_code": "tool_unavailable",
+                "message": f"Tool is unavailable for this MCP client: {canonical}",
+            })
         if not isinstance(arguments, dict):
             result = {
                 "error_code": "invalid_arguments",
@@ -717,6 +737,26 @@ def install(mcp: Any) -> None:
 
     # Keep every registration available to dispatch while publishing only the stable router API.
     manager = getattr(mcp, "_tool_manager", None)
+    if manager is not None and callable(getattr(manager, "call_tool", None)):
+        original_call_tool = manager.call_tool
+
+        @functools.wraps(original_call_tool)
+        async def guarded_call_tool(name, arguments, context=None, convert_result=False):
+            """Reject direct dispatch of Continue-only tools from other clients."""
+            canonical = _canonical_tool_name(name)
+            if canonical in _CONTINUE_ONLY_TOOLS and not _continue_client(
+                context=context, mcp=mcp
+            ):
+                result = {
+                    "error_code": "tool_unavailable",
+                    "message": f"Tool is unavailable for this MCP client: {canonical}",
+                }
+                return _as_structured_tool_result(result) if convert_result else result
+            return await original_call_tool(
+                name, arguments, context=context, convert_result=convert_result
+            )
+
+        manager.call_tool = guarded_call_tool
     if manager is not None and callable(getattr(manager, "list_tools", None)):
         original_list_tools = manager.list_tools
 
@@ -727,6 +767,10 @@ def install(mcp: Any) -> None:
                 tool
                 for tool in listed
                 if getattr(tool, "name", None) in _ROUTER_PUBLIC_TOOLS
+                or (
+                    getattr(tool, "name", None) in _CONTINUE_ONLY_TOOLS
+                    and _continue_client(mcp=mcp)
+                )
             ]
 
         manager.list_tools = public_list_tools

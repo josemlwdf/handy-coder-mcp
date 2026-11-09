@@ -194,14 +194,19 @@ def _request(url: str) -> tuple[bytes, str, str, int, bool]:
         raise RuntimeError(f"Web request failed: {exc.reason}") from exc
 
 
-def _fetch(url: str, offset: int = 0) -> dict:
+def _fetch(url: str, offset: int = 0, html2text: bool = False) -> dict:
     """Fetch function."""
     body, final_url, content_type, http_status, truncated = _request(url)
     decoded = body.decode("utf-8", "replace")
     if content_type in ("text/html", "application/xhtml+xml"):
-        parser = _TextExtractor()
-        parser.feed(decoded)
-        raw_text = parser.text()
+        if html2text:
+            parser = _TextExtractor()
+            parser.feed(decoded)
+            raw_text = parser.text()
+        else:
+            raw_text = decoded
+            parser = _TextExtractor()
+            parser.feed(decoded)
         title = " ".join(" ".join(parser.title).split())
     else:
         if not content_type.startswith("text/") and content_type not in (
@@ -255,10 +260,16 @@ def web_fetch_docs(
             description="Character offset into the extracted text to start reading from; use to page through content later 4,000-character pages. (Required: False)",
         ),
     ] = 0,
+    html2text: Annotated[
+        bool,
+        Field(
+            description="For HTML/XHTML responses, convert the page to readable text and omit tags, comments, scripts, styles, and hidden content. Defaults to false, which returns the decoded HTML source. Other supported text formats are unchanged. (Required: False)"
+        ),
+    ] = False,
 ) -> dict:
     """Web fetch docs function."""
     try:
-        return _fetch(url, offset=offset)
+        return _fetch(url, offset=offset, html2text=html2text)
     except ValueError as exc:
         code = (
             "ssrf_blocked"
@@ -280,6 +291,8 @@ def register(mcp):
             "next_offset in the response is the value to pass on the next call (null when no more content). "
             "HTML <pre> blocks are preserved as fenced Markdown code blocks and inline <code> as `backticks`; "
             "whitespace outside code is collapsed. "
+            "For HTML/XHTML, html2text defaults to false and returns decoded source; set true to return extracted readable text. "
+            "Other supported text formats are unchanged. "
             "When to use: Read external documentation from a known URL."
         )
     )(web_fetch_docs)

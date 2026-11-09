@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+from types import SimpleNamespace
 
 from mcp.server.fastmcp import FastMCP
 
@@ -61,6 +62,73 @@ def test_public_list_has_only_three_router_tools() -> None:
         "get_capabilities", "get_tool_details", "invoke_tool"
     }
     assert "discover_tools" not in server._tool_manager._tools
+
+
+def test_continue_client_sees_coordination_tools_and_other_identities_do_not() -> None:
+    server = _server()
+
+    @server.tool(description="Continue only")
+    def subagent_manage() -> dict:
+        return {"ok": True}
+
+    @server.tool(description="Continue only")
+    def orchestrator() -> dict:
+        return {"ok": True}
+
+    def context(client_info):
+        return SimpleNamespace(
+            request_context=SimpleNamespace(
+                session=SimpleNamespace(
+                    client_params=SimpleNamespace(clientInfo=client_info)
+                )
+            )
+        )
+
+    server.get_context = lambda: context(SimpleNamespace(name="continue-client"))
+    assert {tool.name for tool in server._tool_manager.list_tools()} == {
+        "get_capabilities",
+        "get_tool_details",
+        "invoke_tool",
+        "subagent_manage",
+        "orchestrator",
+    }
+    for identity in (
+        None,
+        SimpleNamespace(name="Continue-client"),
+        {},
+        "continue-client",
+    ):
+        server.get_context = lambda identity=identity: context(identity)
+        assert {tool.name for tool in server._tool_manager.list_tools()} == {
+            "get_capabilities", "get_tool_details", "invoke_tool",
+        }
+
+
+def test_non_continue_cannot_directly_dispatch_coordination_tools() -> None:
+    server = _server()
+
+    @server.tool(description="Continue only")
+    def subagent_manage() -> dict:
+        return {"ok": True}
+
+    @server.tool(description="Continue only")
+    def orchestrator() -> dict:
+        return {"ok": True}
+
+    context = SimpleNamespace(
+        request_context=SimpleNamespace(
+            session=SimpleNamespace(
+                client_params=SimpleNamespace(clientInfo=SimpleNamespace(name="other"))
+            )
+        )
+    )
+
+    async def call(name):
+        return await server._tool_manager.call_tool(name, {}, context=context)
+
+    for name in ("subagent_manage", "orchestrator"):
+        result = asyncio.run(call(name))
+        assert result["error_code"] == "tool_unavailable"
 
 
 def test_schema_helper_is_hidden_from_capabilities() -> None:
