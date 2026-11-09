@@ -471,7 +471,7 @@ class AuditRegressionTests(unittest.TestCase):
                 check=True,
             )
         git_manage._REPOSITORIES = None
-        result = git_manage.git_manage("log", args=["-n", "1", "--oneline"])
+        result = git_manage.git_manage("log", count=1, oneline=True)
         self.assertEqual(len(result["recent_commits"]), 1)
         self.assertIn("third", result["recent_commits"][0]["subject"])
 
@@ -873,7 +873,7 @@ class AuditRegressionTests(unittest.TestCase):
             patch("lib.core.git_manage.shutil.which", return_value="git"),
             patch("lib.core.git_manage.run_process", side_effect=calls),
         ):
-            result = git_manage.git_manage("commit", args=["-m", "msg"], repo_path=".")
+            result = git_manage.git_manage("commit", message="meaningful staged change", repo_path=".")
         self.assertEqual(result["exit_code"], 0)
         self.assertNotIn("hint", result)
 

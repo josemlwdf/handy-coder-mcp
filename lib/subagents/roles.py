@@ -169,7 +169,7 @@ ROLES: dict[str, Role] = {
             ".gitignore rules, and stage .gitignore only when an explicitly listed summary matches "
             "its existing diff. "
             "Use git_manage repo_path as a workspace-relative path, normally '.'. For git add, pass "
-            "intended file paths in args, then verify staging with status. If a tool call returns an "
+            "intended file paths in paths (omit paths to stage all changes), then verify staging with status. If a tool call returns an "
             "error, read that result and correct the call before deciding the task is blocked."
         ),
         allowed_tools=(*_READ_ONLY_TOOLS, "git_manage"),

@@ -342,7 +342,7 @@ class CoreFeedbackTests(unittest.TestCase):
                 side_effect=[check_result, push_result],
             ) as run_process,
         ):
-            result = self.mcp.tools["git_manage"]("push", args=["origin", "main"])
+            result = self.mcp.tools["git_manage"]("push", remote="origin", ref="main")
 
         self.assertEqual(result["exit_code"], 0)
         self.assertEqual(
@@ -350,10 +350,10 @@ class CoreFeedbackTests(unittest.TestCase):
             ["/usr/bin/git", "push", "origin", "main"],
         )
 
-    def test_push_rejects_unsupported_options(self) -> None:
-        """Test push rejects unsupported options function."""
-        with self.assertRaisesRegex(ValueError, "Unsupported push option"):
-            self.mcp.tools["git_manage"]("push", args=["--force", "origin", "main"])
+    def test_push_rejects_fields_for_another_action(self) -> None:
+        """Push rejects fields that belong to another action."""
+        with self.assertRaisesRegex(ValueError, "Fields not valid"):
+            self.mcp.tools["git_manage"]("push", remote="origin", ref="main", message="invalid")
 
     def test_git_description_suggests_initialization_when_no_repo_is_found(
         self,
@@ -512,10 +512,10 @@ class CoreFeedbackTests(unittest.TestCase):
         (self.root / "node_modules").mkdir()
         (self.root / "new.txt").write_text("stage me\n", encoding="utf-8")
 
-        result = self.mcp.tools["git_manage"]("add", args=["new.txt"], repo_path=".")
+        result = self.mcp.tools["git_manage"]("add", paths=["new.txt"], repo_path=".")
 
         self.assertEqual(result["exit_code"], 0, result)
-        self.assertIn("commit with -m", result.get("hint", ""))
+        self.assertIn("meaningful message", result.get("hint", ""))
         ignore_text = (self.root / ".gitignore").read_text(encoding="utf-8")
         self.assertIn(".handy-coder/", ignore_text)
         self.assertIn("tmp/", ignore_text)
@@ -868,9 +868,8 @@ class CoreFeedbackTests(unittest.TestCase):
             patch("lib.core.git_manage.run_process", return_value=ok_result),
         ):
             with self.assertRaises(ValueError) as ctx:
-                mcp.tools["git_manage"]("log", args=["--format=%H"])
-        self.assertIn("--format=%H", str(ctx.exception))
-        self.assertIn("Allowed", str(ctx.exception))
+                mcp.tools["git_manage"]("log", message="not a log field")
+        self.assertIn("Fields not valid", str(ctx.exception))
 
     def test_read_files_returns_per_file_errors_for_missing_files(self) -> None:
         """A missing file must appear in errors; valid files must still appear in files."""

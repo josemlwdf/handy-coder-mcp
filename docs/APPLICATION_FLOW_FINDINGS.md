@@ -158,7 +158,7 @@ result = invoke_tool("read_files", {
    → git_manage(action="diff")
    
 7. Commit
-   → git_manage(action="commit", args=["-m", "Fix error handling"])
+   → git_manage(action="commit", message="Fix error handling")
 ```
 
 ### 5. Worker Execution Model

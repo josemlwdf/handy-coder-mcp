@@ -6,7 +6,7 @@ Inspect or modify Git repositories within the workspace.
 
 ## When and how to call it
 
-Call this tool through `invoke_tool` with `tool_name="git_manage"` and an arguments object. Use `get_tool_details("git_manage")` for the authoritative runtime parameter schema, including required fields, defaults, nested properties, and validation constraints. The schema is generated from the registered implementation and is kept unchanged by this module move.
+Call this tool through `invoke_tool` with `tool_name="git_manage"` and an arguments object. Use `get_tool_details("git_manage")` for the authoritative runtime parameter schema, including required fields, defaults, nested properties, and validation constraints.
 
 ## Parameters and defaults
 
@@ -36,16 +36,9 @@ The JSON Schema below is the registered input contract. Required fields appear i
       ],
       "type": "string"
     },
-    "args": {
-      "description": "Optional action-specific Git arguments, each as a separate string. (Required: False)",
-      "items": {
-        "type": "string"
-      },
-      "type": [
-        "array",
-        "null"
-      ]
-    },
+    "paths": { "description": "Paths for add; omit to stage all changes", "type": ["array", "null"], "items": { "type": "string" } },
+    "message": { "description": "Meaningful staged-change summary for commit", "type": ["string", "null"] },
+    "ref": { "description": "Branch, tag, or commit for checkout", "type": ["string", "null"] },
     "repo_path": {
       "description": "Workspace-relative path to the Git repository root. (Required: False)",
       "type": [

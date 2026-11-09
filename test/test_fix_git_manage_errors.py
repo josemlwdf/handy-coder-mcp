@@ -10,9 +10,6 @@ from mcp.server.fastmcp import FastMCP
 from lib import error_handler, support, tool_details, worker_supervisor
 from lib.core import git_manage
 
-BAD_FLAG = "--ignore-space-at-eol"
-
-
 def _build_server():
     mcp = FastMCP("git-manage-errors")
     tool_details.install(mcp)
@@ -76,34 +73,14 @@ class GitManageDiffOptionErrorTests(unittest.TestCase):
         support.configure(str(Path(__file__).resolve().parents[1]))
         git_manage._REPOSITORIES = None
 
-    def _assert_structured(self, result):
-        self.assertIn("error_code", result, result)
-        self.assertTrue(result.get("message"), result)
-        self.assertIn(BAD_FLAG, result["message"])
-        self.assertIn("--cached", result["message"])
-        self.assertNotIn("pydantic.dev", json.dumps(result))
-
-    def test_invalid_diff_option_is_structured_without_conversion(self):
-        result = _normalize(_call(self.mcp, "git_manage", {"action": "diff", "args": [BAD_FLAG]}))
-        self._assert_structured(result)
-
-    def test_invalid_diff_option_is_structured_with_conversion(self):
-        result = _normalize(
-            _call(self.mcp, "git_manage", {"action": "diff", "args": [BAD_FLAG]}, convert_result=True)
-        )
-        self._assert_structured(result)
-
-    def test_direct_call_still_raises_value_error_naming_flag_and_allowed_flags(self):
-        with self.assertRaises(ValueError) as ctx:
-            git_manage.git_manage("diff", args=[BAD_FLAG], repo_path=".")
-        message = str(ctx.exception)
-        self.assertIn(BAD_FLAG, message)
-        for allowed in ("--cached", "--stat", "--name-only", "--"):
-            self.assertIn(allowed, message)
-
-    def test_allowed_diff_flags_still_work(self):
-        result = git_manage.git_manage("diff", args=["--stat"], repo_path=".")
+    def test_named_diff_controls_work(self):
+        result = git_manage.git_manage("diff", diff_stat=True, repo_path=".")
         self.assertNotIn("error_code", result)
+
+    def test_generic_args_parameter_is_removed(self):
+        from inspect import signature
+
+        self.assertNotIn("args", signature(git_manage.git_manage).parameters)
 
 if __name__ == "__main__":
     unittest.main()

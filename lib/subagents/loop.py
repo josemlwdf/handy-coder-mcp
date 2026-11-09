@@ -89,7 +89,7 @@ _TOOL_ARGUMENTS: dict = {
     "code_polish": '{"path": "file-or-dir", "summary": "one-line summary of the change", "specific_file"?: "file under path (relative-to-path or workspace-relative)", "all_files"?: false}',
     "code_get_diagnostics": '{"path"?: "...", "check"?: "ruff", "timeout_ms"?: 30000}',
     "run_tests": '{"test_framework"?: "jest|pytest|vitest", "filter_path"?: "test/test_file.py", "fail_fast"?: false, "parallel"?: 1, "coverage"?: false, "verbose"?: false}',
-    "git_manage": 'Use workspace-relative repo_path. Examples: {"action":"add","args":["task-owned.txt"],"repo_path":"."} stages that path; {"action":"add","args":["all"],"repo_path":"."} stages every change. For commits, use a specific message accurately describing every matched change group in the staged diff. Example: {"action":"commit","args":["-m","message"],"repo_path":"."}. For status use {"action":"status","repo_path":"."}.',
+    "git_manage": 'Use workspace-relative repo_path. Examples: {"action":"add","paths":["task-owned.txt"],"repo_path":"."} stages that path; omit paths to stage every change. For commits, inspect the staged diff and provide a specific message accurately describing its changes: {"action":"commit","message":"Describe staged changes","repo_path":"."}. For status use {"action":"status","repo_path":"."}.',
     "subagent_status": '{"task_id": "t_1"}',
     "subagent_result": '{"task_id": "t_1", "offset"?: 0}',
 }

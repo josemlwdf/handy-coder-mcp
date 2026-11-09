@@ -35,22 +35,21 @@ class GitManageFixP23Tests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_log_numeric_shorthand_limits_history(self):
-        result = git_manage.git_manage("log", args=["--oneline", "-3"], repo_path=".")
+        result = git_manage.git_manage("log", oneline=True, count=3, repo_path=".")
         self.assertNotIn("error_code", result)
         self.assertEqual(result["exit_code"], 0)
         self.assertEqual(len(result["recent_commits"]), 3)
         self.assertEqual(result["recent_commits"][0]["subject"], "commit 4")
 
     def test_log_n_flag_still_works(self):
-        result = git_manage.git_manage("log", args=["-n", "2"], repo_path=".")
+        result = git_manage.git_manage("log", count=2, repo_path=".")
         self.assertEqual(len(result["recent_commits"]), 2)
 
-    def test_log_error_explains_separator_and_shorthand(self):
+    def test_log_rejects_fields_from_another_action(self):
         with self.assertRaises(ValueError) as ctx:
-            git_manage.git_manage("log", args=["--format=%H"], repo_path=".")
+            git_manage.git_manage("log", message="not a log field", repo_path=".")
         message = str(ctx.exception)
-        self.assertIn("--format=%H", message)
-        self.assertIn("Allowed", message)
+        self.assertIn("Fields not valid", message)
         self.assertIn("-<count>", message)
         self.assertIn("separator", message)
 
@@ -65,7 +64,7 @@ class GitManageFixP23Tests(unittest.TestCase):
         cases = [
             git_manage.git_manage("status", repo_path="../outside"),
             git_manage.git_manage("status", repo_path=str(self.root.parent)),
-            git_manage.git_manage("add", args=["../outside.txt"], repo_path="."),
+            git_manage.git_manage("add", paths=["../outside.txt"], repo_path="."),
             git_manage.git_manage("init", repo_path="../outside"),
         ]
         for result in cases:

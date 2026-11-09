@@ -294,7 +294,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
     def test_control_checkout_branch_still_works(self) -> None:
         """Test control checkout branch still works function."""
         self._git("branch", "feature")
-        result = git_manage.git_manage("checkout", args=["feature"])
+        result = git_manage.git_manage("checkout", ref="feature")
         self.assertEqual(result["exit_code"], 0)
 
     def test_control_checkout_commit_sha_still_works(self) -> None:
@@ -306,19 +306,19 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
             capture_output=True,
             text=True,
         ).stdout.strip()
-        result = git_manage.git_manage("checkout", args=[sha])
+        result = git_manage.git_manage("checkout", ref=sha)
         self.assertEqual(result["exit_code"], 0)
 
     def test_checkout_unknown_ref_returns_not_a_ref(self) -> None:
         """Test checkout unknown ref returns not a ref function."""
-        result = git_manage.git_manage("checkout", args=["no-such-branch"])
+        result = git_manage.git_manage("checkout", ref="no-such-branch")
         self.assertEqual(result["error_code"], "not_a_ref")
         self.assertNotEqual(result["exit_code"], 0)
 
     def test_checkout_file_path_does_not_discard_uncommitted_edits(self) -> None:
         """Test checkout file path does not discard uncommitted edits function."""
         self.tracked.write_text("precious uncommitted work\n", encoding="utf-8")
-        result = git_manage.git_manage("checkout", args=["tracked.txt"])
+        result = git_manage.git_manage("checkout", ref="tracked.txt")
         self.assertEqual(result.get("error_code"), "not_a_ref")
         self.assertEqual(
             self.tracked.read_text(encoding="utf-8"),
@@ -328,16 +328,41 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
 
     def test_failed_commit_reports_message_on_stderr_not_stdout(self) -> None:
         """git prints 'nothing to commit' to stdout; a failure must surface on stderr."""
-        result = git_manage.git_manage("commit", args=["-m", "nothing to do"])
+        result = git_manage.git_manage("commit", message="nothing to do")
         self.assertNotEqual(result["exit_code"], 0)
         self.assertEqual(result["stdout"], "")
         self.assertIn("nothing to commit", result["stderr"])
+
+    def test_commit_without_message_returns_guidance_and_does_not_commit(self) -> None:
+        before = self._git_head()
+        result = git_manage.git_manage("commit", message="  ")
+        self.assertEqual(result["error_code"], "commit_message_required")
+        self.assertIn("staged diff", result["message"])
+        self.assertEqual(self._git_head(), before)
+
+    def _git_head(self) -> str:
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, check=True,
+            capture_output=True, text=True,
+        ).stdout.strip()
+
+    def test_public_schema_has_named_fields_and_no_args(self) -> None:
+        from inspect import signature
+
+        parameters = signature(git_manage.git_manage).parameters
+        self.assertNotIn("args", parameters)
+        for field in ("paths", "message", "ref", "remote", "count", "stash_operation"):
+            self.assertIn(field, parameters)
+
+    def test_action_rejects_fields_that_do_not_apply(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Fields not valid"):
+            git_manage.git_manage("status", message="not for status")
 
     def test_add_action_stages_files_and_validates_args(self) -> None:
         """Test add action stages files and validates args function."""
         (self.root / "new.txt").write_text("n\n", encoding="utf-8")
         (self.root / "untouched.txt").write_text("leave unstaged\n", encoding="utf-8")
-        result = git_manage.git_manage("add", args=["new.txt"])
+        result = git_manage.git_manage("add", paths=["new.txt"])
         self.assertEqual(result["exit_code"], 0)
         status = subprocess.run(
             ["git", "status", "--porcelain"],
@@ -351,7 +376,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
         for bad in ([], ["--force", "new.txt"], ["all", "new.txt"]):
             with self.subTest(args=bad):
                 with self.assertRaises(ValueError):
-                    git_manage.git_manage("add", args=bad)
+                    git_manage.git_manage("add", paths=bad)
 
     def test_add_all_stages_tracked_untracked_and_deleted_changes(self) -> None:
         """Test add all stages tracked untracked and deleted changes function."""
@@ -362,7 +387,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
         deleted.unlink()
         self.tracked.write_text("updated\n", encoding="utf-8")
         (self.root / "new.txt").write_text("new\n", encoding="utf-8")
-        result = git_manage.git_manage("add", args=["all"])
+        result = git_manage.git_manage("add", )
         self.assertEqual(result["exit_code"], 0, result)
         status = subprocess.run(
             ["git", "status", "--porcelain"],
@@ -382,7 +407,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
         outside.write_text("x\n", encoding="utf-8")
         for target in ("../outside.txt", "a/../../outside.txt", str(outside)):
             with self.subTest(target=target):
-                result = git_manage.git_manage("add", args=[target])
+                result = git_manage.git_manage("add", paths=[target])
                 self.assertEqual(result["error_code"], "path_escape")
                 self.assertNotEqual(result["exit_code"], 0)
         status = subprocess.run(
@@ -412,7 +437,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
         self._git("config", "user.email", "t@example.com")
         self._git("config", "commit.gpgsign", "false")
         self.tracked.write_text("changed\n", encoding="utf-8")
-        result = git_manage.git_manage("commit", args=["-a", "-m", "change"])
+        result = git_manage.git_manage("commit", message="describe staged changes")
         self.assertEqual(result["exit_code"], 0)
         self.assertIn("change", result["stdout"])
 

@@ -205,7 +205,7 @@ invoke_tool("run_tests", {
 ```python
 invoke_tool("git_manage", {
     "action": "commit",
-    "args": ["-m", "Fix bug in calculate"]
+    "message": "Handle empty input in calculate"
 })
 ```
 
