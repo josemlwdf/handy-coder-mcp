@@ -166,6 +166,11 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         )
         self.assertEqual(set(ai_coordination["tools"]), {"ai_coordination"})
         self.assertEqual(
+            set(ai_coordination["tools"]["ai_coordination"]["always_enabled"])
+            | set(ai_coordination["tools"]["ai_coordination"]["runtime"]),
+            {"orchestrator", "subagent_manage"},
+        )
+        self.assertEqual(
             set(ai_coordination["tools"]["ai_coordination"]["runtime"]),
             {"subagent_manage"},
         )

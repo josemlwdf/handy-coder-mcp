@@ -64,7 +64,7 @@ def test_public_list_has_only_three_router_tools() -> None:
     assert "discover_tools" not in server._tool_manager._tools
 
 
-def test_continue_client_sees_coordination_tools_and_other_identities_do_not() -> None:
+def test_coordination_tools_are_hidden_from_all_public_tool_lists() -> None:
     server = _server()
 
     @server.tool(description="Continue only")
@@ -89,8 +89,6 @@ def test_continue_client_sees_coordination_tools_and_other_identities_do_not() -
         "get_capabilities",
         "get_tool_details",
         "invoke_tool",
-        "subagent_manage",
-        "orchestrator",
     }
     for identity in (
         None,
@@ -102,6 +100,37 @@ def test_continue_client_sees_coordination_tools_and_other_identities_do_not() -
         assert {tool.name for tool in server._tool_manager.list_tools()} == {
             "get_capabilities", "get_tool_details", "invoke_tool",
         }
+
+
+def test_continue_can_invoke_coordination_tools_through_router() -> None:
+    server = _server()
+
+    @server.tool(description="Continue only")
+    def subagent_manage() -> dict:
+        return {"tool": "subagent_manage"}
+
+    @server.tool(description="Continue only")
+    def orchestrator() -> dict:
+        return {"tool": "orchestrator"}
+
+    server.get_context = lambda: SimpleNamespace(
+        request_context=SimpleNamespace(
+            session=SimpleNamespace(
+                client_params=SimpleNamespace(
+                    clientInfo=SimpleNamespace(name="continue-client")
+                )
+            )
+        )
+    )
+
+    async def call(name):
+        return await server._tool_manager.call_tool(
+            "invoke_tool", {"tool_name": name, "arguments": {}}
+        )
+
+    for name in ("subagent_manage", "orchestrator"):
+        result = _structured(asyncio.run(call(name)))
+        assert result == {"tool": name}
 
 
 def test_non_continue_cannot_directly_dispatch_coordination_tools() -> None:
@@ -129,6 +158,10 @@ def test_non_continue_cannot_directly_dispatch_coordination_tools() -> None:
     for name in ("subagent_manage", "orchestrator"):
         result = asyncio.run(call(name))
         assert result["error_code"] == "tool_unavailable"
+        routed = _structured(asyncio.run(server._tool_manager.call_tool(
+            "invoke_tool", {"tool_name": name, "arguments": {}}, context=context
+        )))
+        assert routed["error_code"] == "tool_unavailable"
 
 
 def test_schema_helper_is_hidden_from_capabilities() -> None:

@@ -767,10 +767,6 @@ def install(mcp: Any) -> None:
                 tool
                 for tool in listed
                 if getattr(tool, "name", None) in _ROUTER_PUBLIC_TOOLS
-                or (
-                    getattr(tool, "name", None) in _CONTINUE_ONLY_TOOLS
-                    and _continue_client(mcp=mcp)
-                )
             ]
 
         manager.list_tools = public_list_tools
