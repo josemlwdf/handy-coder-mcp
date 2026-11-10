@@ -43,6 +43,7 @@ GENERATED_DIRS = frozenset(
 # isolation; see lib/_worker.py for the run_in_worker implementation.
 WORKER_DEADLINE_SECONDS = 30.0
 HANDY_CODER_STATE_DIRNAME = ".handy-coder"
+STATE_DIR: Path | None = None
 
 
 def setup_required(
@@ -65,17 +66,76 @@ def setup_required(
     }
 
 
+def get_handy_coder_state_dir(root: Path | None = None) -> Path:
+    """Return the active handy-coder state directory."""
+    if (
+        (root is None or Path(root or ROOT).resolve() == Path(ROOT).resolve())
+        and STATE_DIR is not None
+        and STATE_DIR.is_dir()
+    ):
+        return STATE_DIR
+    return ensure_handy_coder_state_dir(root)
+
+
 def ensure_handy_coder_state_dir(root: Path | None = None) -> Path:
-    """Ensure the per-workspace orchestration state directory exists."""
+    """Ensure the per-workspace orchestration state directory exists, falling back to /tmp or ~ if inaccessible."""
+    global STATE_DIR
     workspace_root = Path(root or ROOT)
-    state_dir = workspace_root / HANDY_CODER_STATE_DIRNAME
-    state_dir.mkdir(parents=True, exist_ok=True)
-    return state_dir
+
+    if (
+        (root is None or workspace_root.resolve() == Path(ROOT).resolve())
+        and STATE_DIR is not None
+        and STATE_DIR.is_dir()
+    ):
+        try:
+            probe = STATE_DIR / ".probe_write"
+            probe.touch()
+            probe.unlink(missing_ok=True)
+            return STATE_DIR
+        except (PermissionError, OSError):
+            STATE_DIR = None
+
+    primary = workspace_root / HANDY_CODER_STATE_DIRNAME
+    try:
+        primary.mkdir(parents=True, exist_ok=True)
+        probe = primary / ".probe_write"
+        probe.touch()
+        probe.unlink(missing_ok=True)
+        if root is None or workspace_root.resolve() == Path(ROOT).resolve():
+            STATE_DIR = primary
+        return primary
+    except (PermissionError, OSError) as primary_exc:
+        import sys
+
+        fallbacks = [
+            Path("/tmp") / HANDY_CODER_STATE_DIRNAME,
+            Path(os.path.expanduser("~")) / HANDY_CODER_STATE_DIRNAME,
+        ]
+        last_exc: Exception = primary_exc
+        for fallback in fallbacks:
+            try:
+                fallback.mkdir(parents=True, exist_ok=True)
+                probe = fallback / ".probe_write"
+                probe.touch()
+                probe.unlink(missing_ok=True)
+                if root is None or workspace_root.resolve() == Path(ROOT).resolve():
+                    STATE_DIR = fallback
+                print(
+                    f"[handy-coder-mcp] Notice: cannot use {primary} ({primary_exc}). "
+                    f"Falling back to state directory: {fallback}",
+                    file=sys.stderr,
+                )
+                return fallback
+            except (PermissionError, OSError) as fb_exc:
+                last_exc = fb_exc
+                continue
+
+        raise last_exc from primary_exc
 
 
 def configure(root: str, shell: str | None = None) -> None:
     """Configure function."""
-    global ROOT, WORKING_DIRECTORY, SHELL
+    global ROOT, WORKING_DIRECTORY, SHELL, STATE_DIR
     ROOT = Path(root).expanduser().resolve(strict=True)
     if not ROOT.is_dir():
         raise ValueError(f"Workspace root is not a directory: {ROOT}")
@@ -84,6 +144,7 @@ def configure(root: str, shell: str | None = None) -> None:
         raise RuntimeError(f"'pwd' returned no working directory for {ROOT}")
     if shell:
         SHELL = shell
+    STATE_DIR = None
     ensure_handy_coder_state_dir(ROOT)
     # Warn when the workspace root is a home directory or drive root — scanning
     # these trees often causes timeouts in large environments.

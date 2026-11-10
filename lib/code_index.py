@@ -99,7 +99,8 @@ def _parser():
 def _db(readonly: bool = True):
     """Open a query connection (read-only by default)."""
     root = Path(support.ROOT).resolve()
-    path = root / ".handy-coder" / "code_index.sqlite3"
+    state_dir = support.ensure_handy_coder_state_dir(root)
+    path = state_dir / "code_index.sqlite3"
     if readonly:
         con = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=30.0)
     else:
@@ -114,7 +115,7 @@ def _db(readonly: bool = True):
 def _initialize_db() -> None:
     """Create and migrate the index using a writable connection."""
     root = Path(support.ROOT).resolve()
-    path = root / ".handy-coder" / "code_index.sqlite3"
+    path = support.ensure_handy_coder_state_dir(root) / "code_index.sqlite3"
     con = _db(readonly=False)
     try:
         con.execute("PRAGMA journal_mode=WAL")
@@ -596,7 +597,7 @@ def set_index_status(status: str, **details) -> None:
 def index_status(con: None = None) -> dict:
     """Return persisted worker state and current index counts."""
     own_connection = con is None
-    db_path = Path(support.ROOT).resolve() / ".handy-coder" / "code_index.sqlite3"
+    db_path = support.ensure_handy_coder_state_dir().resolve() / "code_index.sqlite3"
     if own_connection and not db_path.exists():
         return {
             "state": "unknown",
@@ -890,7 +891,7 @@ def _code_navigator_once(
             "error_code": "missing_parameter",
             "message": "symbol is required and cannot be empty",
         }
-    db_path = Path(support.ROOT).resolve() / ".handy-coder" / "code_index.sqlite3"
+    db_path = support.ensure_handy_coder_state_dir().resolve() / "code_index.sqlite3"
     if not db_path.exists():
         status = index_status()
         return {

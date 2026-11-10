@@ -71,7 +71,7 @@ def _pending_change_summaries_for_paths(
     """Read persisted summaries that cover currently untracked paths."""
     if not paths:
         return []
-    state_path = Path(support.ROOT) / support.HANDY_CODER_STATE_DIRNAME / "state.json"
+    state_path = support.ensure_handy_coder_state_dir() / "state.json"
     try:
         payload = json.loads(state_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

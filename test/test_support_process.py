@@ -50,6 +50,62 @@ class SupportProcessTests(unittest.TestCase):
         self.assertTrue(state_dir.exists())
         self.assertTrue(state_dir.is_dir())
 
+    def test_ensure_handy_coder_state_dir_fallback_to_tmp(self):
+        from unittest.mock import patch
+
+        orig_mkdir = Path.mkdir
+
+        def fake_mkdir(path_obj, *args, **kwargs):
+            if str(path_obj).startswith("/nonexistent_forbidden"):
+                raise PermissionError(13, "Permission denied", str(path_obj))
+            return orig_mkdir(path_obj, *args, **kwargs)
+
+        with patch.object(Path, "mkdir", fake_mkdir):
+            previous_state_dir = support.STATE_DIR
+            try:
+                support.STATE_DIR = None
+                result = support.ensure_handy_coder_state_dir(Path("/nonexistent_forbidden"))
+                self.assertEqual(result, Path("/tmp") / ".handy-coder")
+                self.assertTrue(result.is_dir())
+            finally:
+                support.STATE_DIR = previous_state_dir
+
+    def test_ensure_handy_coder_state_dir_fallback_to_home(self):
+        from unittest.mock import patch
+
+        orig_mkdir = Path.mkdir
+
+        def fake_mkdir(path_obj, *args, **kwargs):
+            s = str(path_obj)
+            if s.startswith("/nonexistent_forbidden") or s.startswith("/tmp/"):
+                raise PermissionError(13, "Permission denied", s)
+            return orig_mkdir(path_obj, *args, **kwargs)
+
+        with patch.object(Path, "mkdir", fake_mkdir):
+            previous_state_dir = support.STATE_DIR
+            try:
+                support.STATE_DIR = None
+                result = support.ensure_handy_coder_state_dir(Path("/nonexistent_forbidden"))
+                self.assertEqual(result, Path.home() / ".handy-coder")
+                self.assertTrue(result.is_dir())
+            finally:
+                support.STATE_DIR = previous_state_dir
+
+    def test_ensure_handy_coder_state_dir_raises_when_all_fail(self):
+        from unittest.mock import patch
+
+        def fake_mkdir(path_obj, *args, **kwargs):
+            raise PermissionError(13, "Permission denied", str(path_obj))
+
+        with patch.object(Path, "mkdir", fake_mkdir):
+            previous_state_dir = support.STATE_DIR
+            try:
+                support.STATE_DIR = None
+                with self.assertRaises(PermissionError):
+                    support.ensure_handy_coder_state_dir(Path("/nonexistent_forbidden"))
+            finally:
+                support.STATE_DIR = previous_state_dir
+
 
 if __name__ == "__main__":
     unittest.main()

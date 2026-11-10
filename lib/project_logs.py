@@ -137,7 +137,10 @@ def _next_sequence(base: Path, bucket: str) -> int:
 
 def _relative(path: Path) -> str:
     """Return path relative to workspace root."""
-    return str(path.relative_to(support.ROOT)).replace("\\", "/")
+    try:
+        return str(path.relative_to(support.ROOT)).replace("\\", "/")
+    except ValueError:
+        return str(path).replace("\\", "/")
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
