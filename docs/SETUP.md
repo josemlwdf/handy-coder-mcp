@@ -195,7 +195,7 @@ When `git_manage(action='init')` is called:
 - Adds rules to `.gitignore`:
   - `.handy-coder/`
   - `tmp/`
-  - Auto-detected generated directories (bin, obj, node_modules, etc.)
+  - Standard generated directories (node_modules, __pycache__, dist, build, virtual environments, caches, and common build outputs), whether present or not. Rules are added without scanning the repository.
 
 ## Local Code Indexing
 

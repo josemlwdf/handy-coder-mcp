@@ -10,3 +10,12 @@ tmp/
 .pytest_cache/
 .ruff_cache/
 .audit
+.mypy_cache/
+.next/
+.tox/
+build/
+coverage/
+htmlcov/
+out/
+target/
+venv/

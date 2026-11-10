@@ -494,7 +494,9 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIn("tmp/", ignore_text)
         self.assertIn("node_modules/", ignore_text)
         self.assertIn("__pycache__/", ignore_text)
-        git_manage._maintain_gitignore(self.root)
+        self.assertIn("dist/", ignore_text)
+        with patch("lib.core.git_manage.os.walk", side_effect=AssertionError("must not walk")):
+            git_manage._maintain_gitignore(self.root)
         self.assertEqual(
             (self.root / ".gitignore").read_text(encoding="utf-8"), ignore_text
         )
@@ -528,6 +530,11 @@ class CoreFeedbackTests(unittest.TestCase):
             text=True,
         )
         self.assertEqual(staged.stdout.strip(), "new.txt")
+        staged_ignore = subprocess.run(
+            ["git", "ls-files", "--", ".gitignore"], cwd=self.root,
+            check=True, capture_output=True, text=True,
+        )
+        self.assertEqual(staged_ignore.stdout.strip(), ".gitignore")
 
     def test_init_is_rejected_inside_a_nested_repository(self) -> None:
         """Test init is rejected inside a nested repository function."""

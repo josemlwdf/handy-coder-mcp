@@ -267,6 +267,7 @@ Returns: File path, line number, severity, and message
 
 Key features:
 - Automatic .gitignore management
+- Adds `.handy-coder/`, `tmp/`, and standard generated/build directory rules whether present or not; maintenance preserves existing content and does not scan the repository.
 - Structured output for agent interpretation
 - Self-audit support (diff before changes)
 

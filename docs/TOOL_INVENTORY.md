@@ -95,6 +95,7 @@ For full parameter schemas including defaults, constraints, and nested fields, c
     - Purpose: Git operations
     - Actions: `status`, `diff`, `log`, `add`, `commit`, `push`, `checkout`, `init`, `branch`, `merge`
     - Auto-updates: `.gitignore` on `add` and `init`
+    - Adds `.handy-coder/`, `tmp/`, and standard generated-directory rules without scanning the repository
     - Returns: Git output (status, diffs, logs, commit hashes)
 
 14. **orchestrator**

@@ -149,7 +149,7 @@ mcpServers:
       - ubuntu
       - /path/to/handy-coder-mcp/.venv/bin/handy-coder-mcp
       - --root
-      - /mnt/c/path/to/project
+      - /
     env: {}
 ```
 

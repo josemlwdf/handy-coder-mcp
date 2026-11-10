@@ -200,26 +200,9 @@ def _git_marker(directory: Path) -> bool:
 
 
 def _maintain_gitignore(repository: Path) -> None:
-    """Add required and detected generated-directory rules without replacing user content."""
-    detected: set[str] = set()
-    for current, directories, _files in os.walk(repository, followlinks=False):
-        current_path = Path(current)
-        safe_directories: list = [
-            name
-            for name in directories
-            if name != ".git" and not (current_path / name).is_symlink()
-        ]
-        detected.update(
-            name for name in safe_directories if name in _DEFAULT_EXCLUDE_DIRS
-        )
-        # Contents of an already ignored generated directory do not need scanning.
-        directories[:] = [
-            name for name in safe_directories if name not in _DEFAULT_EXCLUDE_DIRS
-        ]
-
-    required: list = [".handy-coder/", "tmp/"]
-    rules = required + [
-        f"{name}/" for name in sorted(detected) if f"{name}/" not in required
+    """Add standard generated-directory rules without replacing user content."""
+    rules = [".handy-coder/", "tmp/"] + [
+        f"{name}/" for name in sorted(_DEFAULT_EXCLUDE_DIRS)
     ]
     ignore_path = repository / ".gitignore"
     try:
@@ -274,7 +257,7 @@ def _tool_description() -> str:
         "For add, omit paths to stage all repository changes or provide paths to stage only those paths. "
         "For commit, provide a meaningful message that accurately summarizes staged changes; a missing or blank message skips the commit and asks for staged-diff review. "
         "Successful init creates test/ and tmp/, maintains the repository .gitignore, stages these repository defaults, and creates a `chore: add repository defaults` commit when defaults changed. add updates .gitignore before staging. "
-        "These updates preserve existing content, add .handy-coder/ and tmp/, and ignore generated directories from the common exclusion list when present. "
+        "These updates preserve existing content, add .handy-coder/ and tmp/, and ignore standard generated directories (node_modules, __pycache__, dist, build, virtual environments, caches, and common build outputs) whether or not they currently exist. "
         "Status returns structured staged/working-tree and untracked summaries, including matching pending change summaries from .handy-coder/state.json; diff preserves raw text and accepts mode unstaged/staged/both plus repository-relative file_paths. "
         "Log includes recent commit history. pull accepts an optional remote and branch; merge/rebase require one or more refs. These three actions require a clean worktree (including untracked files). "
         "Use semantic action-specific fields: push options, pull remote/branch, log controls, and stash operation/options. "

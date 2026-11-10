@@ -58,6 +58,7 @@ Tools for managing code changes and multi-step workflows:
 **Key design:**
 - git_manage auto-creates test/ and tmp/ on init
 - git_manage auto-updates .gitignore before staging
+- .gitignore maintenance adds standard `.handy-coder/`, `tmp/`, and generated-directory rules without traversing the repository
 - orchestrator writes to .handy-coder/tasks.md and implementation-plan.md
 - skills_manage uses configurable storage directory
 
