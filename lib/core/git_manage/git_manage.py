@@ -781,15 +781,6 @@ def git_manage(
     # Fast path: when repo_path is explicitly given and a .git marker exists there,
     # bypass the potentially slow workspace-wide discovery scan entirely.
     if repo_path:
-        requested_path = Path(repo_path)
-        if requested_path.is_absolute():
-            return {
-                "supported": True,
-                "error_code": "path_escape",
-                "message": path_escape_message(repo_path),
-                "path": repo_path,
-                "exit_code": 1,
-            }
         try:
             selected_path = inside(repo_path, must_exist=True)
         except ValueError:

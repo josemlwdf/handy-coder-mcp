@@ -82,5 +82,18 @@ class GitManageDiffOptionErrorTests(unittest.TestCase):
 
         self.assertNotIn("args", signature(git_manage.git_manage).parameters)
 
+    def test_absolute_repo_path_matching_workspace_root_is_accepted(self):
+        """An absolute repo_path equal to the workspace root must not be rejected."""
+        result = git_manage.git_manage("status", repo_path=str(self.root))
+        self.assertNotIn("error_code", result, f"Expected success but got: {result}")
+        self.assertEqual(result.get("exit_code"), 0)
+
+    def test_absolute_repo_path_outside_workspace_is_rejected(self):
+        """An absolute repo_path outside the workspace must still return path_escape."""
+        outside = str(Path(self.root).parent / "outside_repo")
+        result = git_manage.git_manage("status", repo_path=outside)
+        self.assertEqual(result["error_code"], "path_escape")
+        self.assertNotEqual(result["exit_code"], 0)
+
 if __name__ == "__main__":
     unittest.main()
