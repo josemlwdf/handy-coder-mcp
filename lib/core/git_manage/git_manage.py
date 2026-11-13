@@ -64,7 +64,6 @@ _GENERIC_COMMIT_SUBJECTS: set = {
 }
 _DISALLOWED_COMMIT_WORD = re.compile(r"\bcommit\b", re.IGNORECASE)
 
-
 def _pending_change_summaries_for_paths(
     paths: list[str], repo_root: Path
 ) -> list[dict[str, Any]]:
@@ -111,11 +110,51 @@ def _pending_change_summaries_for_paths(
             summaries.append({"summary": summary.strip(), "paths": clean_paths})
     return summaries
 
-
 _LOG_REGEX_FLAG: str = "--path-regex"
 _LOG_MAX_CANDIDATES_FLAG: str = "--max-candidates"
 _LOG_PER_FILE_DIFFS_FLAG: str = "--per-file-diffs"
 
+_ACTION_FIELDS: dict[str, set[str]] = {
+    "status": set(),
+    "init": set(),
+    "add": {"paths"},
+    "commit": {"message"},
+    "diff": {"diff_stat", "name_only", "mode", "file_paths"},
+    "checkout": {"ref"},
+    "branch": {"branch"},
+    "push": {"remote", "ref", "set_upstream", "force_with_lease", "tags", "dry_run"},
+    "pull": {"remote", "branch"},
+    "merge": {"refs"},
+    "rebase": {"refs"},
+    "stash": {"stash_operation", "stash_message"},
+    "log": {
+        "count",
+        "oneline",
+        "decorate",
+        "all_refs",
+        "path_regex",
+        "max_candidates",
+        "per_file_diffs",
+    },
+    "blame": {"file_path"},
+}
+
+_ACTION_HINTS: dict[str, str] = {
+    "status": "status takes no action-specific fields.",
+    "init": "init takes no action-specific fields.",
+    "add": "Use paths=['file1', 'file2'] or omit paths to stage all changes.",
+    "commit": "Use message='meaningful summary of staged changes'.",
+    "diff": "Use mode=('unstaged'|'staged'|'both') and optional file_paths=['path/to/file'].",
+    "checkout": "Use ref='branch-or-tag-or-sha'.",
+    "branch": "Use branch='new-branch-name' to create one, or omit it to list branches.",
+    "push": "Use remote/ref and optional set_upstream/force_with_lease/tags/dry_run.",
+    "pull": "Use remote and optional branch.",
+    "merge": "Use refs=['branch-or-commit', ...].",
+    "rebase": "Use refs=['upstream-ref'].",
+    "stash": "Use stash_operation='list|push|pop|apply|drop' and optional stash_message for push.",
+    "log": "Use count/oneline/decorate/all_refs and optional path_regex with max_candidates/per_file_diffs.",
+    "blame": "Use file_path='path/to/file'.",
+}
 
 def discover_repositories() -> tuple[tuple[str, ...], tuple[dict[str, str], ...]]:
     """Find Git metadata rooted in the configured workspace, without following symlinks."""
@@ -189,7 +228,6 @@ def discover_repositories() -> tuple[tuple[str, ...], tuple[dict[str, str], ...]
 
     return tuple(repositories), tuple(errors)
 
-
 def _git_marker(directory: Path) -> bool:
     """Git marker function."""
     try:
@@ -197,7 +235,6 @@ def _git_marker(directory: Path) -> bool:
     except FileNotFoundError:
         return False
     return stat.S_ISDIR(mode) or stat.S_ISREG(mode)
-
 
 def _maintain_gitignore(repository: Path) -> None:
     """Add standard generated-directory rules without replacing user content."""
@@ -218,7 +255,6 @@ def _maintain_gitignore(repository: Path) -> None:
     ignore_path.write_text(
         existing + separator + "\n".join(additions) + "\n", encoding="utf-8"
     )
-
 
 def _tool_description() -> str:
     """Tool description function."""
@@ -252,21 +288,37 @@ def _tool_description() -> str:
             "No Git repository was found in the configured workspace. Warn the user and ask whether "
             "they want a new repository initialized before calling git_manage with action='init'."
         )
+    action_map: str = (
+        "ACTION-TO-ARGUMENT MAPPING (supplying a field not listed for the chosen action raises an error):\n"
+        "  status   — (no action-specific fields)\n"
+        "  init     — (no action-specific fields; repo_path names the target dir, defaults to workspace root)\n"
+        "  add      — paths: list[str]  (omit to stage all; use paths NOT file_paths)\n"
+        "  commit   — message: str  (required; meaningful summary of staged changes; use message NOT mode)\n"
+        "  diff     — mode: 'unstaged'|'staged'|'both' (default unstaged), file_paths: list[str], diff_stat: bool, name_only: bool  (use file_paths NOT paths)\n"
+        "  checkout — ref: str  (branch, tag, or commit; required)\n"
+        "  branch   — branch: str  (name to create; omit to list existing branches)\n"
+        "  push     — remote: str, ref: str, set_upstream: bool, force_with_lease: bool, tags: bool, dry_run: bool\n"
+        "  pull     — remote: str, branch: str\n"
+        "  merge    — refs: list[str]  (required)\n"
+        "  rebase   — refs: list[str]  (required)\n"
+        "  stash    — stash_operation: 'list'|'push'|'pop'|'apply'|'drop' (required), stash_message: str\n"
+        "  log      — count: int, oneline: bool, decorate: bool, all_refs: bool, path_regex: str, max_candidates: int, per_file_diffs: int\n"
+        "  blame    — file_path: str  (required; repository-relative path)"
+    )
     return describe(
         "Run a validated workspace Git action: status, diff, log, add, commit, push, pull, merge, rebase, checkout, branch, stash, blame, or init. "
+        f"{action_map} "
         "For add, omit paths to stage all repository changes or provide paths to stage only those paths. "
         "For commit, provide a meaningful message that accurately summarizes staged changes; a missing or blank message skips the commit and asks for staged-diff review. "
         "Successful init creates test/ and tmp/, maintains the repository .gitignore, stages these repository defaults, and creates a `chore: add repository defaults` commit when defaults changed. add updates .gitignore before staging. "
         "These updates preserve existing content, add .handy-coder/ and tmp/, and ignore standard generated directories (node_modules, __pycache__, dist, build, virtual environments, caches, and common build outputs) whether or not they currently exist. "
         "Status returns structured staged/working-tree and untracked summaries, including matching pending change summaries from .handy-coder/state.json; diff preserves raw text and accepts mode unstaged/staged/both plus repository-relative file_paths. "
         "Log includes recent commit history. pull accepts an optional remote and branch; merge/rebase require one or more refs. These three actions require a clean worktree (including untracked files). "
-        "Use semantic action-specific fields: push options, pull remote/branch, log controls, and stash operation/options. "
         f"{state} init may target the workspace root or a subdirectory alongside other repositories, but cannot target a directory inside an existing repository. Use workspace-relative repo_path when selecting a repository. "
         "When repo_path is given and has a .git marker, workspace scan is bypassed for faster execution. "
         "When git exits non-zero, any output it printed to stdout is returned in stderr and stdout is empty. "
         "When to use: Review or manage local changes."
     )
-
 
 def _set_inventory(
     repositories: tuple[str, ...],
@@ -277,7 +329,6 @@ def _set_inventory(
     _REPOSITORIES = repositories
     _DISCOVERY_ERRORS = errors
     _DISCOVERY_ROOT = inside(".")
-
 
 def _refresh_inventory(mcp=None, *, force: bool = False) -> None:
     """Refresh inventory function."""
@@ -291,7 +342,6 @@ def _refresh_inventory(mcp=None, *, force: bool = False) -> None:
             _update_tool_description(target_mcp, _tool_description())
     elif _DISCOVERY_ROOT != inside("."):
         _set_inventory(repositories, errors)
-
 
 def _update_tool_description(mcp, description: str) -> None:
     """Update tool description function."""
@@ -328,7 +378,6 @@ def _update_tool_description(mcp, description: str) -> None:
 
     raise RuntimeError("The MCP server cannot update the git_manage tool description")
 
-
 def _route_failure_to_stderr(result: dict) -> dict:
     """Git prints some failures (e.g. 'nothing to commit') to stdout; surface them on stderr."""
     if result.get("exit_code") == 0:
@@ -340,7 +389,6 @@ def _route_failure_to_stderr(result: dict) -> dict:
         result["stdout"] = ""
     return result
 
-
 def _commit_message_hint_for(message: str) -> str | None:
     """Return a commit-message hint when the subject is too generic."""
     subject = message.splitlines()[0].strip()
@@ -351,7 +399,6 @@ def _commit_message_hint_for(message: str) -> str | None:
         return f"Commit message '{subject}' looks generic. {_COMMIT_MESSAGE_HINT}"
     return None
 
-
 def _parse_positive_int(option: str, value: str) -> int:
     """Parse and validate a positive integer option value."""
     try:
@@ -361,7 +408,6 @@ def _parse_positive_int(option: str, value: str) -> int:
     if parsed < 1:
         raise ValueError(f"{option} must be >= 1")
     return parsed
-
 
 def _parse_log_regex_options(
     args: list[str],
@@ -419,7 +465,6 @@ def _parse_log_regex_options(
 
     return options, cleaned
 
-
 def git_manage(
     action: Annotated[
         Literal[
@@ -440,8 +485,8 @@ def git_manage(
         ],
         Field(
             description=(
-                "Git operation to run. Use semantic fields such as paths for add, message for commit, ref for checkout, and named controls for push, pull, log, and stash. Omit paths on add to stage all changes. Commit uses staged changes only and requires a meaningful message; missing or blank message returns guidance without committing. diff accepts mode unstaged/staged/both and optional file_paths; branch lists/creates, blame requires one relative file; checkout requires "
-                "exactly one branch, tag, or commit (file paths are rejected with error_code not_a_ref); pull accepts up to remote and branch; merge/rebase require refs. pull, merge, and rebase require a clean worktree. init initializes the workspace root or a repo_path subdirectory, then creates test/ and tmp/ and maintains .gitignore. add maintains .gitignore before staging. (Required: True)"
+                "Git operation to run. Each action accepts ONLY action-specific fields; unsupported fields raise an error. add: paths. commit: message. diff: mode, file_paths, diff_stat, name_only. checkout: ref. branch: branch. push: remote, ref, set_upstream, force_with_lease, tags, dry_run. pull: remote, branch. merge/rebase: refs. stash: stash_operation, stash_message. log: count, oneline, decorate, all_refs, path_regex, max_candidates, per_file_diffs. blame: file_path. status/init: no action-specific fields. "
+                "Checkout requires one branch, tag, or commit and rejects file paths with error_code not_a_ref. Commit requires a meaningful message; pull accepts optional remote/branch; merge and rebase require refs and a clean worktree. (Required: True)"
             )
         ),
     ],
@@ -459,7 +504,7 @@ def git_manage(
         Literal["unstaged", "staged", "both"] | None,
         Field(
             description=(
-                "Optional diff selection: unstaged, staged, or both. Enforced only when "
+                "Diff mode selection: unstaged (default), staged, or both. Valid ONLY for action diff. Enforced only when "
                 "action is 'diff'; omitted or null defaults to 'unstaged'. (Required: False)"
             )
         ),
@@ -469,77 +514,234 @@ def git_manage(
         Field(
             description=(
                 "Optional repository-relative files to limit diff review; every path must "
-                "remain within the selected repository. Applied only when action is 'diff'. (Required: False)"
+                "remain within the selected repository. Valid ONLY for action=diff. Applied only when action is 'diff'. (Required: False)"
             )
         ),
     ] = None,
-    diff_stat: Annotated[bool | None, Field(description="Show diff statistics. (Required: False)")] = None,
-    name_only: Annotated[bool | None, Field(description="Show only changed file names in diff. (Required: False)")] = None,
-    paths: Annotated[list[str] | None, Field(description="Repository-relative paths for add; omit to stage all changes. Also used by blame only when one file is supplied. (Required: False)")] = None,
-    message: Annotated[str | None, Field(description="Meaningful commit message for staged changes. Missing or blank skips the commit and returns guidance. (Required: False)")] = None,
-    ref: Annotated[str | None, Field(description="Single branch, tag, or commit for checkout; also the branch name for branch creation or the refspec for push. (Required: False)")] = None,
-    remote: Annotated[str | None, Field(description="Remote name for push or pull. (Required: False)")] = None,
-    branch: Annotated[str | None, Field(description="Branch to pull from a remote or create with branch action. (Required: False)")] = None,
-    set_upstream: Annotated[bool | None, Field(description="Set upstream while pushing. (Required: False)")] = None,
-    force_with_lease: Annotated[bool | None, Field(description="Use the safer force-with-lease push option. (Required: False)")] = None,
-    tags: Annotated[bool | None, Field(description="Push tags. (Required: False)")] = None,
-    dry_run: Annotated[bool | None, Field(description="Ask Git to report what a push would do without changing the remote. (Required: False)")] = None,
-    count: Annotated[int | None, Field(description="Maximum number of commits for log. (Required: False)")] = None,
-    oneline: Annotated[bool | None, Field(description="Use compact one-line log output. (Required: False)")] = None,
-    decorate: Annotated[bool | None, Field(description="Show ref decorations in log output. (Required: False)")] = None,
-    all_refs: Annotated[bool | None, Field(description="Include all refs in log output. (Required: False)")] = None,
-    path_regex: Annotated[str | None, Field(description="Search log history for changes to paths matching this regular expression. (Required: False)")] = None,
-    max_candidates: Annotated[int | None, Field(description="Maximum candidate commits when path_regex is used. (Required: False)")] = None,
-    per_file_diffs: Annotated[int | None, Field(description="Per-file diffs considered when path_regex is used. (Required: False)")] = None,
-    stash_operation: Annotated[Literal["list", "push", "pop", "apply", "drop"] | None, Field(description="Stash operation. (Required: False)")] = None,
-    stash_message: Annotated[str | None, Field(description="Optional message for stash push. (Required: False)")] = None,
-    refs: Annotated[list[str] | None, Field(description="One or more refs for merge or rebase. (Required: False)")] = None,
-    file_path: Annotated[str | None, Field(description="Single repository-relative file for blame. (Required: False)")] = None,
+    diff_stat: Annotated[
+        bool | None, Field(description="Show diff statistics. Valid only for action='diff'. (Required: False)")
+    ] = None,
+    name_only: Annotated[
+        bool | None,
+        Field(description="Show only changed file names. Valid only for action='diff'. (Required: False)"),
+    ] = None,
+    paths: Annotated[
+        list[str] | None,
+        Field(
+            description="Repository-relative paths to stage with action='add'; omit to stage all changes. Use file_paths for diff and file_path for blame. (Required: False)"
+        ),
+    ] = None,
+    message: Annotated[
+        str | None,
+        Field(
+            description="Meaningful summary of staged changes for action='commit'. Missing or blank skips the commit and returns guidance. (Required: False)"
+        ),
+    ] = None,
+    ref: Annotated[
+        str | None,
+        Field(
+            description="Reference for action='checkout' (one branch, tag, or commit) or refspec for action='push'. Use branch to create a branch. (Required: False)"
+        ),
+    ] = None,
+    remote: Annotated[
+        str | None, Field(description="Remote name for action='push' or action='pull'. (Required: False)")
+    ] = None,
+    branch: Annotated[
+        str | None,
+        Field(
+            description="Remote branch for action='pull', or new branch name for action='branch'. Omit with branch action to list branches. (Required: False)"
+        ),
+    ] = None,
+    set_upstream: Annotated[
+        bool | None, Field(description="Set upstream when action='push'. (Required: False)")
+    ] = None,
+    force_with_lease: Annotated[
+        bool | None,
+        Field(
+            description="Use Git's force-with-lease option when action='push'. (Required: False)"
+        ),
+    ] = None,
+    tags: Annotated[
+        bool | None, Field(description="Push tags when action='push'. (Required: False)")
+    ] = None,
+    dry_run: Annotated[
+        bool | None,
+        Field(
+            description="Ask Git what action='push' would do without changing the remote. (Required: False)"
+        ),
+    ] = None,
+    count: Annotated[
+        int | None,
+        Field(description="Maximum number of commits returned by action='log'. (Required: False)"),
+    ] = None,
+    oneline: Annotated[
+        bool | None,
+        Field(description="Use compact one-line output for action='log'. (Required: False)"),
+    ] = None,
+    decorate: Annotated[
+        bool | None,
+        Field(description="Show ref decorations in action='log' output. (Required: False)"),
+    ] = None,
+    all_refs: Annotated[
+        bool | None,
+        Field(description="Include all refs in action='log' output. (Required: False)"),
+    ] = None,
+    path_regex: Annotated[
+        str | None,
+        Field(
+            description="For action='log', search for changes to repository-relative paths matching this regular expression. (Required: False)"
+        ),
+    ] = None,
+    max_candidates: Annotated[
+        int | None,
+        Field(
+            description="Maximum candidate commits for action='log' when path_regex is used. (Required: False)"
+        ),
+    ] = None,
+    per_file_diffs: Annotated[
+        int | None,
+        Field(
+            description="Per-file diffs considered by action='log' when path_regex is used. (Required: False)"
+        ),
+    ] = None,
+    stash_operation: Annotated[
+        Literal["list", "push", "pop", "apply", "drop"] | None,
+        Field(description="Stash operation for action='stash': list, push, pop, apply, or drop. (Required: False)"),
+    ] = None,
+    stash_message: Annotated[
+        str | None,
+        Field(description="Optional stash message for action='stash' with stash_operation='push'. (Required: False)"),
+    ] = None,
+    refs: Annotated[
+        list[str] | None,
+        Field(description="One or more refs required by action='merge' or action='rebase'. (Required: False)"),
+    ] = None,
+    file_path: Annotated[
+        str | None,
+        Field(
+            description="Single repository-relative file required by action='blame'. (Required: False)"
+        ),
+    ] = None,
 ) -> dict:
     """Git manage function."""
     target_mcp = _MCP
-    supplied = {"paths": paths, "message": message, "ref": ref, "remote": remote, "branch": branch,
-        "set_upstream": set_upstream, "force_with_lease": force_with_lease, "tags": tags, "dry_run": dry_run,
-        "count": count, "oneline": oneline, "decorate": decorate, "all_refs": all_refs, "path_regex": path_regex,
-        "max_candidates": max_candidates, "per_file_diffs": per_file_diffs, "stash_operation": stash_operation,
-        "stash_message": stash_message, "refs": refs, "file_path": file_path,
-        "diff_stat": diff_stat, "name_only": name_only, "mode": mode, "file_paths": file_paths}
-    applicable = {
-        "add": {"paths"}, "commit": {"message"}, "checkout": {"ref"}, "push": {"remote", "ref", "set_upstream", "force_with_lease", "tags", "dry_run"},
-        "pull": {"remote", "branch"}, "log": {"count", "oneline", "decorate", "all_refs", "path_regex", "max_candidates", "per_file_diffs"},
-        "stash": {"stash_operation", "stash_message"}, "merge": {"refs"}, "rebase": {"refs"}, "branch": {"branch"}, "blame": {"file_path"},
+    supplied: dict = {
+        "paths": paths,
+        "message": message,
+        "ref": ref,
+        "remote": remote,
+        "branch": branch,
+        "set_upstream": set_upstream,
+        "force_with_lease": force_with_lease,
+        "tags": tags,
+        "dry_run": dry_run,
+        "count": count,
+        "oneline": oneline,
+        "decorate": decorate,
+        "all_refs": all_refs,
+        "path_regex": path_regex,
+        "max_candidates": max_candidates,
+        "per_file_diffs": per_file_diffs,
+        "stash_operation": stash_operation,
+        "stash_message": stash_message,
+        "refs": refs,
+        "file_path": file_path,
+        "diff_stat": diff_stat,
+        "name_only": name_only,
+        "mode": mode,
+        "file_paths": file_paths,
+    }
+    applicable: dict = {
+        "add": {"paths"},
+        "commit": {"message"},
+        "checkout": {"ref"},
+        "push": {
+            "remote",
+            "ref",
+            "set_upstream",
+            "force_with_lease",
+            "tags",
+            "dry_run",
+        },
+        "pull": {"remote", "branch"},
+        "log": {
+            "count",
+            "oneline",
+            "decorate",
+            "all_refs",
+            "path_regex",
+            "max_candidates",
+            "per_file_diffs",
+        },
+        "stash": {"stash_operation", "stash_message"},
+        "merge": {"refs"},
+        "rebase": {"refs"},
+        "branch": {"branch"},
+        "blame": {"file_path"},
     }
     if action == "diff":
         applicable["diff"] = {"diff_stat", "name_only", "mode", "file_paths"}
-    invalid = [name for name, value in supplied.items() if value is not None and name not in applicable.get(action, set())]
+    invalid: list = [
+        name
+        for name, value in supplied.items()
+        if value is not None and name not in applicable.get(action, set())
+    ]
     if invalid:
-        raise ValueError(f"Fields not valid for action '{action}': {', '.join(invalid)}")
+        raise ValueError(
+            f"Fields not valid for action '{action}': {', '.join(invalid)}"
+        )
     args: list[str] = []
-    if action == "add": args = list(paths or [])
+    if action == "add":
+        args = list(paths or [])
     if action == "add" and paths == []:
-        raise ValueError("paths must be omitted to stage all changes or contain at least one path")
+        raise ValueError(
+            "paths must be omitted to stage all changes or contain at least one path"
+        )
     elif action == "commit":
         if message is None or not message.strip():
-            return {"supported": True, "error_code": "commit_message_required", "message": "No commit was created. Inspect the staged diff with git_manage(action='diff', mode='staged'), then provide a meaningful message field.", "hint": "Review the staged changes and call commit with a message that describes them.", "exit_code": 0}
-        args = ["-m", message]
+            return {
+                "supported": True,
+                "error_code": "commit_message_required",
+                "message": "No commit was created. Inspect the staged diff with git_manage(action='diff', mode='staged'), then provide a meaningful message field.",
+                "hint": "Review the staged changes and call commit with a message that describes them.",
+                "exit_code": 0,
+            }
+        args: list = ["-m", message]
     elif action == "checkout":
-        if ref: args.append(ref)
-    elif action == "pull": args = [x for x in (remote, branch) if x]
-    elif action in ("merge", "rebase"): args = list(refs or [])
-    elif action == "branch": args = [branch] if branch else []
+        if ref:
+            args.append(ref)
+    elif action == "pull":
+        args: list = [x for x in (remote, branch) if x]
+    elif action in ("merge", "rebase"):
+        args = list(refs or [])
+    elif action == "branch":
+        args = [branch] if branch else []
     elif action == "stash":
         args = [stash_operation] if stash_operation else []
         if stash_message:
             args += ["-m", stash_message]
-    elif action == "blame": args = [file_path] if file_path else []
+    elif action == "blame":
+        args = [file_path] if file_path else []
     if action == "push":
-        args = (["-u"] if set_upstream else []) + (["--force-with-lease"] if force_with_lease else []) + (["--tags"] if tags else []) + (["--dry-run"] if dry_run else []) + ([remote] if remote else []) + ([ref] if ref else [])
+        args = (
+            (["-u"] if set_upstream else [])
+            + (["--force-with-lease"] if force_with_lease else [])
+            + (["--tags"] if tags else [])
+            + (["--dry-run"] if dry_run else [])
+            + ([remote] if remote else [])
+            + ([ref] if ref else [])
+        )
     if action == "log":
         if count is not None and count < 1:
             raise ValueError("count must be >= 1")
-        if path_regex is None and (max_candidates is not None or per_file_diffs is not None):
+        if path_regex is None and (
+            max_candidates is not None or per_file_diffs is not None
+        ):
             raise ValueError("max_candidates and per_file_diffs require path_regex")
-        for option, value in (("max_candidates", max_candidates), ("per_file_diffs", per_file_diffs)):
+        for option, value in (
+            ("max_candidates", max_candidates),
+            ("per_file_diffs", per_file_diffs),
+        ):
             if value is not None and value < 1:
                 raise ValueError(f"{option} must be >= 1")
         if path_regex is not None:
@@ -547,12 +749,22 @@ def git_manage(
                 re.compile(path_regex)
             except re.error as exc:
                 raise ValueError(f"Invalid regex for path_regex: {exc}") from exc
-        args = (["-n", str(count)] if count is not None else []) + (["--oneline"] if oneline else []) + (["--decorate"] if decorate else []) + (["--all"] if all_refs else [])
-        if path_regex is not None: args += [_LOG_REGEX_FLAG, path_regex]
-        if max_candidates is not None: args += [_LOG_MAX_CANDIDATES_FLAG, str(max_candidates)]
-        if per_file_diffs is not None: args += [_LOG_PER_FILE_DIFFS_FLAG, str(per_file_diffs)]
+        args = (
+            (["-n", str(count)] if count is not None else [])
+            + (["--oneline"] if oneline else [])
+            + (["--decorate"] if decorate else [])
+            + (["--all"] if all_refs else [])
+        )
+        if path_regex is not None:
+            args += [_LOG_REGEX_FLAG, path_regex]
+        if max_candidates is not None:
+            args += [_LOG_MAX_CANDIDATES_FLAG, str(max_candidates)]
+        if per_file_diffs is not None:
+            args += [_LOG_PER_FILE_DIFFS_FLAG, str(per_file_diffs)]
     if action == "diff":
-        args = (["--stat"] if diff_stat else []) + (["--name-only"] if name_only else [])
+        args = (["--stat"] if diff_stat else []) + (
+            ["--name-only"] if name_only else []
+        )
     if action not in (
         "status",
         "diff",
@@ -959,7 +1171,7 @@ def git_manage(
             # A deleted tracked path is still a valid operand for `git add`:
             # Git stages its removal from the index. Filesystem existence alone
             # cannot distinguish that case from a typo, so ask the index.
-            tracked_deleted = False
+            tracked_deleted: bool = False
             if action == "add":
                 relative = resolved.relative_to(selected_path.resolve()).as_posix()
                 tracked = run_process(
@@ -1065,7 +1277,6 @@ def git_manage(
             for line in history.get("stdout", "").splitlines()
         ]
     return result
-
 
 def register(mcp):
     """Register function."""
