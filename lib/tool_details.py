@@ -657,7 +657,7 @@ def install(mcp: Any) -> None:
         if consecutive_failures >= 2 and target not in _ROUTER_PUBLIC_TOOLS:
             result = dict(result)
             result["hint"] = (
-                "Inspect the full schema with invoke_tool(tool_name='get_tool_schema', "
+                "`get_tool_schema` is a hidden schema tool that's now unlocked to you. Inspect the full schema with invoke_tool(tool_name='get_tool_schema', "
                 f"arguments={json.dumps({'tool_name': target}, ensure_ascii=False)})."
             )
         return result
