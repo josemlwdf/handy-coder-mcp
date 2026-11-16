@@ -77,6 +77,10 @@ def create_file(
             description="If true, include this successful change in the automatic commit workflow, which dispatches a committer after five opted-in file changes. Defaults to false. (Required: False)"
         ),
     ] = False,
+    include_diff: Annotated[
+        bool,
+        Field(description="Include submitted and final unified diffs. Defaults to false; diffs are included automatically when syntax checking or code polish reports a problem. (Required: False)"),
+    ] = False,
     *,
     summary: Annotated[str, Field(description=SUMMARY_DESCRIPTION)],
 ) -> dict:
@@ -229,28 +233,30 @@ def create_file(
             )
         )
 
+    polish_problem = (
+        polish_report.get("ok") is False
+        or bool(polish_report.get("errors"))
+        or any(
+            isinstance(output, dict)
+            and isinstance(output.get("report"), dict)
+            and output["report"].get("ok") is False
+            for file_report in polish_report.get("files", [])
+            if isinstance(file_report, dict)
+            for output in file_report.get("tool_outputs", [])
+        )
+    )
     result: dict = {
         "path": relative_path,
         "created": not existed,
         "overwritten": existed,
-        "diff": diff,
-        "submitted_diff": submitted_diff,
-        "code_polish_report": polish_report,
-        "diff_hint": diff_hint,
+        "bytes": len(final_text.encode("utf-8")),
+        "lines": len(final_text.splitlines()),
+        "polish_status": "changed" if final_text != content else "unchanged",
     }
-
-    if p.suffix.lower() == ".py":
-        result["dependency_hint"] = (
-            "Review requirements.txt and add any new third-party dependencies introduced by this Python file."
-        )
 
     from ...utils.syntax_checker import syntax_checker
 
     result["syntax_check"] = syntax_checker(p, final_text)
-    if p.suffix.lower() in {".html", ".htm"}:
-        result["guidance"] = (
-            "For web projects, consider organizing HTML, JavaScript, and CSS under static/html, static/js, and static/css. These directories are not created automatically."
-        )
     if not result["syntax_check"].get("ok"):
         findings = result["syntax_check"].get("findings", [])
         msgs: list[str] = [
@@ -260,10 +266,12 @@ def create_file(
         result["warning"] = (
             f"Syntax error(s) detected in {relative_path}: " + "; ".join(msgs)
         )
+    if polish_problem:
+        result["warning"] = (result.get("warning", "") + " Code polish reported a problem; review the file and polish diagnostics.").strip()
 
-    final_content = final_text.encode("utf-8")
-    result["bytes"] = len(final_content)
-    result["lines"] = len(final_text.splitlines())
+    if include_diff or polish_problem or not result["syntax_check"].get("ok"):
+        result.update(diff=diff, submitted_diff=submitted_diff)
+        result["diff_hint"] = diff_hint
     return result
 
 
@@ -276,9 +284,10 @@ def register(mcp):
             "Automatic commits are opt-in: set automatic_commit=true on this call to include the change in the automatic commit workflow (a committer is dispatched after five opted-in successful file changes); the default is false. "
             "Missing parent directories are created unless create_parents=false. "
             "Optional permissions sets POSIX mode bits; backup=true saves the prior file as a sibling .bak before overwrite. "
+            "include_diff=false omits diffs from successful compact responses; set true to include submitted_diff and diff. Diffs are included automatically when syntax or polish reports a problem. Successful responses retain file status, relative path, byte/line counts, polish status, syntax status, and actionable warnings; generic guidance and verbose polish reports are omitted. "
             "Failures return error_code (invalid_summary, already_exists, path_escape, not_a_file, not_a_directory, parent_missing, file_too_large, io_error) "
             "with a message instead of raising; nothing is written. "
-            "Response includes the workspace-relative path, created, overwritten, bytes and lines, submitted_diff (LLM-authored text change), and diff (final on-disk change after automatic polish). When automatic polish runs, code_polish_report contains per-file tool outputs and transformation details, and diff_hint explicitly states that diffs include both LLM changes and code polish actions. Submitted content is preserved by default; format_content=true opts into available formatting for supported Python, JavaScript, or HTML files, and post_process_python=true opts into Python source processing. Python file responses remind the agent to update requirements.txt if the file introduces third-party dependencies. "
+            "Compact success responses include workspace-relative path, created/overwritten status, final byte and line counts, polish status, syntax status, and actionable warnings. Diffs are omitted by default; include_diff=true returns submitted_diff and diff, while syntax or polish problems include diffs automatically. Verbose polish reports and generic guidance are omitted. Submitted content is preserved by default; format_content=true opts into available formatting for supported Python, JavaScript, or HTML files, and post_process_python=true opts into Python source processing. "
             "All created or overwritten files receive an automatic syntax check of their final saved content (unsupported file types return ok with no findings), and HTML suggests organizing web content under static/html, static/js, and static/css; these directories are not created automatically. "
             "An open subagent frame is released with subagent_manage(action='complete', ...) or subagent_manage(action='cancel', confirm=true). "
             "Note: The code_polish tool is applied automatically when create_file writes files (based on format_content/post_process_python options). Do not attempt to revert these changes, undo formatting diffs, or rebase the repo due to polish updates. Treat these automated changes as the baseline standard of the repository. "

@@ -115,6 +115,10 @@ The JSON Schema below is the registered input contract. Required fields appear i
       "description": "If true, replacement is a Python re replacement template: \\1 and \\g<name> insert capture groups and backslash escapes are interpreted. (Required: False)",
       "type": "boolean"
     },
+    "include_diff": {
+      "description": "Include per-edit and per-file unified diffs; defaults to false, with automatic inclusion when syntax or polish reports a problem.",
+      "type": "boolean"
+    },
     "summary": {
       "description": "One-line, concise summary of the change being made (single line, max 200 characters). (Required: True)",
       "type": "string"
@@ -130,7 +134,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 ## Results
 
-Returns the structured result produced by the implementation. Error results and status fields are tool-specific; inspect the returned object and its documented fields rather than assuming that a process or operation succeeded.
+Successful responses are compact by default: they include dry-run status, written paths, per-edit match counts, changed-file paths and byte/line counts, polish and syntax status, and actionable warnings. Diffs are omitted unless `include_diff=true`, or syntax/polish reports a problem. Generic guidance and verbose polish details are omitted. Error results retain their detailed diagnostics.
 
 ## Side effects and runtime requirements
 

@@ -64,6 +64,10 @@ The JSON Schema below is the registered input contract. Required fields appear i
       "description": "When true, run Python source post-processing after writing a .py file. (Required: False)",
       "type": "boolean"
     },
+    "include_diff": {
+      "description": "Include submitted and final unified diffs; defaults to false, with automatic inclusion when syntax or polish reports a problem.",
+      "type": "boolean"
+    },
     "summary": {
       "description": "One-line, concise summary of the change being made (single line, max 200 characters). (Required: True)",
       "type": "string"
@@ -79,7 +83,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 ## Results
 
-Returns the structured result produced by the implementation. Error results and status fields are tool-specific; inspect the returned object and its documented fields rather than assuming that a process or operation succeeded.
+Successful responses are compact by default: they include created/overwritten status, workspace-relative path, byte and line counts, polish status, syntax status, and actionable warnings. Diffs are omitted unless `include_diff=true`, or syntax/polish reports a problem. Generic guidance and verbose polish reports are omitted. Error results retain their detailed diagnostics.
 
 ## Side effects and runtime requirements
 

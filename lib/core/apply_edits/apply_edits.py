@@ -144,6 +144,10 @@ def apply_edits(
             description="If true, include this successful change in the automatic commit workflow, which dispatches a committer after five opted-in file changes. Defaults to false. (Required: False)"
         ),
     ] = False,
+    include_diff: Annotated[
+        bool,
+        Field(description="Include per-edit and per-file unified diffs. Defaults to false; diffs are included automatically when syntax checking or code polish reports a problem. (Required: False)"),
+    ] = False,
     *,
     summary: Annotated[str, Field(description=SUMMARY_DESCRIPTION)],
 ) -> dict:
@@ -476,14 +480,24 @@ def apply_edits(
     # Keep only run-level status here to avoid an unassociated files array.
     # Keep the run-level file outcomes available in the public response. Per-file
     # detail is also attached to each changed file below for convenient lookup.
-    polish_summary: dict = dict(polish_report)
+    polish_problem = (
+        polish_report.get("ok") is False
+        or bool(polish_report.get("errors"))
+        or any(
+            isinstance(output, dict)
+            and isinstance(output.get("report"), dict)
+            and output["report"].get("ok") is False
+            for file_report in polish_report.get("files", [])
+            if isinstance(file_report, dict)
+            for output in file_report.get("tool_outputs", [])
+        )
+    )
     response: dict = {
         "edits": results,
         "files": files,
         "written_files": written_files,
         "dry_run": dry_run,
-        "code_polish_report": polish_summary,
-        "diff_hint": diff_hint,
+        "polish_status": "changed" if any(isinstance(f, dict) and f.get("changed") for f in polish_report.get("files", [])) else "unchanged",
     }
     if checked_files:
         if len(checked_files) == 1:
@@ -519,9 +533,30 @@ def apply_edits(
         and _adds_import(original_contents[path], new_text)
         for path, new_text in staged_contents.items()
     ):
-        response["dependency_hint"] = (
-            "Review requirements.txt and add any new third-party dependencies introduced by these Python edits."
-        )
+        response["warning"] = (response.get("warning", "") + " Python imports changed; review requirements.txt for new third-party dependencies.").strip()
+    if polish_problem:
+        response["warning"] = (response.get("warning", "") + " Code polish reported a problem; review the affected files and polish diagnostics.").strip()
+    for entry in files:
+        try:
+            content = staged_contents.get(str(inside(entry["path"]))) if dry_run else inside(entry["path"]).read_text(encoding="utf-8")
+            if content is not None:
+                entry["bytes"] = len(content.encode("utf-8"))
+                entry["lines"] = len(content.splitlines())
+                entry["polish_status"] = "changed" if entry.get("code_polish", {}).get("changed") else "unchanged"
+        except Exception:
+            pass
+    syntax_problem = any(not chk.get("ok") for _, chk in checked_files)
+    if include_diff or polish_problem or syntax_problem:
+        response["diff_hint"] = diff_hint
+    else:
+        for result in results:
+            result.pop("diff", None)
+        for entry in files:
+            entry.pop("diff", None)
+            entry.pop("submitted_diff", None)
+            entry.pop("transformations", None)
+            entry.pop("tool_outputs", None)
+            entry.pop("code_polish", None)
     return response
 
 
@@ -550,6 +585,7 @@ def register(mcp):
             "Apply regex edits to workspace files; Note: Subject to the same automatisation contract as `create_file` tool; Do not attempt to revert these changes. "
             "Requires summary: a one-line, concise description of the change. "
             "Automatic commits are opt-in: set automatic_commit=true on this call to include the change in the automatic commit workflow (a committer is dispatched after five opted-in successful file changes); the default is false. "
+            "include_diff=false omits per-edit and per-file diffs from compact success responses; set true to include them. Diffs are included automatically when syntax or polish reports a problem. Success responses retain dry_run, written paths, match counts, changed-file paths and sizes, polish/syntax status, and actionable warnings; generic guidance and verbose polish details are omitted. "
             "Validates and stages the entire batch before writing; a later invalid edit leaves earlier edits unapplied. "
             "Edits are processed in order against staged content, so repeated/overlapping edits on the same file are order-sensitive. "
             "Each edit requires pattern and replacement; legacy old_str/new_str aliases are rejected by schema validation. "
@@ -558,8 +594,7 @@ def register(mcp):
             "Error messages include the zero-based edit index ([edit N]) for easy identification. "
             "Edit failures return error_code (invalid_summary, invalid_regex, invalid_replacement, no_match, not_found, path_escape, not_a_file, binary_file, io_error, invalid_edit) "
             "with edit_index and message instead of raising; nothing is written. "
-            "Each edit result includes matches (count of replacements made) and its edit diff. Changed files are summarized in files with submitted_diff (raw LLM edit) and diff (final on-disk content after automatic code_polish), plus changed_lines, transformations, tool_outputs, and code_polish details nested with the corresponding file. dry_run previews exact edits without polish or writing. written_files lists workspace-relative paths written to disk (only files whose content changed; always empty on dry_run). code_polish_report contains run-level status and errors, and diff_hint explicitly reminds that diffs include both LLM edits and code polish actions. A dependency_hint is returned only when an edit adds a Python import. Every modified file automatically runs syntax checking to warn the agent of syntax errors in syntax_check and warning fields (unsupported file types return ok with no findings). "
-            "Returns unified diffs. "
+            "Each edit result retains matches (count of replacements made). Changed files include workspace-relative paths, byte and line counts, polish status, and syntax status. dry_run previews exact edits without polish or writing. written_files lists paths written to disk (only changed files; always empty on dry_run). Diffs are omitted by default; include_diff=true returns per-edit diffs and per-file submitted_diff/diff, while syntax or polish problems include diffs automatically. Verbose polish details and generic guidance are omitted from compact success responses. Syntax problems include actionable warnings. Unsupported file types return ok with no findings. "
             "Note: The code_polish tool is applied automatically after apply_edits writes files. Do not attempt to revert these changes, undo polish diffs, or rebase the repo due to polish updates. Treat these automated changes as the baseline standard of the repository. "
             "When to use: Make localized changes."
         )

@@ -186,7 +186,8 @@ class ApplyEditsContractTests(unittest.TestCase):
                         path="page.html", pattern="<p>", replacement="<p class='x'>"
                     ),
                 ],
-                summary="test change",
+                include_diff=True,
+            summary="test change",
             )
 
         formatter.assert_called_once()
@@ -195,7 +196,6 @@ class ApplyEditsContractTests(unittest.TestCase):
             "+<div><p class='x'>new</p></div>", result["files"][0]["submitted_diff"]
         )
         self.assertIn('+ <p class="x">new</p>', result["files"][0]["diff"])
-        self.assertIn("code_polish_report", result)
         self.assertEqual([edit["matches"] for edit in result["edits"]], [1, 1])
 
     def test_html_dry_run_previews_raw_diff_without_polish_or_writing(self) -> None:
@@ -206,12 +206,12 @@ class ApplyEditsContractTests(unittest.TestCase):
         result = apply_edits.apply_edits(
             [apply_edits.Edit(path="page.htm", pattern="old", replacement="new")],
             dry_run=True,
+            include_diff=True,
             summary="test change",
         )
 
         self.assertEqual(target.read_text(encoding="utf-8"), original)
         self.assertEqual(result["written_files"], [])
-        self.assertEqual(result["code_polish_report"]["files"], [])
         self.assertIn("new", result["files"][0]["diff"])
 
     def test_html_formatting_failure_is_reported_in_polish_output(self) -> None:
@@ -234,9 +234,7 @@ class ApplyEditsContractTests(unittest.TestCase):
 
         self.assertEqual(target.read_text(encoding="utf-8"), "<p>new</p>")
         self.assertIn("+<p>new</p>", result["files"][0]["diff"])
-        self.assertFalse(
-            result["code_polish_report"]["files"][0]["tool_outputs"][0]["report"]["ok"]
-        )
+        self.assertIn("warning", result)
 
     def test_python_formatting_reports_submitted_vs_final_newlines(self) -> dict:
         """Test python formatting reports submitted vs final newlines function."""
@@ -261,7 +259,8 @@ class ApplyEditsContractTests(unittest.TestCase):
         ) as formatter:
             result = apply_edits.apply_edits(
                 [apply_edits.Edit(path="script.py", pattern="1", replacement="2")],
-                summary="test change",
+                include_diff=True,
+            summary="test change",
             )
 
         formatter.assert_called_once()
@@ -276,6 +275,7 @@ class ApplyEditsContractTests(unittest.TestCase):
 
         result = apply_edits.apply_edits(
             [apply_edits.Edit(path="notes.txt", pattern="before", replacement="after")],
+            include_diff=True,
             summary="test change",
         )
 
@@ -328,6 +328,7 @@ class ApplyEditsContractTests(unittest.TestCase):
                     replacement="hello world",
                 )
             ],
+            include_diff=True,
             summary="test change",
         )
 

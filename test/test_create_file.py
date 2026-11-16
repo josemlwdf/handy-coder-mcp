@@ -29,7 +29,7 @@ class CreateFileTests(unittest.TestCase):
 
     def test_creates_file_with_content(self) -> None:
         """Test creates file with content function."""
-        result = create_file.create_file("hello.txt", "a\nb\n", summary="test change")
+        result = create_file.create_file("hello.txt", "a\nb\n", include_diff=True, summary="test change")
         self.assertTrue(result["created"])
         self.assertFalse(result["overwritten"])
         self.assertEqual(result["path"], "hello.txt")
@@ -75,7 +75,7 @@ class CreateFileTests(unittest.TestCase):
         """Test overwrite replaces existing file function."""
         (self.root / "swap.txt").write_text("original")
         result = create_file.create_file(
-            "swap.txt", "new", overwrite=True, summary="test change"
+            "swap.txt", "new", overwrite=True, include_diff=True, summary="test change"
         )
         self.assertFalse(result["created"])
         self.assertTrue(result["overwritten"])
@@ -101,6 +101,23 @@ class CreateFileTests(unittest.TestCase):
         result = create_file.create_file("link/evil.txt", "x", summary="test change")
         self.assertEqual(result["error_code"], "path_escape")
         self.assertFalse((Path(outside.name) / "evil.txt").exists())
+
+    def test_compact_success_and_explicit_diff(self) -> None:
+        compact = create_file.create_file(
+            "compact.txt", "hello\n", summary="test change"
+        )
+        self.assertEqual(compact["polish_status"], "unchanged")
+        self.assertTrue(compact["syntax_check"]["ok"])
+        self.assertFalse(
+            {"diff", "submitted_diff", "code_polish_report", "diff_hint"}
+            & compact.keys()
+        )
+        explicit = create_file.create_file(
+            "compact.txt", "updated\n", overwrite=True, include_diff=True,
+            summary="test change"
+        )
+        self.assertIn("diff", explicit)
+        self.assertIn("submitted_diff", explicit)
 
     def test_directory_target_is_rejected(self) -> None:
         """Test directory target is rejected function."""
@@ -182,6 +199,9 @@ class CreateFileTests(unittest.TestCase):
             result["syntax_check"]["findings"],
             [{"line": 1, "column": 12, "message": "invalid syntax"}],
         )
+        self.assertIn("diff", result)
+        self.assertIn("submitted_diff", result)
+        self.assertIn("warning", result)
 
     def test_python_syntax_check_runs_after_optional_processing(self) -> None:
         """Test python syntax check runs after optional processing function."""
@@ -215,7 +235,7 @@ class CreateFileTests(unittest.TestCase):
         )
         self.assertIn("+<p>x</p>", result["submitted_diff"])
         self.assertIn("+<p>x</p>", result["diff"])
-        self.assertIn("code_polish_report", result)
+        self.assertIn("warning", result)
 
     def test_html_formatting_runs_after_raw_diff_is_captured(self) -> tuple:
         """Test html formatting runs after raw diff is captured function."""
@@ -232,12 +252,13 @@ class CreateFileTests(unittest.TestCase):
             "lib.utils.html_prettify.prettify_html", side_effect=format_after_diff
         ):
             result = create_file.create_file(
-                "formatted.html", "<p>x</p>", format_content=True, summary="test change"
+                "formatted.html", "<p>x</p>", format_content=True,
+                include_diff=True, summary="test change"
             )
         self.assertEqual(target.read_text(encoding="utf-8"), "<p>\nx\n</p>\n")
         self.assertIn("+<p>x</p>", result["submitted_diff"])
         self.assertIn("+x", result["diff"])
-        self.assertIn("code_polish_report", result)
+        self.assertEqual(result["polish_status"], "changed")
 
     def test_javascript_formatting_runs_after_raw_diff_is_captured(self) -> dict:
         """Test javascript formatting runs after raw diff is captured function."""
@@ -260,7 +281,8 @@ class CreateFileTests(unittest.TestCase):
             side_effect=format_after_diff,
         ) as formatter:
             result = create_file.create_file(
-                "script.js", "const x=1", format_content=True, summary="test change"
+                "script.js", "const x=1", format_content=True,
+                include_diff=True, summary="test change"
             )
 
         formatter.assert_called_once()
@@ -290,13 +312,14 @@ class CreateFileTests(unittest.TestCase):
                 "script.py",
                 "value = 1\r\n",
                 post_process_python=True,
+                include_diff=True,
                 summary="test change",
             )
 
         self.assertEqual(target.read_bytes(), b"value = 1\n")
         self.assertIn("+value = 1\r\n", result["submitted_diff"])
         self.assertIn("+value = 1\n", result["diff"])
-        self.assertIn("code_polish_report", result)
+        self.assertEqual(result["polish_status"], "changed")
 
     def test_html_checker_structural_cases_and_lines(self) -> None:
         """Test html checker structural cases and lines function."""
@@ -315,6 +338,33 @@ class CreateFileTests(unittest.TestCase):
                 self.assertEqual(html_syntax_check.check_html(html)["ok"], expected)
         finding = html_syntax_check.check_html("<div>\n</span>")["findings"][0]
         self.assertEqual(finding["line"], 2)
+
+    def test_html_checker_ignores_markup_like_raw_text_and_create_file_passes(self) -> None:
+        html = """<html><body>
+<script>
+const row = `<tr><td>${value}</td><td><input></td><td><button>Go</button></td></tr>`;
+const multiline = `first line
+<td>still template text</td>
+last line`;
+if (left < right && right > 0) { render(multiline); }
+</script>
+<style>.x::before { content: "<td>"; }</style>
+<p>valid</p>
+</body></html>"""
+        self.assertEqual(html_syntax_check.check_html(html), {"ok": True, "findings": []})
+        result = create_file.create_file("raw-text.html", html, summary="raw text fixture")
+        self.assertTrue(result["syntax_check"]["ok"], result["syntax_check"])
+
+    def test_html_checker_keeps_document_and_raw_text_boundary_errors(self) -> None:
+        for source, line in (("<div>\n</span>", 2), ("<div\n", 1)):
+            with self.subTest(source=source):
+                findings = html_syntax_check.check_html(source)["findings"]
+                self.assertTrue(findings)
+                self.assertEqual(findings[0]["line"], line)
+        for source in ("<div><span></div>", "<script>const x = `<td>`;", "<style>.x { color: red; }"):
+            with self.subTest(source=source):
+                result = html_syntax_check.check_html(source)
+                self.assertFalse(result["ok"])
 
     def test_html_syntax_check_uses_final_saved_content_after_opt_in_formatter(
         self,

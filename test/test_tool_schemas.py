@@ -96,6 +96,23 @@ class ToolSchemaTests(unittest.TestCase):
         ):
             module.register(cls.mcp)
 
+    def test_file_edit_tools_document_compact_diff_contract(self) -> None:
+        for function in (create_file.create_file, apply_edits.apply_edits):
+            with self.subTest(tool=function.__name__):
+                parameter = inspect.signature(function).parameters["include_diff"]
+                self.assertFalse(parameter.default)
+                description = " ".join(
+                    item.description
+                    for item in get_type_hints(function, include_extras=True)[
+                        "include_diff"
+                    ].__metadata__
+                )
+                self.assertIn("syntax", description)
+                self.assertIn("polish", description)
+                tool_description = self.mcp.descriptions[function.__name__]
+                self.assertIn("compact", tool_description)
+                self.assertIn("responses", tool_description)
+
     def test_every_tool_and_argument_has_a_description(self) -> None:
         """Test every tool and argument has a description function."""
         self.assertEqual(len(self.mcp.tools), 21)

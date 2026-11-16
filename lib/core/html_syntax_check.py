@@ -24,6 +24,7 @@ class _Checker(HTMLParser):
         self.stack: list[tuple[str, int]] = []
         self.findings: list[dict] = []
         self.comment_start: int | None = None
+        self.raw_text_tag: str | None = None
 
     def add(self, message: str, line: int | None = None) -> None:
         """Add function."""
@@ -37,13 +38,15 @@ class _Checker(HTMLParser):
     def handle_data(self, data) -> None:
         """Handle data function."""
         line = self.getpos()[0]
-        if "<" in data:
+        if self.raw_text_tag is None and "<" in data:
             self.add("Malformed opening tag delimiter", line)
 
     def handle_starttag(self, tag, attrs) -> None:
         """Handle starttag function."""
         tag = tag.lower()
         line = self.getpos()[0]
+        if tag in {"script", "style"}:
+            self.raw_text_tag = tag
         if tag == "li" and self.stack and self.stack[-1][0] == "li":
             self.stack.pop()
         if tag in {"dt", "dd"} and self.stack and self.stack[-1][0] in {"dt", "dd"}:
@@ -73,6 +76,8 @@ class _Checker(HTMLParser):
         """Handle endtag function."""
         tag = tag.lower()
         line = self.getpos()[0]
+        if tag == self.raw_text_tag:
+            self.raw_text_tag = None
         if tag in VOID_ELEMENTS:
             self.add(f"Void element </{tag}> must not have an end tag", line)
             return
@@ -103,33 +108,49 @@ def check_html(content: str) -> dict:
     for tag, line in checker.stack:
         if tag not in OPTIONAL_END:
             checker.add(f"Unclosed <{tag}> opened here", line)
+    # Delimiter scans must ignore raw text in script/style bodies. Keep the
+    # original length and line breaks so offsets and line numbers stay stable.
+    import re
+
+    scan_content = list(content)
+    for match in re.finditer(
+        r"<(?P<tag>script|style)\b[^>]*>", content, re.IGNORECASE
+    ):
+        close = re.search(
+            rf"</\s*{match.group('tag')}\s*>",
+            content[match.end() :],
+            re.IGNORECASE,
+        )
+        body_end = match.end() + close.start() if close else len(content)
+        for index in range(match.end(), body_end):
+            if scan_content[index] not in "\r\n":
+                scan_content[index] = " "
+    scan_content = "".join(scan_content)
     # HTMLParser treats unterminated comments as data; detect comment openers that
     # have no matching closer while preserving the opening line.
     offset: int = 0
     while True:
-        start = content.find("<!--", offset)
+        start = scan_content.find("<!--", offset)
         if start < 0:
             break
-        end = content.find("-->", start + 4)
+        end = scan_content.find("-->", start + 4)
         if end < 0:
             checker.add("Unclosed HTML comment", content.count("\n", 0, start) + 1)
             break
         offset = end + 3
     # HTMLParser leaves malformed closing delimiters such as </p or </p x> in
     # data; catch those explicitly and attribute them to their source line.
-    import re
-
-    for match in re.finditer(r"</\s*[A-Za-z][^>\n]*(?:\n|$)", content):
+    for match in re.finditer(r"</\s*[A-Za-z][^>\n]*(?:\n|$)", scan_content):
         checker.findings.append(
             {
-                "line": content.count("\n", 0, match.start()) + 1,
+                "line": scan_content.count("\n", 0, match.start()) + 1,
                 "message": "Malformed closing tag delimiter",
             }
         )
-    for match in re.finditer(r"<[A-Za-z][^>\n]*(?:\n|$)", content):
+    for match in re.finditer(r"<[A-Za-z][^>\n]*(?:\n|$)", scan_content):
         checker.findings.append(
             {
-                "line": content.count("\n", 0, match.start()) + 1,
+                "line": scan_content.count("\n", 0, match.start()) + 1,
                 "message": "Malformed opening tag delimiter",
             }
         )
