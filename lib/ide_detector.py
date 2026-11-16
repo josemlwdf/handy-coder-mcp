@@ -277,8 +277,8 @@ def find_ide_user_data_dirs(ide_name: str | None = None) -> list[Path]:
         # 1. Windows AppData via WSL mounts (/mnt/*/Users/*/AppData/Roaming/<Folder>/User)
         for drive_letter in ("c", "d", "e"):
             drive_users = Path(f"/mnt/{drive_letter}/Users")
-            if drive_users.is_dir():
-                try:
+            try:
+                if drive_users.is_dir():
                     for u in drive_users.iterdir():
                         if u.is_dir() and u.name.lower() not in (
                             "public",
@@ -288,8 +288,10 @@ def find_ide_user_data_dirs(ide_name: str | None = None) -> list[Path]:
                         ):
                             for cdir in info["config_dirs"]:
                                 _add_user_dir(u / "AppData" / "Roaming" / cdir / "User")
-                except OSError:
-                    pass
+            except OSError:
+                # A WSL drive may be configured but currently unavailable.
+                # Skip it and continue checking other drives and native paths.
+                pass
 
         # 2. Native Linux desktop configuration (~/.config/<Folder>/User)
         for cdir in info["config_dirs"]:
