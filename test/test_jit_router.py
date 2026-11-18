@@ -238,6 +238,27 @@ def test_router_dispatch_validates_original_schema_and_unknown_names() -> None:
         )
     ))
     assert good["tool_name"] == "read_files"
+
+    capabilities = _structured(asyncio.run(
+        call("invoke_tool", {"tool_name": "get_capabilities", "arguments": {}})
+    ))
+    assert capabilities == {"available": True}
+
+    root_details = _structured(asyncio.run(
+        call(
+            "invoke_tool",
+            {"tool_name": "get_tool_details", "arguments": {"tool_name": "read_files"}},
+        )
+    ))
+    assert root_details["tool_name"] == "read_files"
+    assert "paths" in root_details["arguments"]
+
+    self_target = _structured(asyncio.run(
+        call("invoke_tool", {"tool_name": "invoke_tool", "arguments": {}})
+    ))
+    assert self_target["error_code"] == "unknown_tool"
+    assert "Unknown or unavailable tool: invoke_tool" in self_target["message"]
+
     full = _structured(asyncio.run(
         call(
             "invoke_tool",

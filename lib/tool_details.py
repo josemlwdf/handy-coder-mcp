@@ -691,7 +691,10 @@ def install(mcp: Any) -> None:
         if (
             canonical not in catalog
             or canonical not in runtime_tools
-            or canonical == "invoke_tool"
+            or (
+                canonical in _ROUTER_PUBLIC_TOOLS
+                and canonical not in {"get_capabilities", "get_tool_details"}
+            )
         ):
             result = {
                 "error_code": "unknown_tool",
