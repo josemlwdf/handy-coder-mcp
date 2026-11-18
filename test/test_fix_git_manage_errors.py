@@ -82,6 +82,42 @@ class GitManageDiffOptionErrorTests(unittest.TestCase):
 
         self.assertNotIn("args", signature(git_manage.git_manage).parameters)
 
+    def test_commit_reports_remaining_changes_only_on_success(self):
+        (self.root / "staged.txt").write_text("one\ntwo\n", encoding="utf-8")
+        subprocess.run(["git", "add", "staged.txt"], cwd=self.root, check=True)
+        (self.root / "unstaged.txt").write_text("change\n", encoding="utf-8")
+        subprocess.run(["git", "add", "unstaged.txt"], cwd=self.root, check=True)
+        (self.root / "unstaged.txt").write_text("changed again\n", encoding="utf-8")
+        (self.root / "new.txt").write_text("new\n", encoding="utf-8")
+        hook = self.root / ".git" / "hooks" / "post-commit"
+        hook.write_text(
+            "#!/bin/sh\nprintf 'hook change\\n' >> seed.txt\ngit add seed.txt\n",
+            encoding="utf-8",
+        )
+        hook.chmod(0o755)
+
+        result = git_manage.git_manage("commit", message="add staged fixture", repo_path=".")
+        self.assertEqual(result.get("exit_code"), 0, result)
+        self.assertEqual(result["uncommitted_changes"], {
+            "staged": [{"file": "seed.txt", "additions": "1", "deletions": "0"}],
+            "unstaged": [{"file": "unstaged.txt", "additions": "1", "deletions": "1"}],
+            "untracked_files": ["new.txt"],
+        })
+
+    def test_commit_clean_worktree_returns_empty_summary(self):
+        (self.root / "staged.txt").write_text("staged\n", encoding="utf-8")
+        subprocess.run(["git", "add", "staged.txt"], cwd=self.root, check=True)
+        result = git_manage.git_manage("commit", message="add staged fixture", repo_path=".")
+        self.assertEqual(result.get("exit_code"), 0, result)
+        self.assertEqual(result["uncommitted_changes"], {
+            "staged": [], "unstaged": [], "untracked_files": []
+        })
+
+    def test_failed_commit_has_no_uncommitted_changes_field(self):
+        result = git_manage.git_manage("commit", message="nothing new", repo_path=".")
+        self.assertNotEqual(result.get("exit_code"), 0)
+        self.assertNotIn("uncommitted_changes", result)
+
     def test_absolute_repo_path_matching_workspace_root_is_accepted(self):
         """An absolute repo_path equal to the workspace root must not be rejected."""
         result = git_manage.git_manage("status", repo_path=str(self.root))

@@ -319,7 +319,7 @@ def _tool_description() -> str:
         "Run a validated workspace Git action: status, diff, log, add, commit, push, pull, merge, rebase, checkout, branch, stash, blame, or init. "
         f"{action_map} "
         "For add, omit paths to stage all repository changes or provide paths to stage only those paths. "
-        "For commit, provide a meaningful message that accurately summarizes staged changes; a missing or blank message skips the commit and asks for staged-diff review. "
+        "For commit, provide a meaningful message that accurately summarizes staged changes; a missing or blank message skips the commit and asks for staged-diff review. A successful commit also returns uncommitted_changes, with staged and unstaged tracked file names and change counts plus untracked file names. "
         "Successful init creates test/ and tmp/, maintains the repository .gitignore, stages these repository defaults, and creates a `chore: add repository defaults` commit when defaults changed. add updates .gitignore before staging. "
         "These updates preserve existing content, add .handy-coder/ and tmp/, and ignore standard generated directories (node_modules, __pycache__, dist, build, virtual environments, caches, and common build outputs) whether or not they currently exist. "
         "Status returns structured staged/working-tree and untracked summaries, including matching pending change summaries from .handy-coder/state.json; diff preserves raw text and accepts mode unstaged/staged/both plus repository-relative file_paths. "
@@ -408,6 +408,34 @@ def _commit_message_hint_for(message: str) -> str | None:
     if lowered in _GENERIC_COMMIT_SUBJECTS or len(subject) < 8:
         return f"Commit message '{subject}' looks generic. {_COMMIT_MESSAGE_HINT}"
     return None
+
+
+def _uncommitted_changes_summary(git: str, repo_path: Path) -> dict:
+    """Summarize remaining index/worktree changes without exposing patch text."""
+    summary: dict = {"staged": [], "unstaged": [], "untracked_files": []}
+    for key, args in (("staged", ["diff", "--cached", "--numstat"]),
+                      ("unstaged", ["diff", "--numstat"])):
+        result = run_process([git, *args], cwd=repo_path)
+        if result.get("exit_code") != 0:
+            continue
+        for line in result.get("stdout", "").splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) == 3:
+                additions, deletions, path = parts
+                summary[key].append({
+                    "file": path,
+                    "additions": additions,
+                    "deletions": deletions,
+                })
+    status = run_process(
+        [git, "status", "--porcelain=v1", "--untracked-files=all"], cwd=repo_path
+    )
+    if status.get("exit_code") == 0:
+        summary["untracked_files"] = [
+            line[3:] for line in status.get("stdout", "").splitlines()
+            if line.startswith("?? ")
+        ]
+    return summary
 
 def _parse_positive_int(option: str, value: str) -> int:
     """Parse and validate a positive integer option value."""
@@ -1262,6 +1290,8 @@ def git_manage(
         result["hint"] = _ADD_FOLLOWUP_HINT
     if action == "commit" and result.get("exit_code") != 0:
         result["hint"] = commit_message_hint or _COMMIT_MESSAGE_HINT
+    elif action == "commit" and result.get("exit_code") == 0:
+        result["uncommitted_changes"] = _uncommitted_changes_summary(git, selected_path)
     if action == "status" and result.get("exit_code") == 0:
         porcelain = run_process(
             [git, "status", "--porcelain=v1", "--untracked-files=all"],

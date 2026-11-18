@@ -49,4 +49,6 @@ Use `repo_path` as a workspace-relative repository root. It is optional when one
 
 `init` creates `test/` and `tmp/`, maintains `.gitignore`, stages repository defaults, and creates a `chore: add repository defaults` commit when defaults changed. `add` also updates `.gitignore` before staging. `pull`, `merge`, and `rebase` require a clean worktree, including untracked files. The tool returns the structured result produced by Git and the implementation.
 
+After a successful `commit`, the result includes `uncommitted_changes`: `staged` and `unstaged` arrays of tracked file names with addition/deletion counts, and an `untracked_files` array of names. It contains no patch text. When the worktree is clean, all three arrays are empty. Failed commits do not include this field.
+
 The public registration name is `git_manage`. The complete tool catalog is in the project [tool inventory](../../../docs/TOOL_INVENTORY.md); runtime schema details are available from `get_tool_details`.
