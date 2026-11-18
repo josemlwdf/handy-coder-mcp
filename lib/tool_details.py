@@ -11,6 +11,8 @@ from typing import Annotated, Any
 from mcp.types import CallToolResult, TextContent
 from pydantic import Field
 
+from .error_handler import normalize_empty_arguments
+
 _ROUTER_RESULT_CHAR_LIMIT = 16_000
 _ROUTER_PUBLIC_TOOLS = frozenset(
     {
@@ -707,6 +709,9 @@ def install(mcp: Any) -> None:
                 "message": "arguments must be a JSON object",
             }
             return _as_structured_tool_result(_with_retry_hint(result, canonical))
+        tool = runtime_tools.get(canonical)
+        if tool is not None:
+            arguments = normalize_empty_arguments(tool, arguments)
         try:
             result = await manager.call_tool(canonical, arguments)
             if isinstance(result, dict) and result.get("error_code"):

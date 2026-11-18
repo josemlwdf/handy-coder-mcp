@@ -4,6 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ... import support
+from ...error_handler import is_empty_value
 from ...support import inside, MAX_READ_BYTES, describe
 
 MAX_FILE_CONTENT_CHARS = 16_000
@@ -95,6 +96,16 @@ def read_files(
     ] = False,
 ) -> dict:
     """Read files function."""
+    if is_empty_value(line_ranges):
+        line_ranges = None
+    if is_empty_value(start_line):
+        start_line = None
+    if is_empty_value(end_line):
+        end_line = None
+    if is_empty_value(encoding):
+        encoding = "utf-8"
+    if is_empty_value(include_metadata):
+        include_metadata = False
     if not paths:
         raise ValueError("paths must contain at least one workspace path")
     if (start_line is None) != (end_line is None):

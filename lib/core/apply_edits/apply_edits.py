@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field
+from ...error_handler import is_empty_value
 from ...support import inside, describe, path_escape_message
 from ...utils.change_summary import SUMMARY_DESCRIPTION, validate_summary
 from ..code_polish import polish_paths
@@ -152,6 +153,20 @@ def apply_edits(
     summary: Annotated[str, Field(description=SUMMARY_DESCRIPTION)],
 ) -> dict:
     """Apply edits function."""
+    if is_empty_value(max_replacements):
+        max_replacements = None
+    if is_empty_value(replace_all):
+        replace_all = False
+    if is_empty_value(case_insensitive):
+        case_insensitive = False
+    if is_empty_value(dry_run):
+        dry_run = False
+    if is_empty_value(expand_groups):
+        expand_groups = False
+    if is_empty_value(automatic_commit):
+        automatic_commit = False
+    if is_empty_value(include_diff):
+        include_diff = False
     summary_error = validate_summary(summary)
     if summary_error:
         return {

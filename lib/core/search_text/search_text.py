@@ -5,6 +5,7 @@ import time
 from typing import Annotated
 
 from pydantic import Field
+from ...error_handler import is_empty_value
 from ...support import GENERATED_DIRS, MAX_READ_BYTES, describe, iter_workspace_files
 
 SEARCH_TIME_LIMIT_SECONDS = 15.0
@@ -183,6 +184,22 @@ def search_text(
     ] = None,
 ) -> dict:
     """Search text function."""
+    if is_empty_value(path_glob):
+        path_glob = None
+    if is_empty_value(extensions):
+        extensions = None
+    if is_empty_value(max_results):
+        max_results = 100
+    if is_empty_value(context_lines):
+        context_lines = 0
+    if is_empty_value(is_regex):
+        is_regex = True
+    if is_empty_value(include_generated):
+        include_generated = False
+    if is_empty_value(include_dot_dirs):
+        include_dot_dirs = False
+    if is_empty_value(case_insensitive):
+        case_insensitive = False
     return _search_text_impl(
         query,
         is_regex,

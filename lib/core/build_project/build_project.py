@@ -12,6 +12,7 @@ from typing import Annotated
 
 from pydantic import Field
 
+from ...error_handler import is_empty_value
 from ...support import describe, inside, path_escape_message, run_process
 
 _MAX_TIMEOUT_MS = 600_000
@@ -202,6 +203,12 @@ def build_project(
     ] = False,
 ) -> dict:
     """Detect and build a Python, Node, or .NET project without invoking a shell."""
+    if is_empty_value(path):
+        path = None
+    if is_empty_value(timeout_ms):
+        timeout_ms = 30_000
+    if is_empty_value(include_raw_output):
+        include_raw_output = False
     if not 1 <= int(timeout_ms) <= _MAX_TIMEOUT_MS:
         raise ValueError("timeout_ms must be between 1 and 600000")
     root = inside(".")

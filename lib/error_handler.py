@@ -10,6 +10,7 @@ receive ``{error_code, message}`` instead.
 from __future__ import annotations
 
 import functools
+import inspect
 import json
 import re
 from typing import Any
@@ -22,6 +23,64 @@ _URL_NOTE = re.compile(
     r"\s*For further information visit https?://errors\.pydantic\.dev\S*"
 )
 _URL = re.compile(r"https?://errors\.pydantic\.dev\S*")
+
+
+def is_empty_value(val: Any) -> bool:
+    """Return True if val represents an empty argument (None, empty string, empty collection)."""
+    if val is None:
+        return True
+    if val is False or val is True:
+        return False
+    return val == "" or val == [] or val == {} or val == set()
+
+
+def normalize_empty_arguments(tool: Any, arguments: Any) -> Any:
+    """Normalize empty values in tool arguments (empty string, empty list, empty dict, None).
+
+    For optional parameters (or fields not in the tool's required parameters),
+    empty values are removed so that parameter defaults are used, matching omitted parameters.
+    """
+    if not isinstance(arguments, dict):
+        return arguments
+
+    normalized = dict(arguments)
+    model_fields = None
+    sig_params = None
+
+    if hasattr(tool, "fn_metadata"):
+        arg_model = getattr(tool.fn_metadata, "arg_model", None)
+        if arg_model is not None and hasattr(arg_model, "model_fields"):
+            model_fields = arg_model.model_fields
+
+    fn = getattr(tool, "fn", None) if not callable(tool) else tool
+    if fn is not None and callable(fn):
+        try:
+            sig_params = inspect.signature(fn).parameters
+        except (ValueError, TypeError):
+            sig_params = None
+
+    for key, value in list(normalized.items()):
+        if not is_empty_value(value):
+            continue
+
+        is_required = False
+        if model_fields is not None:
+            if key in model_fields:
+                is_required = model_fields[key].is_required()
+            else:
+                is_required = False
+        elif sig_params is not None:
+            if key in sig_params:
+                is_required = sig_params[key].default is inspect.Parameter.empty
+            else:
+                is_required = False
+        else:
+            is_required = False
+
+        if not is_required:
+            normalized.pop(key, None)
+
+    return normalized
 
 
 _APPLY_EDITS_ALIAS_FIELDS = frozenset({"search", "replace", "old_str", "new_str"})
@@ -150,6 +209,9 @@ def install(mcp: Any) -> bool:
     ):
         """Call tool function."""
         try:
+            tool = manager.get_tool(name)
+            if tool is not None and isinstance(arguments, dict):
+                arguments = normalize_empty_arguments(tool, arguments)
             return await original(
                 name, arguments, context=context, convert_result=convert_result
             )

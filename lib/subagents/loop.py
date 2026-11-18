@@ -530,6 +530,11 @@ def _call_tool(
     tool_name: str | None = None,
 ) -> dict:
     """Call a loop tool with process isolation when possible."""
+    from ..error_handler import normalize_empty_arguments
+
+    if isinstance(args, dict):
+        args = normalize_empty_arguments(fn, args)
+
     if tool_name in _IN_PROCESS_LOOP_TOOLS or not _is_worker_eligible(fn):
         return _call_tool_in_thread(fn, args, deadline)
 

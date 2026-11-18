@@ -64,6 +64,16 @@ _GENERIC_COMMIT_SUBJECTS: set = {
 }
 _DISALLOWED_COMMIT_WORD = re.compile(r"\bcommit\b", re.IGNORECASE)
 
+
+def _is_empty(val: Any) -> bool:
+    """Return True if val represents an empty argument (None, empty string, empty collection)."""
+    if val is None:
+        return True
+    if val is False or val is True:
+        return False
+    return val == "" or val == [] or val == {} or val == set()
+
+
 def _pending_change_summaries_for_paths(
     paths: list[str], repo_root: Path
 ) -> list[dict[str, Any]]:
@@ -684,19 +694,40 @@ def git_manage(
     invalid: list = [
         name
         for name, value in supplied.items()
-        if value is not None and name not in applicable.get(action, set())
+        if not _is_empty(value) and name not in applicable.get(action, set())
     ]
     if invalid:
         raise ValueError(
             f"Fields not valid for action '{action}': {', '.join(invalid)}"
         )
+    if _is_empty(paths):
+        paths = None
+    if _is_empty(repo_path):
+        repo_path = None
+    if _is_empty(file_paths):
+        file_paths = None
+    if _is_empty(refs):
+        refs = None
+    if _is_empty(ref):
+        ref = None
+    if _is_empty(remote):
+        remote = None
+    if _is_empty(branch):
+        branch = None
+    if _is_empty(message):
+        message = None
+    if _is_empty(file_path):
+        file_path = None
+    if _is_empty(stash_operation):
+        stash_operation = None
+    if _is_empty(stash_message):
+        stash_message = None
+    if _is_empty(path_regex):
+        path_regex = None
+
     args: list[str] = []
     if action == "add":
         args = list(paths or [])
-    if action == "add" and paths == []:
-        raise ValueError(
-            "paths must be omitted to stage all changes or contain at least one path"
-        )
     elif action == "commit":
         if message is None or not message.strip():
             return {

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import Field
+from ...error_handler import is_empty_value
 from ...support import (
     inside,
     run_process,
@@ -327,6 +328,18 @@ def run_tests(
     ] = False,
 ) -> dict:
     """Run tests function."""
+    if is_empty_value(filter_path):
+        filter_path = None
+    if is_empty_value(test_framework):
+        test_framework = None
+    if is_empty_value(parallel):
+        parallel = None
+    if is_empty_value(fail_fast):
+        fail_fast = False
+    if is_empty_value(coverage):
+        coverage = False
+    if is_empty_value(verbose):
+        verbose = False
     root = inside(".")
     framework = test_framework
     detection_trace: list[dict[str, str]] = []

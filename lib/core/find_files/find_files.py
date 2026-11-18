@@ -6,6 +6,7 @@ from typing import Annotated
 
 from pydantic import Field
 import snowballstemmer
+from ...error_handler import is_empty_value
 from ...support import describe, iter_workspace_files
 
 # Common generated/build directories to skip by default
@@ -78,6 +79,12 @@ def find_files(
     ] = True,
 ) -> dict:
     """Find matching files and directories recursively."""
+    if is_empty_value(exclude_pattern):
+        exclude_pattern = None
+    if is_empty_value(include_generated):
+        include_generated = True
+    if is_empty_value(include_dot_dirs):
+        include_dot_dirs = True
     if not glob_pattern:
         raise ValueError("glob_pattern cannot be empty")
     normalized_glob_pattern = glob_pattern.casefold()
