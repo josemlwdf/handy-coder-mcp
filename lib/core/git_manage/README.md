@@ -51,4 +51,6 @@ Use `repo_path` as a workspace-relative repository root. It is optional when one
 
 After a successful `commit`, the result includes `uncommitted_changes`: `staged` and `unstaged` arrays of tracked file names with addition/deletion counts, and an `untracked_files` array of names. It contains no patch text. When the worktree is clean, all three arrays are empty. Failed commits do not include this field.
 
+Successful `add` results and commit attempts include `staged_diff_summary`, captured after staging for `add` and immediately before Git runs for `commit`. It contains the staged file count, total text additions/deletions, and per-file numstat counts (binary counts remain `"-"`); it contains no patch text.
+
 The public registration name is `git_manage`. The complete tool catalog is in the project [tool inventory](../../../docs/TOOL_INVENTORY.md); runtime schema details are available from `get_tool_details`.

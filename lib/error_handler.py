@@ -112,7 +112,11 @@ def _clean(value: Any) -> str:
     return _URL.sub("", _URL_NOTE.sub("", str(value))).strip()
 
 
-def _validation_payload(exc: ValidationError, tool_name: str | None = None) -> dict:
+def _validation_payload(
+    exc: ValidationError,
+    tool_name: str | None = None,
+    parameter_schema: dict | None = None,
+) -> dict:
     """Validation payload function."""
     try:
         errors = exc.errors(
@@ -127,6 +131,8 @@ def _validation_payload(exc: ValidationError, tool_name: str | None = None) -> d
         "error_code": "invalid_argument",
         "message": f"{field}: {reason}" if field else reason,
     }
+    if parameter_schema is not None:
+        payload["parameter_schema"] = json.loads(json.dumps(parameter_schema))
     if field:
         payload["field"] = field
     if len(errors) > 1:
@@ -141,11 +147,15 @@ def _validation_payload(exc: ValidationError, tool_name: str | None = None) -> d
     return payload
 
 
-def error_payload(exc: BaseException, tool_name: str | None = None) -> dict:
+def error_payload(
+    exc: BaseException,
+    tool_name: str | None = None,
+    parameter_schema: dict | None = None,
+) -> dict:
     """Build a structured, pydantic-free error payload from a FastMCP ToolError."""
     cause = exc.__cause__
     if isinstance(cause, ValidationError):
-        payload = _validation_payload(cause, tool_name)
+        payload = _validation_payload(cause, tool_name, parameter_schema)
     elif isinstance(cause, UnauthorizedCommandError):
         message = _clean(cause)
         # Tool/action guidance is already represented in structured fields. Keep
@@ -165,6 +175,8 @@ def error_payload(exc: BaseException, tool_name: str | None = None) -> dict:
             "error_code": "invalid_argument",
             "message": _clean(cause) or "Invalid argument",
         }
+        if parameter_schema is not None:
+            payload["parameter_schema"] = json.loads(json.dumps(parameter_schema))
     elif cause is not None:
         payload: dict = {
             "error_code": "tool_error",
@@ -216,7 +228,20 @@ def install(mcp: Any) -> bool:
                 name, arguments, context=context, convert_result=convert_result
             )
         except ToolError as exc:
-            payload = error_payload(exc, name)
+            catalog = getattr(mcp, "_tool_details_catalog", {})
+            entry = catalog.get(name, {}) if isinstance(catalog, dict) else {}
+            schema = entry.get("inputSchema") if isinstance(entry, dict) else None
+            if not isinstance(schema, dict):
+                tool = manager.get_tool(name)
+                schema = (
+                    getattr(tool, "parameters", None)
+                    or getattr(tool, "input_schema", None)
+                    if tool is not None
+                    else None
+                )
+            payload = error_payload(
+                exc, name, schema if isinstance(schema, dict) else None
+            )
             return _convert(manager, name, payload) if convert_result else payload
 
     call_tool._structured_errors = True  # type: ignore[attr-defined]

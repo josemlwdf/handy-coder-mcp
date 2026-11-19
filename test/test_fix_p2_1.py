@@ -86,6 +86,16 @@ class StructuredErrorTests(unittest.TestCase):
         self.assert_structured(result)
         self.assertEqual(result["error_code"], "invalid_argument")
         self.assertEqual(result.get("field"), "timeout_ms")
+        self.assertEqual(
+            result["parameter_schema"],
+            self.mcp._tool_details_catalog["terminal_exec"]["inputSchema"],
+        )
+        self.assertEqual(result["tool"], "terminal_exec")
+        result["parameter_schema"]["test_mutation"] = True
+        self.assertNotIn(
+            "test_mutation",
+            self.mcp._tool_details_catalog["terminal_exec"]["inputSchema"],
+        )
 
     def test_web_search_wrong_type(self) -> None:
         """Test web search wrong type function."""
@@ -152,6 +162,12 @@ class StructuredErrorTests(unittest.TestCase):
         result = self.call("terminal_exec", {"command": "  "})
         self.assert_structured(result)
         self.assertIn("empty", result["message"])
+        self.assertEqual(
+            result["parameter_schema"],
+            self.mcp._tool_details_catalog["terminal_exec"]["inputSchema"],
+        )
+        self.assertEqual(result["error_code"], "invalid_argument")
+        self.assertEqual(result["tool"], "terminal_exec")
 
     def test_unknown_tool_name_is_structured(self) -> None:
         """Test unknown tool name is structured function."""

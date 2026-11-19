@@ -275,6 +275,27 @@ def test_router_dispatch_validates_original_schema_and_unknown_names() -> None:
     ))
     assert isinstance(invalid, dict)
     assert invalid.get("error_code")
+    assert invalid["parameter_schema"] == server._tool_details_catalog["get_tool_details"]["inputSchema"]
+
+    router_invalid = _structured(asyncio.run(call(
+        "invoke_tool", {"tool_name": 12, "arguments": {}}
+    )))
+    assert router_invalid["error_code"] == "invalid_argument"
+    assert router_invalid["parameter_schema"] == server._tool_details_catalog["invoke_tool"]["inputSchema"]
+
+    malformed_target_args = _structured(asyncio.run(
+        server._tool_manager._tools["invoke_tool"].fn("read_files", "not an object")
+    ))
+    assert malformed_target_args["error_code"] == "invalid_argument"
+    assert malformed_target_args["parameter_schema"] == server._tool_details_catalog["read_files"]["inputSchema"]
+
+    routed_invalid = _structured(asyncio.run(call(
+        "invoke_tool", {"tool_name": "read_files", "arguments": {"paths": 7}}
+    )))
+    assert routed_invalid["error_code"] == "invalid_argument"
+    assert routed_invalid["parameter_schema"] == server._tool_details_catalog["read_files"]["inputSchema"]
+    routed_invalid["parameter_schema"]["mutated"] = True
+    assert "mutated" not in server._tool_details_catalog["read_files"]["inputSchema"]
 
     aliased = _structured(asyncio.run(
         call(
@@ -327,6 +348,11 @@ def test_retry_hint_requires_two_consecutive_failures_for_same_tool() -> None:
     ))["tool_name"] == "read_files"
     after_success = _structured(asyncio.run(call("failing_tool")))
     assert "hint" not in after_success
+
+    asyncio.run(call("failing_tool", {"value": "bad"}))
+    invalid = _structured(asyncio.run(call("failing_tool", {"value": "bad"})))
+    assert invalid["error_code"] == "invalid_argument"
+    assert "hint" not in invalid
 
 def test_router_caps_nested_results_and_preserves_small_results() -> None:
     """Test router caps nested results and preserves small results function."""

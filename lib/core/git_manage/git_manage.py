@@ -410,6 +410,31 @@ def _commit_message_hint_for(message: str) -> str | None:
     return None
 
 
+def _staged_diff_summary(git: str, repo_path: Path) -> dict[str, Any]:
+    """Return a compact summary of the current index without patch contents."""
+    result = run_process([git, "diff", "--cached", "--numstat"], cwd=repo_path)
+    files: list[dict[str, Any]] = []
+    additions = deletions = 0
+    if result.get("exit_code") == 0:
+        for line in result.get("stdout", "").splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) != 3:
+                continue
+            added, deleted, path = parts
+            # Git reports binary file counts as '-'.
+            if added.isdigit():
+                additions += int(added)
+            if deleted.isdigit():
+                deletions += int(deleted)
+            files.append({"file": path, "additions": added, "deletions": deleted})
+    return {
+        "file_count": len(files),
+        "additions": additions,
+        "deletions": deletions,
+        "files": files,
+    }
+
+
 def _uncommitted_changes_summary(git: str, repo_path: Path) -> dict:
     """Summarize remaining index/worktree changes without exposing patch text."""
     summary: dict = {"staged": [], "unstaged": [], "untracked_files": []}
@@ -1249,6 +1274,7 @@ def git_manage(
                 "exit_code": 1,
             }
         git_args[index] = str(resolved)
+    staged_diff_summary: dict[str, Any] | None = None
     if action == "add":
         _maintain_gitignore(selected_path)
         # Include maintained defaults explicitly; Git stages only these paths.
@@ -1258,6 +1284,9 @@ def git_manage(
             and str(selected_path / ".gitignore") not in git_args
         ):
             git_args.append(str(selected_path / ".gitignore"))
+    elif action == "commit":
+        # Capture the exact staged snapshot before the commit empties the index.
+        staged_diff_summary = _staged_diff_summary(git, selected_path)
     if action == "diff":
         if mode == "both":
             staged = run_process(
@@ -1287,7 +1316,10 @@ def git_manage(
         run_process([git, action, *git_args], cwd=selected_path)
     )
     if action == "add" and result.get("exit_code") == 0:
+        result["staged_diff_summary"] = _staged_diff_summary(git, selected_path)
         result["hint"] = _ADD_FOLLOWUP_HINT
+    if action == "commit" and staged_diff_summary is not None:
+        result["staged_diff_summary"] = staged_diff_summary
     if action == "commit" and result.get("exit_code") != 0:
         result["hint"] = commit_message_hint or _COMMIT_MESSAGE_HINT
     elif action == "commit" and result.get("exit_code") == 0:

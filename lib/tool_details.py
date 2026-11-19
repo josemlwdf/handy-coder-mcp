@@ -656,7 +656,11 @@ def install(mcp: Any) -> None:
             consecutive_failures += 1
         else:
             last_failed_tool, consecutive_failures = target, 1
-        if consecutive_failures >= 2 and target not in _ROUTER_PUBLIC_TOOLS:
+        if (
+            consecutive_failures >= 2
+            and target not in _ROUTER_PUBLIC_TOOLS
+            and result.get("error_code") != "invalid_argument"
+        ):
             result = dict(result)
             result["hint"] = (
                 "`get_tool_schema` is a hidden schema tool that's now unlocked to you. Inspect the full schema with invoke_tool(tool_name='get_tool_schema', "
@@ -708,8 +712,9 @@ def install(mcp: Any) -> None:
             })
         if not isinstance(arguments, dict):
             result = {
-                "error_code": "invalid_arguments",
+                "error_code": "invalid_argument",
                 "message": "arguments must be a JSON object",
+                "parameter_schema": copy.deepcopy(catalog[canonical]["inputSchema"]),
             }
             return _as_structured_tool_result(_with_retry_hint(result, canonical))
         tool = runtime_tools.get(canonical)

@@ -31,7 +31,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
 
 ## Results
 
-Returns structured compact documentation. Nested documentation, defaults, constraints, and definitions are available from `get_tool_schema` through `invoke_tool`; that internal helper is not listed publicly. Errors use structured `error_code` values. After two consecutive failed calls to the same target through `invoke_tool`, the error includes a schema lookup hint.
+Returns structured compact documentation. Argument errors include the affected tool's full JSON Schema in `parameter_schema`, including nested fields and constraints. Other errors use structured `error_code` values; non-argument failures may include a schema lookup hint after repeated failures through `invoke_tool`.
 
 ## Side effects and runtime requirements
 
