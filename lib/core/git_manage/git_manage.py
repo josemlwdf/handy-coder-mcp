@@ -319,7 +319,7 @@ def _tool_description() -> str:
         "Run a validated workspace Git action: status, diff, log, add, commit, push, pull, merge, rebase, checkout, branch, stash, blame, or init. "
         f"{action_map} "
         "For add, omit paths to stage all repository changes or provide paths to stage only those paths. "
-        "For commit, provide a meaningful message that accurately summarizes staged changes; a missing or blank message skips the commit and asks for staged-diff review. A successful commit also returns uncommitted_changes, with staged and unstaged tracked file names and change counts plus untracked file names. "
+        "For commit, provide a meaningful message that accurately summarizes staged changes; a missing or blank message skips the commit and asks for staged-diff review. The word 'commit' (case-insensitive, whole word) is forbidden in the message — use an imperative verb phrase instead (e.g. 'add login validation'). A successful commit also returns uncommitted_changes, with staged and unstaged tracked file names and change counts plus untracked file names. "
         "Successful init creates test/ and tmp/, maintains the repository .gitignore, stages these repository defaults, and creates a `chore: add repository defaults` commit when defaults changed. add updates .gitignore before staging. "
         "These updates preserve existing content, add .handy-coder/ and tmp/, and ignore standard generated directories (node_modules, __pycache__, dist, build, virtual environments, caches, and common build outputs) whether or not they currently exist. "
         "Status returns structured staged/working-tree and untracked summaries, including matching pending change summaries from .handy-coder/state.json; diff preserves raw text and accepts mode unstaged/staged/both plus repository-relative file_paths. "
@@ -524,7 +524,7 @@ def git_manage(
         Field(
             description=(
                 "Git operation to run. Each action accepts ONLY action-specific fields; unsupported fields raise an error. add: paths. commit: message. diff: mode, file_paths, diff_stat, name_only. checkout: ref. branch: branch. push: remote, ref, set_upstream, force_with_lease, tags, dry_run. pull: remote, branch. merge/rebase: refs. stash: stash_operation, stash_message. log: count, oneline, decorate, all_refs, path_regex, max_candidates, per_file_diffs. blame: file_path. status/init: no action-specific fields. "
-                "Checkout requires one branch, tag, or commit and rejects file paths with error_code not_a_ref. Commit requires a meaningful message; pull accepts optional remote/branch; merge and rebase require refs and a clean worktree. (Required: True)"
+                "Checkout requires one branch, tag, or commit and rejects file paths with error_code not_a_ref. Commit requires a meaningful message; the word 'commit' (whole word, case-insensitive) is forbidden in the message — use an imperative verb phrase (e.g. 'add login validation'). pull accepts optional remote/branch; merge and rebase require refs and a clean worktree. (Required: True)"
             )
         ),
     ],
@@ -572,7 +572,7 @@ def git_manage(
     message: Annotated[
         str | None,
         Field(
-            description="Meaningful summary of staged changes for action='commit'. Missing or blank skips the commit and returns guidance. (Required: False)"
+            description="Meaningful summary of staged changes for action='commit'. Missing or blank skips the commit and returns guidance. The word 'commit' (case-insensitive) is not allowed anywhere in this message; use a descriptive verb phrase instead (e.g. 'add login form validation'). (Required: False)"
         ),
     ] = None,
     ref: Annotated[
