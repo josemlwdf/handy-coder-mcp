@@ -265,6 +265,8 @@ Returns: File path, line number, severity, and message
 - `push` — push to remote
 - `init` — initialize Git (creates test/ and tmp/)
 
+For `git_manage(action="add")`, use `all: true` to stage every change, or `paths: ["src/file.py"]` to stage selected files. Omitting `paths` continues to stage everything for compatibility. `all: true` cannot be combined with `paths`; CLI flags such as `--all` are not valid path values. Correct `invalid_argument` responses before retrying. Retry transient Git failures with backoff, and inspect status and history before retrying an ambiguous commit.
+
 Key features:
 - Automatic .gitignore management
 - Adds `.handy-coder/`, `tmp/`, and standard generated/build directory rules whether present or not; maintenance preserves existing content and does not scan the repository.

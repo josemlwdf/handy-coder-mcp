@@ -115,6 +115,14 @@ class StructuredErrorTests(unittest.TestCase):
         result = self.call("git_manage", {"action": "bogus"})
         self.assert_structured(result)
         self.assertEqual(result["error_code"], "invalid_argument")
+        self.assertIn("do not retry unchanged arguments", result["hint"])
+
+    def test_git_manage_invalid_arguments_have_corrective_guidance(self) -> None:
+        result = self.call("git_manage", {"action": "status", "all": True})
+        self.assert_structured(result)
+        self.assertEqual(result["error_code"], "invalid_argument")
+        self.assertIn("Correct the Git action fields", result["hint"])
+        self.assertIn("all=true", result["hint"])
 
     def test_get_tool_details_unknown_tool(self) -> None:
         """Test get tool details unknown tool function."""

@@ -8,7 +8,7 @@ Inspect or modify Git repositories within the workspace. The input schema is fla
 | --- | --- | --- |
 | `status` | none | Reports staged, working-tree, and untracked changes. |
 | `init` | none | `repo_path` optionally selects the directory to initialize; defaults to workspace root. |
-| `add` | `paths` | Omit to stage all changes, or provide one or more repository-relative paths. |
+| `add` | `all`, `paths` | Set `all: true` to stage all changes, or provide one or more repository-relative paths. For compatibility, omitting `paths` also stages all changes. `all: true` cannot be combined with `paths`. |
 | `commit` | `message` | A meaningful summary of staged changes is required. Missing or blank message returns guidance without committing. |
 | `diff` | `mode`, `file_paths`, `diff_stat`, `name_only` | `mode` is `unstaged` (default), `staged`, or `both`. `file_paths` filters by repository-relative paths. |
 | `checkout` | `ref` | Supply one branch, tag, or commit. File paths are rejected. |
@@ -27,6 +27,7 @@ Use the distinct path fields for their distinct purposes: `paths` stages files w
 
 ```json
 {"action": "status"}
+{"action": "add", "all": true}
 {"action": "add", "paths": ["src/app.py"]}
 {"action": "add"}
 {"action": "commit", "message": "fix: handle empty input"}
@@ -40,6 +41,12 @@ Use the distinct path fields for their distinct purposes: `paths` stages files w
 {"action": "log", "count": 10, "oneline": true}
 {"action": "blame", "file_path": "src/app.py"}
 ```
+
+`paths` values are repository-relative file paths. CLI flags such as `--all` are not path values; use `{"action":"add","all":true}` to stage all changes.
+
+## Git errors and retries
+
+An `invalid_argument` response means the fields or values need correction; do not repeat the same call unchanged. Retry a Git operation only when its diagnostic indicates a transient failure, and use backoff. If a commit result is ambiguous, inspect `git_manage(action="status")` and recent history with `git_manage(action="log")` before retrying, so an already-created commit is not duplicated.
 
 ## Repository selection
 

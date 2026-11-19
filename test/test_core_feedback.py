@@ -370,7 +370,7 @@ class CoreFeedbackTests(unittest.TestCase):
         """Test git arguments have schema descriptions function."""
         annotations = get_type_hints(self.mcp.tools["git_manage"], include_extras=True)
 
-        for name in ("action", "args", "repo_path"):
+        for name in ("action", "repo_path", "paths", "all"):
             with self.subTest(argument=name):
                 metadata = get_args(annotations[name])[1:]
                 descriptions: list = [

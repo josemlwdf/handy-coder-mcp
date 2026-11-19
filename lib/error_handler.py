@@ -186,6 +186,11 @@ def error_payload(
         text = _clean(exc)
         code = "unknown_tool" if text.startswith("Unknown tool") else "tool_error"
         payload: dict = {"error_code": code, "message": text or "Tool call failed"}
+    if tool_name == "git_manage" and payload.get("error_code") == "invalid_argument":
+        payload["hint"] = (
+            "Correct the Git action fields or values before trying again; do not retry unchanged arguments. "
+            "For add, use all=true to stage everything or paths to select files."
+        )
     if tool_name:
         payload["tool"] = tool_name
     return payload

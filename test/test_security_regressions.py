@@ -332,6 +332,27 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
         self.assertNotEqual(result["exit_code"], 0)
         self.assertEqual(result["stdout"], "")
         self.assertIn("nothing to commit", result["stderr"])
+        self.assertIn("inspect git_manage status", result["hint"])
+
+    def test_transient_git_failure_advises_backoff(self) -> None:
+        with (
+            patch(
+                "lib.core.git_manage.run_process",
+                side_effect=[
+                    {"exit_code": 0, "stdout": "true\n", "stderr": ""},
+                    {
+                        "exit_code": 128,
+                        "stdout": "",
+                        "stderr": "temporary network failure",
+                    },
+                ],
+            ),
+            patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
+        ):
+            result = git_manage.git_manage("status", repo_path=".")
+        self.assertEqual(result["exit_code"], 128)
+        self.assertIn("transient failure", result["hint"])
+        self.assertIn("retry with backoff", result["hint"])
 
     def test_commit_without_message_returns_guidance_and_does_not_commit(self) -> None:
         before = self._git_head()
@@ -351,7 +372,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
 
         parameters = signature(git_manage.git_manage).parameters
         self.assertNotIn("args", parameters)
-        for field in ("paths", "message", "ref", "remote", "count", "stash_operation"):
+        for field in ("paths", "all", "message", "ref", "remote", "count", "stash_operation"):
             self.assertIn(field, parameters)
 
     def test_action_rejects_fields_that_do_not_apply(self) -> None:
@@ -373,7 +394,8 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
         ).stdout
         self.assertIn("A  new.txt", status)
         self.assertIn("?? untouched.txt", status)
-        for bad in ([], ["--force", "new.txt"], ["all", "new.txt"]):
+        # An empty list normalizes to omitted paths and retains the legacy all behavior.
+        for bad in (["--force", "new.txt"], ["all", "new.txt"]):
             with self.subTest(args=bad):
                 with self.assertRaises(ValueError):
                     git_manage.git_manage("add", paths=bad)
@@ -399,6 +421,35 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
         self.assertIn("M  tracked.txt", status)
         self.assertIn("A  new.txt", status)
         self.assertIn("D  deleted.txt", status)
+
+    def test_add_all_true_stages_all_and_cannot_be_combined_with_paths(self) -> None:
+        (self.root / "all-option.txt").write_text("stage me\n", encoding="utf-8")
+        result = git_manage.git_manage("add", all=True)
+        self.assertEqual(result["exit_code"], 0, result)
+        status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=self.root, check=True,
+            capture_output=True, text=True,
+        ).stdout
+        self.assertIn("A  all-option.txt", status)
+        with self.assertRaisesRegex(ValueError, "cannot be combined"):
+            git_manage.git_manage("add", all=True, paths=["all-option.txt"])
+
+    def test_all_field_is_rejected_for_non_add_actions(self) -> None:
+        for value in (True, False):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "Fields not valid"):
+                git_manage.git_manage("status", all=value)
+
+    def test_add_description_documents_all_and_path_semantics(self) -> None:
+        from typing import get_type_hints
+
+        hints = get_type_hints(git_manage.git_manage, include_extras=True)
+        description = " ".join(
+            meta.description for meta in hints["all"].__metadata__
+            if getattr(meta, "description", None)
+        )
+        self.assertIn("all changes", description)
+        self.assertIn("cannot be combined", description)
+        self.assertIn("--all", description)
 
     def test_add_path_escape_returns_structured_error_and_stages_nothing(self) -> None:
         # self.parent is the managed temp dir, so tearDown removes this file.
