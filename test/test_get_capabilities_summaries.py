@@ -2,6 +2,7 @@ import tempfile
 import unittest
 import importlib
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from lib import support
@@ -54,13 +55,14 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         self.addCleanup(setattr, capabilities_module, "_MCP", previous)
 
         # Test both categories array invocation and boolean flags invocation
-        result = capabilities_module.get_capabilities(
-            categories=[
-                "file_management", "code_analysis", "build_test",
-                "web", "system", "ai_coordination",
-                "image", "git_management", "skills",
-            ]
-        )
+        with patch.object(capabilities_module, "_continue_client", return_value=True):
+            result = capabilities_module.get_capabilities(
+                categories=[
+                    "file_management", "code_analysis", "build_test",
+                    "web", "system", "ai_coordination",
+                    "image", "git_management", "skills",
+                ]
+            )
         self.assertIn("get_tool_details", result["_hint"])
         tool_descriptions = [
             item["description"]
@@ -79,11 +81,12 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         self.assertTrue(all(len(item["description"].split()) == 5 for item in result["skills"]))
 
         # Also verify boolean arguments without include_
-        bool_result = capabilities_module.get_capabilities(
-            file_management=True, code_analysis=True, build_test=True,
-            web=True, system=True, ai_coordination=True,
-            image=True, git_management=True, skills=True,
-        )
+        with patch.object(capabilities_module, "_continue_client", return_value=True):
+            bool_result = capabilities_module.get_capabilities(
+                file_management=True, code_analysis=True, build_test=True,
+                web=True, system=True, ai_coordination=True,
+                image=True, git_management=True, skills=True,
+            )
         self.assertEqual(set(bool_result["tools"]), set(result["tools"]))
 
     def test_workspace_venv_python_is_displayed_when_present(self):
@@ -160,7 +163,8 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         self.assertEqual(workspace["tools"], {})
         self.assertNotIn("_hint", workspace)
 
-        ai_coordination = capabilities_module.get_capabilities(ai_coordination=True)
+        with patch.object(capabilities_module, "_continue_client", return_value=True):
+            ai_coordination = capabilities_module.get_capabilities(ai_coordination=True)
         self.assertEqual(
             set(ai_coordination), {"_hint", "tools", "skills", "subagents"}
         )
@@ -182,9 +186,10 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         self.assertNotIn("get_capabilities", str(ai_coordination["tools"]))
 
     def test_discovery_endpoints_are_not_listed_as_capabilities(self):
-        result = capabilities_module.get_capabilities(
-            categories=["system", "ai_coordination"]
-        )
+        with patch.object(capabilities_module, "_continue_client", return_value=True):
+            result = capabilities_module.get_capabilities(
+                categories=["system", "ai_coordination"]
+            )
         listed_tools = {
             name
             for category in result["tools"].values()
@@ -240,6 +245,100 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
         self.assertEqual(tests["tools"]["build_test"]["runtime"]["run_tests"]["description"],
                          "Run project tests and report")
         self.assertEqual(planning["tools"], {"planning": {}})
+
+    def test_ai_coordination_discovery_is_continue_only(self):
+        previous = capabilities_module._MCP
+        continue_context = SimpleNamespace(
+            request_context=SimpleNamespace(
+                session=SimpleNamespace(
+                    client_params=SimpleNamespace(
+                        clientInfo=SimpleNamespace(name="continue-client")
+                    )
+                )
+            )
+        )
+        capabilities_module._MCP = SimpleNamespace(get_context=lambda: continue_context)
+        self.addCleanup(setattr, capabilities_module, "_MCP", previous)
+
+        continue_result = capabilities_module.get_capabilities(
+            categories=["ai_coordination"]
+        )
+        self.assertEqual(set(continue_result["tools"]), {"ai_coordination"})
+        self.assertEqual(
+            set(continue_result["tools"]["ai_coordination"]["always_enabled"]),
+            {"orchestrator"},
+        )
+        self.assertEqual(
+            set(continue_result["tools"]["ai_coordination"]["runtime"]),
+            {"subagent_manage"},
+        )
+        self.assertIn("subagents", continue_result)
+        self.assertIn("plan", {skill["name"] for skill in continue_result["skills"]})
+
+        # A different named client sees no coordination details, even when
+        # requesting another category in the same call.
+        other_context = SimpleNamespace(
+            request_context=SimpleNamespace(
+                session=SimpleNamespace(
+                    client_params=SimpleNamespace(
+                        clientInfo=SimpleNamespace(name="other-client")
+                    )
+                )
+            )
+        )
+        capabilities_module._MCP = SimpleNamespace(get_context=lambda: other_context)
+        with patch.object(
+            capabilities_module, "_list_skills", return_value={"skills": [
+                {"name": "plan", "description": "Plan", "tags": ["planning"]},
+                {"name": "planning", "description": "Planning", "tags": ["planning"]},
+            ]}
+        ):
+            hidden_alone = capabilities_module.get_capabilities(
+                categories=["ai_coordination"]
+            )
+            hidden_with_planning = capabilities_module.get_capabilities(
+                categories=["ai_coordination", "planning"]
+            )
+        self.assertEqual(set(hidden_alone), {"_hint"})
+        self.assertNotIn("ai_coordination", hidden_with_planning["tools"])
+        self.assertNotIn("subagents", hidden_with_planning)
+        self.assertEqual(
+            {skill["name"] for skill in hidden_with_planning["skills"]},
+            {"planning"},
+        )
+
+        # Missing and malformed context both fail closed, while unrelated
+        # categories continue to be returned.
+        for context in (None, SimpleNamespace(request_context=object())):
+            if context is None:
+                capabilities_module._MCP = None
+            else:
+                capabilities_module._MCP = SimpleNamespace(
+                    get_context=lambda context=context: context
+                )
+            hidden = capabilities_module.get_capabilities(
+                categories=["ai_coordination", "image"]
+            )
+            self.assertEqual(set(hidden["tools"]), {"image"})
+            self.assertNotIn("subagents", hidden)
+            self.assertNotIn("skills", hidden)
+
+    def test_plan_skill_is_exclusive_to_ai_coordination_summaries(self):
+        skills = [
+            {"name": "plan", "description": "Plan", "tags": ["planning"]},
+            {"name": "planning", "description": "Planning", "tags": ["planning"]},
+        ]
+        with patch.object(
+            capabilities_module, "_list_skills", return_value={"skills": skills}
+        ), patch.object(capabilities_module, "_continue_client", return_value=True):
+            planning = capabilities_module.get_capabilities(categories=["planning"])
+            coordination = capabilities_module.get_capabilities(
+                categories=["ai_coordination"]
+            )
+        self.assertEqual(
+            {skill["name"] for skill in planning["skills"]}, {"planning"}
+        )
+        self.assertIn("plan", {skill["name"] for skill in coordination["skills"]})
 
     def test_default_flags_and_registered_schema(self):
         import inspect

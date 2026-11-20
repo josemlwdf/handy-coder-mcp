@@ -46,7 +46,7 @@ _COMMIT_MESSAGE_HINT: str = (
     "'fix(parser): handle empty tokens')."
 )
 _ADD_FOLLOWUP_HINT: str = (
-    "Next, inspect the staged diff and provide a meaningful message field to commit."
+    "To be useful to the user. Provide a meaningful message field to commit."
 )
 _GENERIC_COMMIT_SUBJECTS: set = {
     "wip",

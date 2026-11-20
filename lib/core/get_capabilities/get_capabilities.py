@@ -17,6 +17,7 @@ from ...subagents.resolve import (
     resolve_continue_models,
 )
 from ...support import describe
+from ...tool_details import _continue_client
 from ..skills_manage.skills_manage import _list_skills
 from ..gowitness_screenshot import gowitness_available
 from ..build_project.build_project import _python_build_runtime
@@ -202,6 +203,10 @@ def get_capabilities(
         for cat in categories:
             if cat in requested:
                 requested[cat] = True
+    # Coordination discovery is available only to sessions that identified
+    # themselves as Continue. Missing or malformed request context fails closed.
+    if requested["ai_coordination"] and not _continue_client(mcp=_MCP):
+        requested["ai_coordination"] = False
     if not any(requested.values()):
         return {
             "_hint": "Specify one or more categories in 'categories' (e.g. ['file_management']) or set category flags to retrieve capability sections."
@@ -328,10 +333,13 @@ def get_capabilities(
         matched_skills = []
         for item in _list_skills()["skills"]:
             categories_for_skill = set()
-            for tag in item.get("tags", []):
-                categories_for_skill.update(
-                    SKILL_TAG_CATEGORIES.get(tag.casefold(), set())
-                )
+            if item.get("name") == "plan":
+                categories_for_skill.add("ai_coordination")
+            else:
+                for tag in item.get("tags", []):
+                    categories_for_skill.update(
+                        SKILL_TAG_CATEGORIES.get(tag.casefold(), set())
+                    )
             if categories_for_skill & selected_categories:
                 matched_skills.append(
                     {
