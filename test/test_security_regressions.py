@@ -372,8 +372,30 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
 
         parameters = signature(git_manage.git_manage).parameters
         self.assertNotIn("args", parameters)
-        for field in ("paths", "all", "message", "ref", "remote", "count", "stash_operation"):
+        for field in ("add_paths", "all", "message", "ref", "remote", "count", "stash_operation"):
             self.assertIn(field, parameters)
+
+    def test_renamed_path_fields_reject_legacy_names(self) -> None:
+        from inspect import signature
+
+        for action, old_field, new_field, value in (
+            ("add", "paths", "add_paths", ["tracked.txt"]),
+            ("diff", "file_paths", "diff_paths", ["tracked.txt"]),
+            ("blame", "file_path", "blame_path", "tracked.txt"),
+        ):
+            with self.subTest(action=action, field=old_field):
+                with self.assertRaisesRegex(TypeError, "unexpected keyword argument"):
+                    git_manage.git_manage(action, **{old_field: value})
+                self.assertIn(new_field, signature(git_manage.git_manage).parameters)
+                self.assertNotIn(old_field, signature(git_manage.git_manage).parameters)
+
+    def test_diff_and_blame_use_renamed_path_fields(self) -> None:
+        diff = git_manage.git_manage("diff", diff_paths=["tracked.txt"])
+        self.assertEqual(diff["exit_code"], 0, diff)
+
+        blame = git_manage.git_manage("blame", blame_path="tracked.txt")
+        self.assertEqual(blame["exit_code"], 0, blame)
+        self.assertIn("committed", blame["stdout"])
 
     def test_action_rejects_fields_that_do_not_apply(self) -> None:
         with self.assertRaisesRegex(ValueError, "Fields not valid"):
@@ -383,7 +405,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
         """Test add action stages files and validates args function."""
         (self.root / "new.txt").write_text("n\n", encoding="utf-8")
         (self.root / "untouched.txt").write_text("leave unstaged\n", encoding="utf-8")
-        result = git_manage.git_manage("add", paths=["new.txt"])
+        result = git_manage.git_manage("add", add_paths=["new.txt"])
         self.assertEqual(result["exit_code"], 0)
         status = subprocess.run(
             ["git", "status", "--porcelain"],
@@ -398,7 +420,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
         for bad in (["--force", "new.txt"], ["all", "new.txt"]):
             with self.subTest(args=bad):
                 with self.assertRaises(ValueError):
-                    git_manage.git_manage("add", paths=bad)
+                    git_manage.git_manage("add", add_paths=bad)
 
     def test_add_all_stages_tracked_untracked_and_deleted_changes(self) -> None:
         """Test add all stages tracked untracked and deleted changes function."""
@@ -432,7 +454,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
         ).stdout
         self.assertIn("A  all-option.txt", status)
         with self.assertRaisesRegex(ValueError, "cannot be combined"):
-            git_manage.git_manage("add", all=True, paths=["all-option.txt"])
+            git_manage.git_manage("add", all=True, add_paths=["all-option.txt"])
 
     def test_all_field_is_rejected_for_non_add_actions(self) -> None:
         for value in (True, False):
@@ -458,7 +480,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
         outside.write_text("x\n", encoding="utf-8")
         for target in ("../outside.txt", "a/../../outside.txt", str(outside)):
             with self.subTest(target=target):
-                result = git_manage.git_manage("add", paths=[target])
+                result = git_manage.git_manage("add", add_paths=[target])
                 self.assertEqual(result["error_code"], "path_escape")
                 self.assertNotEqual(result["exit_code"], 0)
         status = subprocess.run(

@@ -857,7 +857,7 @@ class AuditRegressionTests(unittest.TestCase):
             ),
         ):
             escaped = git_manage.git_manage(
-                "diff", repo_path=".", file_paths=["../escape.txt"]
+                "diff", repo_path=".", diff_paths=["../escape.txt"]
             )
         self.assertEqual(escaped["error_code"], "path_escape")
 

@@ -207,25 +207,25 @@ class GitManageDirectCallNormalizationTests(unittest.TestCase):
 
     def test_add_empty_list_stages_all(self):
         self._add_new_file()
-        result = git_manage.git_manage("add", paths=[])
+        result = git_manage.git_manage("add", add_paths=[])
         self.assertEqual(result["exit_code"], 0, result)
         self.assertIn("A  new.txt", self._porcelain_status())
 
     def test_add_empty_dict_stages_all(self):
         self._add_new_file()
-        result = git_manage.git_manage("add", paths={})
+        result = git_manage.git_manage("add", add_paths={})
         self.assertEqual(result["exit_code"], 0, result)
         self.assertIn("A  new.txt", self._porcelain_status())
 
     def test_add_empty_string_stages_all(self):
         self._add_new_file()
-        result = git_manage.git_manage("add", paths="")
+        result = git_manage.git_manage("add", add_paths="")
         self.assertEqual(result["exit_code"], 0, result)
         self.assertIn("A  new.txt", self._porcelain_status())
 
     def test_add_none_stages_all(self):
         self._add_new_file()
-        result = git_manage.git_manage("add", paths=None)
+        result = git_manage.git_manage("add", add_paths=None)
         self.assertEqual(result["exit_code"], 0, result)
         self.assertIn("A  new.txt", self._porcelain_status())
 
@@ -242,7 +242,7 @@ class GitManageDirectCallNormalizationTests(unittest.TestCase):
             if paths_val == "omitted":
                 result = git_manage.git_manage("add")
             else:
-                result = git_manage.git_manage("add", paths=paths_val)
+                result = git_manage.git_manage("add", add_paths=paths_val)
             self.assertEqual(
                 result["exit_code"], 0,
                 f"paths={paths_val!r} should succeed: {result}",
@@ -255,7 +255,7 @@ class GitManageDirectCallNormalizationTests(unittest.TestCase):
         """status must accept empty-valued unapplicable fields without an 'invalid fields' error."""
         for empty_val in ([], {}, "", None):
             with self.subTest(val=empty_val):
-                result = git_manage.git_manage("status", paths=empty_val, message=empty_val)
+                result = git_manage.git_manage("status", add_paths=empty_val, message=empty_val)
                 self.assertNotIn("error_code", result, result)
                 self.assertEqual(result["exit_code"], 0)
 
@@ -263,7 +263,7 @@ class GitManageDirectCallNormalizationTests(unittest.TestCase):
         for bad in (["--force", "new.txt"], ["all", "new.txt"]):
             with self.subTest(args=bad):
                 with self.assertRaises(ValueError):
-                    git_manage.git_manage("add", paths=bad)
+                    git_manage.git_manage("add", add_paths=bad)
 
 
 # ---------------------------------------------------------------------------
@@ -312,10 +312,10 @@ class GitManageMcpEmptyArgsTests(unittest.TestCase):
     def test_call_tool_all_empty_paths_stage_all(self):
         """All five paths variants through mcp.call_tool succeed identically."""
         for args in (
-            {"action": "add", "paths": []},
-            {"action": "add", "paths": {}},
-            {"action": "add", "paths": ""},
-            {"action": "add", "paths": None},
+            {"action": "add", "add_paths": []},
+            {"action": "add", "add_paths": {}},
+            {"action": "add", "add_paths": ""},
+            {"action": "add", "add_paths": None},
             {"action": "add"},
         ):
             self._add_new_file()
@@ -331,7 +331,7 @@ class GitManageMcpEmptyArgsTests(unittest.TestCase):
         self._add_new_file()
         result = _normalize(_call(self.mcp, "invoke_tool", {
             "tool_name": "git_manage",
-            "arguments": {"action": "add", "paths": []},
+            "arguments": {"action": "add", "add_paths": []},
         }))
         self.assertNotIn("error_code", result, result)
         self.assertEqual(result.get("exit_code"), 0)
@@ -342,7 +342,7 @@ class GitManageMcpEmptyArgsTests(unittest.TestCase):
         self._add_new_file()
         result = _normalize(_call(self.mcp, "invoke_tool", {
             "tool_name": "git_manage",
-            "arguments": {"action": "add", "paths": {}},
+            "arguments": {"action": "add", "add_paths": {}},
         }))
         self.assertNotIn("error_code", result, result)
         self.assertEqual(result.get("exit_code"), 0)
@@ -351,7 +351,7 @@ class GitManageMcpEmptyArgsTests(unittest.TestCase):
         """status via call_tool must handle empty inapplicable fields without invalid_argument."""
         result = _normalize(_call(self.mcp, "git_manage", {
             "action": "status",
-            "paths": [],
+            "add_paths": [],
             "message": "",
         }))
         self.assertNotIn("error_code", result, result)

@@ -64,7 +64,7 @@ class GitManageFixP23Tests(unittest.TestCase):
         cases = [
             git_manage.git_manage("status", repo_path="../outside"),
             git_manage.git_manage("status", repo_path=str(self.root.parent)),
-            git_manage.git_manage("add", paths=["../outside.txt"], repo_path="."),
+            git_manage.git_manage("add", add_paths=["../outside.txt"], repo_path="."),
             git_manage.git_manage("init", repo_path="../outside"),
         ]
         for result in cases:

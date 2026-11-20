@@ -127,9 +127,9 @@ _LOG_PER_FILE_DIFFS_FLAG: str = "--per-file-diffs"
 _ACTION_FIELDS: dict[str, set[str]] = {
     "status": set(),
     "init": set(),
-    "add": {"paths", "all"},
+    "add": {"add_paths", "all"},
     "commit": {"message"},
-    "diff": {"diff_stat", "name_only", "mode", "file_paths"},
+    "diff": {"diff_stat", "name_only", "mode", "diff_paths"},
     "checkout": {"ref"},
     "branch": {"branch"},
     "push": {"remote", "ref", "set_upstream", "force_with_lease", "tags", "dry_run"},
@@ -146,15 +146,15 @@ _ACTION_FIELDS: dict[str, set[str]] = {
         "max_candidates",
         "per_file_diffs",
     },
-    "blame": {"file_path"},
+    "blame": {"blame_path"},
 }
 
 _ACTION_HINTS: dict[str, str] = {
     "status": "status takes no action-specific fields.",
     "init": "init takes no action-specific fields.",
-    "add": "Use all=true to stage all changes, paths=['file1', 'file2'] to stage selected files, or omit paths (legacy: stages all). Do not pass CLI flags such as --all as paths.",
+    "add": "Use all=true to stage all changes, add_paths=['file1', 'file2'] to stage selected files, or omit add_paths (legacy: stages all). Do not pass CLI flags such as --all as add_paths.",
     "commit": "Use message='meaningful summary of staged changes'.",
-    "diff": "Use mode=('unstaged'|'staged'|'both') and optional file_paths=['path/to/file'].",
+    "diff": "Use mode=('unstaged'|'staged'|'both') and optional diff_paths=['path/to/file'].",
     "checkout": "Use ref='branch-or-tag-or-sha'.",
     "branch": "Use branch='new-branch-name' to create one, or omit it to list branches.",
     "push": "Use remote/ref and optional set_upstream/force_with_lease/tags/dry_run.",
@@ -163,7 +163,7 @@ _ACTION_HINTS: dict[str, str] = {
     "rebase": "Use refs=['upstream-ref'].",
     "stash": "Use stash_operation='list|push|pop|apply|drop' and optional stash_message for push.",
     "log": "Use count/oneline/decorate/all_refs and optional path_regex with max_candidates/per_file_diffs.",
-    "blame": "Use file_path='path/to/file'.",
+    "blame": "Use blame_path='path/to/file'.",
 }
 
 def discover_repositories() -> tuple[tuple[str, ...], tuple[dict[str, str], ...]]:
@@ -302,9 +302,9 @@ def _tool_description() -> str:
         "ACTION-TO-ARGUMENT MAPPING (supplying a field not listed for the chosen action raises an error):\n"
         "  status   — (no action-specific fields)\n"
         "  init     — (no action-specific fields; repo_path names the target dir, defaults to workspace root)\n"
-        "  add      — all: bool, paths: list[str]  (all=true stages all; paths selects files; omit paths to stage all for compatibility; do not pass CLI flags such as --all as paths)\n"
+        "  add      — all: bool, add_paths: list[str]  (all=true stages all; add_paths selects files; omit add_paths to stage all for compatibility; do not pass CLI flags such as --all as add_paths)\n"
         "  commit   — message: str  (required; meaningful summary of staged changes; use message NOT mode)\n"
-        "  diff     — mode: 'unstaged'|'staged'|'both' (default unstaged), file_paths: list[str], diff_stat: bool, name_only: bool  (use file_paths NOT paths)\n"
+        "  diff     — mode: 'unstaged'|'staged'|'both' (default unstaged), diff_paths: list[str], diff_stat: bool, name_only: bool  (diff_paths filters files; add_paths applies only to add)\n"
         "  checkout — ref: str  (branch, tag, or commit; required)\n"
         "  branch   — branch: str  (name to create; omit to list existing branches)\n"
         "  push     — remote: str, ref: str, set_upstream: bool, force_with_lease: bool, tags: bool, dry_run: bool\n"
@@ -313,17 +313,17 @@ def _tool_description() -> str:
         "  rebase   — refs: list[str]  (required)\n"
         "  stash    — stash_operation: 'list'|'push'|'pop'|'apply'|'drop' (required), stash_message: str\n"
         "  log      — count: int, oneline: bool, decorate: bool, all_refs: bool, path_regex: str, max_candidates: int, per_file_diffs: int\n"
-        "  blame    — file_path: str  (required; repository-relative path)"
+        "  blame    — blame_path: str  (required; repository-relative path)"
     )
     return describe(
         "Run a validated workspace Git action: status, diff, log, add, commit, push, pull, merge, rebase, checkout, branch, stash, blame, or init. "
         f"{action_map} "
-        "For add, all=true stages all repository changes; alternatively provide paths to stage only selected paths. For compatibility, omitting paths also stages all. Do not pass CLI flags such as --all as path values; use all=true. "
+        "For add, all=true stages all repository changes; alternatively provide add_paths to stage only selected paths. For compatibility, omitting add_paths also stages all. Do not pass CLI flags such as --all as path values; use all=true. "
         "Correct invalid_argument responses by fixing the supplied fields or values; do not retry unchanged arguments. For transient Git failures, retry with backoff. If a commit outcome is ambiguous, inspect git_manage status and the recent log before retrying to avoid creating a duplicate commit. "
         "For commit, provide a meaningful message that accurately summarizes staged changes; a missing or blank message skips the commit and asks for staged-diff review. The word 'commit' (case-insensitive, whole word) is forbidden in the message — use an imperative verb phrase instead (e.g. 'add login validation'). A successful commit also returns uncommitted_changes, with staged and unstaged tracked file names and change counts plus untracked file names. "
         "Successful init creates test/ and tmp/, maintains the repository .gitignore, stages these repository defaults, and creates a `chore: add repository defaults` commit when defaults changed. add updates .gitignore before staging. "
         "These updates preserve existing content, add .handy-coder/ and tmp/, and ignore standard generated directories (node_modules, __pycache__, dist, build, virtual environments, caches, and common build outputs) whether or not they currently exist. "
-        "Status returns structured staged/working-tree and untracked summaries, including matching pending change summaries from .handy-coder/state.json; diff preserves raw text and accepts mode unstaged/staged/both plus repository-relative file_paths. "
+        "Status returns structured staged/working-tree and untracked summaries, including matching pending change summaries from .handy-coder/state.json; diff preserves raw text and accepts mode unstaged/staged/both plus repository-relative diff_paths. "
         "Log includes recent commit history. pull accepts an optional remote and branch; merge/rebase require one or more refs. These three actions require a clean worktree (including untracked files). "
         f"{state} init may target the workspace root or a subdirectory alongside other repositories, but cannot target a directory inside an existing repository. Use workspace-relative repo_path when selecting a repository. "
         "When repo_path is given and has a .git marker, workspace scan is bypassed for faster execution. "
@@ -549,7 +549,7 @@ def git_manage(
         ],
         Field(
             description=(
-                "Git operation to run. Each action accepts ONLY action-specific fields; unsupported fields raise an error. add: all, paths. commit: message. diff: mode, file_paths, diff_stat, name_only. checkout: ref. branch: branch. push: remote, ref, set_upstream, force_with_lease, tags, dry_run. pull: remote, branch. merge/rebase: refs. stash: stash_operation, stash_message. log: count, oneline, decorate, all_refs, path_regex, max_candidates, per_file_diffs. blame: file_path. status/init: no action-specific fields. "
+                "Git operation to run. Each action accepts ONLY action-specific fields; unsupported fields raise an error. add: all, add_paths. commit: message. diff: mode, diff_paths, diff_stat, name_only. checkout: ref. branch: branch. push: remote, ref, set_upstream, force_with_lease, tags, dry_run. pull: remote, branch. merge/rebase: refs. stash: stash_operation, stash_message. log: count, oneline, decorate, all_refs, path_regex, max_candidates, per_file_diffs. blame: blame_path. status/init: no action-specific fields. "
                 "Checkout requires one branch, tag, or commit and rejects file paths with error_code not_a_ref. Commit requires a meaningful message; the word 'commit' (whole word, case-insensitive) is forbidden in the message — use an imperative verb phrase (e.g. 'add login validation'). pull accepts optional remote/branch; merge and rebase require refs and a clean worktree. (Required: True)"
             )
         ),
@@ -573,7 +573,7 @@ def git_manage(
             )
         ),
     ] = None,
-    file_paths: Annotated[
+    diff_paths: Annotated[
         list[str] | None,
         Field(
             description=(
@@ -589,22 +589,22 @@ def git_manage(
         bool | None,
         Field(description="Show only changed file names. Valid only for action='diff'. (Required: False)"),
     ] = None,
-    paths: Annotated[
+    add_paths: Annotated[
         list[str] | None,
         Field(
-            description="Repository-relative paths to stage with action='add'; supplied paths select files, while omitting paths stages all changes for compatibility. Use all=true to explicitly stage all; all=true cannot be combined with paths. CLI flags such as --all are not valid path values. Use file_paths for diff and file_path for blame. (Required: False)"
+            description="Repository-relative paths to stage with action='add'; supplied add_paths select files, while omitting add_paths stages all changes for compatibility. Use all=true to explicitly stage all; all=true cannot be combined with add_paths. CLI flags such as --all are not valid path values. Use diff_paths for diff and blame_path for blame. (Required: False)"
         ),
     ] = None,
     all: Annotated[
         bool | None,
         Field(
-            description="For action='add', set true to stage all changes. This cannot be combined with paths. If omitted, existing behavior is preserved: omitted paths stage all changes and supplied paths select files. Use this field instead of passing CLI flags such as --all as a path. Valid only for action='add'. (Required: False)"
+            description="For action='add', set true to stage all changes. This cannot be combined with add_paths. If omitted, existing behavior is preserved: omitted add_paths stage all changes and supplied add_paths select files. Use this field instead of passing CLI flags such as --all as a path. Valid only for action='add'. (Required: False)"
         ),
     ] = None,
     message: Annotated[
         str | None,
         Field(
-            description="Meaningful summary of staged changes for action='commit'. Missing or blank skips the commit and returns guidance. The word 'commit' (case-insensitive) is not allowed anywhere in this message; use a descriptive verb phrase instead (e.g. 'add login form validation'). (Required: False)"
+            description="Summary of staged changes for action='commit'; word 'commit' is not allowed. Missing or blank skips the commit and returns guidance. Use a descriptive verb phrase instead (e.g. 'add login form validation'). (Required: False)"
         ),
     ] = None,
     ref: Annotated[
@@ -686,7 +686,7 @@ def git_manage(
         list[str] | None,
         Field(description="One or more refs required by action='merge' or action='rebase'. (Required: False)"),
     ] = None,
-    file_path: Annotated[
+    blame_path: Annotated[
         str | None,
         Field(
             description="Single repository-relative file required by action='blame'. (Required: False)"
@@ -696,7 +696,7 @@ def git_manage(
     """Git manage function."""
     target_mcp = _MCP
     supplied: dict = {
-        "paths": paths,
+        "add_paths": add_paths,
         "all": all,
         "message": message,
         "ref": ref,
@@ -716,14 +716,14 @@ def git_manage(
         "stash_operation": stash_operation,
         "stash_message": stash_message,
         "refs": refs,
-        "file_path": file_path,
+        "blame_path": blame_path,
         "diff_stat": diff_stat,
         "name_only": name_only,
         "mode": mode,
-        "file_paths": file_paths,
+        "diff_paths": diff_paths,
     }
     applicable: dict = {
-        "add": {"paths", "all"},
+        "add": {"add_paths", "all"},
         "commit": {"message"},
         "checkout": {"ref"},
         "push": {
@@ -748,10 +748,10 @@ def git_manage(
         "merge": {"refs"},
         "rebase": {"refs"},
         "branch": {"branch"},
-        "blame": {"file_path"},
+        "blame": {"blame_path"},
     }
     if action == "diff":
-        applicable["diff"] = {"diff_stat", "name_only", "mode", "file_paths"}
+        applicable["diff"] = {"diff_stat", "name_only", "mode", "diff_paths"}
     invalid: list = [
         name
         for name, value in supplied.items()
@@ -761,16 +761,16 @@ def git_manage(
         raise ValueError(
             f"Fields not valid for action '{action}': {', '.join(invalid)}"
         )
-    if action == "add" and all is True and paths is not None:
+    if action == "add" and all is True and add_paths is not None:
         raise ValueError(
-            "all=true cannot be combined with paths; use either all=true or paths"
+            "all=true cannot be combined with add_paths; use either all=true or add_paths"
         )
-    if _is_empty(paths):
-        paths = None
+    if _is_empty(add_paths):
+        add_paths = None
     if _is_empty(repo_path):
         repo_path = None
-    if _is_empty(file_paths):
-        file_paths = None
+    if _is_empty(diff_paths):
+        diff_paths = None
     if _is_empty(refs):
         refs = None
     if _is_empty(ref):
@@ -781,8 +781,8 @@ def git_manage(
         branch = None
     if _is_empty(message):
         message = None
-    if _is_empty(file_path):
-        file_path = None
+    if _is_empty(blame_path):
+        blame_path = None
     if _is_empty(stash_operation):
         stash_operation = None
     if _is_empty(stash_message):
@@ -792,7 +792,7 @@ def git_manage(
 
     args: list[str] = []
     if action == "add":
-        args = list(paths or [])
+        args = list(add_paths or [])
     elif action == "commit":
         if message is None or not message.strip():
             return {
@@ -817,7 +817,7 @@ def git_manage(
         if stash_message:
             args += ["-m", stash_message]
     elif action == "blame":
-        args = [file_path] if file_path else []
+        args = [blame_path] if blame_path else []
     if action == "push":
         args = (
             (["-u"] if set_upstream else [])
@@ -885,12 +885,12 @@ def git_manage(
     if action == "diff":
         cached_requested = "--cached" in args
         mode = mode or ("staged" if cached_requested else "unstaged")
-        file_paths = file_paths or []
+        diff_paths = diff_paths or []
         if mode not in {"unstaged", "staged", "both"}:
             raise ValueError("mode must be unstaged, staged, or both")
     else:
         mode: str = "unstaged"
-        file_paths: list = []
+        diff_paths: list = []
     if action == "diff" and any(
         arg.startswith("-") and arg not in ("--cached", "--stat", "--name-only", "--")
         for arg in args
@@ -944,10 +944,10 @@ def git_manage(
             arg.startswith("-") for arg in args[:message_index] if arg != "-a"
         ) or any(arg.startswith("-") for arg in args[message_index + 2 :]):
             raise ValueError("Only -a and -m commit options are accepted")
-    add_all = action == "add" and (all is True or not paths)
+    add_all = action == "add" and (all is True or not add_paths)
     if action == "add" and (any(arg.startswith("-") for arg in args) or "all" in args):
         raise ValueError(
-            "add paths must be repository-relative paths; CLI flags such as --all are not valid path values. Use all=true to stage all changes."
+            "add add_paths must be repository-relative add_paths; CLI flags such as --all are not valid path values. Use all=true to stage all changes."
         )
     if action == "push":
         allowed_push_flags: set = {
@@ -1135,7 +1135,7 @@ def git_manage(
                 "supported": True,
                 "error_code": "repository_discovery_incomplete",
                 "message": "Cannot select a Git repository because workspace discovery was incomplete.",
-                "hint": "Fix unreadable workspace paths or provide repo_path explicitly if known.",
+                "hint": "Fix unreadable workspace add_paths or provide repo_path explicitly if known.",
                 "exit_code": 1,
             }
         if len(_REPOSITORIES) > 1:
@@ -1233,12 +1233,12 @@ def git_manage(
         elif mode == "both":
             # Both passes are combined below so staged and unstaged raw text is preserved.
             pass
-        if file_paths:
+        if diff_paths:
             separator = git_args.index("--") if "--" in git_args else len(git_args)
             git_args = git_args[:separator] + [
                 "--",
                 *(git_args[separator + 1 :] if separator < len(git_args) else []),
-                *file_paths,
+                *diff_paths,
             ]
     path_indexes: list = []
     if action == "add" and not add_all:
@@ -1289,7 +1289,7 @@ def git_manage(
     staged_diff_summary: dict[str, Any] | None = None
     if action == "add":
         _maintain_gitignore(selected_path)
-        # Include maintained defaults explicitly; Git stages only these paths.
+        # Include maintained defaults explicitly; Git stages only these add_paths.
         if (
             not add_all
             and ".gitignore" not in git_args

@@ -370,7 +370,7 @@ class CoreFeedbackTests(unittest.TestCase):
         """Test git arguments have schema descriptions function."""
         annotations = get_type_hints(self.mcp.tools["git_manage"], include_extras=True)
 
-        for name in ("action", "repo_path", "paths", "all"):
+        for name in ("action", "repo_path", "add_paths", "all"):
             with self.subTest(argument=name):
                 metadata = get_args(annotations[name])[1:]
                 descriptions: list = [
@@ -514,7 +514,7 @@ class CoreFeedbackTests(unittest.TestCase):
         (self.root / "node_modules").mkdir()
         (self.root / "new.txt").write_text("stage me\n", encoding="utf-8")
 
-        result = self.mcp.tools["git_manage"]("add", paths=["new.txt"], repo_path=".")
+        result = self.mcp.tools["git_manage"]("add", add_paths=["new.txt"], repo_path=".")
 
         self.assertEqual(result["exit_code"], 0, result)
         self.assertIn("meaningful message", result.get("hint", ""))

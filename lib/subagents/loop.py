@@ -89,7 +89,7 @@ _TOOL_ARGUMENTS: dict = {
     "code_polish": '{"path": "file-or-dir", "summary": "one-line summary of the change", "specific_file"?: "file under path (relative-to-path or workspace-relative)", "all_files"?: false}',
     "code_get_diagnostics": '{"path"?: "...", "check"?: "ruff", "timeout_ms"?: 30000}',
     "run_tests": '{"test_framework"?: "jest|pytest|vitest", "filter_path"?: "test/test_file.py", "fail_fast"?: false, "parallel"?: 1, "coverage"?: false, "verbose"?: false}',
-    "git_manage": 'Use workspace-relative repo_path. Examples: {"action":"add","all":true,"repo_path":"."} stages all changes; {"action":"add","paths":["task-owned.txt"],"repo_path":"."} stages that path. Omitting paths also stages all for compatibility. Do not use CLI flags such as --all as path values. For commits, inspect the staged diff and provide a specific message accurately describing its changes: {"action":"commit","message":"Describe staged changes","repo_path":"."}. For status use {"action":"status","repo_path":"."}.',
+    "git_manage": 'Use workspace-relative repo_path. Examples: {"action":"add","all":true,"repo_path":"."} stages all changes; {"action":"add","add_paths":["task-owned.txt"],"repo_path":"."} stages that path. Omitting add_paths also stages all for compatibility. Do not use CLI flags such as --all as path values. For commits, inspect the staged diff and provide a specific message accurately describing its changes: {"action":"commit","message":"Describe staged changes","repo_path":"."}. For status use {"action":"status","repo_path":"."}.',
     "subagent_status": '{"task_id": "t_1"}',
     "subagent_result": '{"task_id": "t_1", "offset"?: 0}',
 }
