@@ -604,7 +604,7 @@ def git_manage(
     message: Annotated[
         str | None,
         Field(
-            description="Summary of staged changes for action='commit'; word 'commit' is not allowed. Missing or blank skips the commit and returns guidance. Use a descriptive verb phrase instead (e.g. 'add login form validation'). (Required: False)"
+            description="Summary of staged changes for action='commit', word 'commit' is not allowed. Missing or blank skips the commit and returns guidance. Use a descriptive verb phrase instead (e.g. 'add login form validation'). (Required: False)"
         ),
     ] = None,
     ref: Annotated[
@@ -1340,6 +1340,7 @@ def git_manage(
         )
     elif action == "commit" and result.get("exit_code") == 0:
         result["uncommitted_changes"] = _uncommitted_changes_summary(git, selected_path)
+        result.pop("hint", None)
     if result.get("exit_code") != 0 and not result.get("hint"):
         result["hint"] = (
             "Correct invalid arguments before trying again. If the Git diagnostic indicates a transient failure, "

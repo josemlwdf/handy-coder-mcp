@@ -74,6 +74,24 @@ def _tool_usage_signature(name: str) -> str:
             arguments.append(value)
     return "(" + ", ".join(arguments) + ")"
 
+
+def _tool_parameter_descriptions(name: str) -> dict[str, str]:
+    """Return registered parameter descriptions for selected discovery metadata."""
+    manager = getattr(_MCP, "_tool_manager", None)
+    tool = getattr(manager, "_tools", {}).get(name)
+    schema = getattr(tool, "parameters", None)
+    if not isinstance(schema, dict):
+        schema = getattr(tool, "input_schema", None)
+    properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+    if not isinstance(properties, dict):
+        return {}
+    return {
+        parameter: definition["description"]
+        for parameter, definition in properties.items()
+        if isinstance(definition, dict)
+        and isinstance(definition.get("description"), str)
+    }
+
 _MCP: None = None
 
 VALID_CATEGORIES = (
@@ -311,6 +329,8 @@ def get_capabilities(
         for name in names:
             item = metadata[name]
             entry = {"description": tool_summaries.get(name, _five_words(item.get("note", name))), "usage": _tool_usage_signature(name)}
+            if name == "git_manage":
+                entry["parameters"] = _tool_parameter_descriptions(name)
             if name == "skills_manage":
                 entry["note"] = item["note"]
             if name in runtime_only:
