@@ -581,14 +581,21 @@ def install(mcp: Any) -> None:
             }
         schema = copy.deepcopy(entry["inputSchema"])
         arguments = _arguments(schema)
-        arguments = {
-            name: {
+
+        def _compact_detail(detail: dict) -> dict:
+            item: dict = {
                 "type": detail["type"],
                 "required": detail["required"],
                 "description": _brief(detail["description"]),
             }
-            for name, detail in arguments.items()
-        }
+            if "default" in detail:
+                item["default"] = detail["default"]
+            constraints = detail.get("constraints", {})
+            if "enum" in constraints:
+                item["enum"] = constraints["enum"]
+            return item
+
+        arguments = {name: _compact_detail(detail) for name, detail in arguments.items()}
         return {
             "tool_name": resolved_name,
             "description": _brief(entry["description"]),
