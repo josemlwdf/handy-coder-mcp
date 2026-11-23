@@ -14,3 +14,4 @@ pytest
 ruff
 syntax_checker
 build
+hypothesis

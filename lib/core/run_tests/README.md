@@ -29,7 +29,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
       ]
     },
     "filter_path": {
-      "description": "Optional workspace-relative test file or target path. (Required: False)",
+      "description": "Optional workspace-relative test file or target path. When using pytest, supports node ID syntax to run individual tests. (Required: False)",
       "type": [
         "string",
         "null"
@@ -61,6 +61,23 @@ The JSON Schema below is the registered input contract. Required fields appear i
   "additionalProperties": false
 }
 ```
+
+## Pytest Node ID Support
+
+When `test_framework` is `pytest` (or auto-detected as pytest), `filter_path` accepts pytest **node ID** syntax to run individual tests within a file:
+
+| Selector type | Example |
+|---|---|
+| Single function | `test/foo.py::test_bar` |
+| Class method | `test/foo.py::TestClass::test_method` |
+| Parametrized test | `test/foo.py::test_case[param]` |
+
+**How it works:**
+- The file path portion before `::` is validated (must exist and be within the workspace).
+- The full node ID (including the `::` selector) is passed to pytest for selective test execution.
+- This enables running a single test from a large file without executing the entire suite.
+
+**Note:** Jest and Vitest do not use `::` node ID syntax. Their `filter_path` is validated as a plain filesystem path.
 
 ## Results
 

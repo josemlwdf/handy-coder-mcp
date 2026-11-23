@@ -40,6 +40,54 @@ def _five_words(value: str) -> str:
     words.extend(["tool", "capability", "summary"][: 5 - len(words)])
     return " ".join(words)
 
+def _extract_enum_values(definition: dict) -> list | None:
+    """Extract enum values from parameter definition if present.
+
+    Handles two JSON schema patterns:
+    1. enum field: {"enum": ["foo", "bar"], "type": "string"}
+    2. anyOf with const: {"anyOf": [{"const": "foo"}, {"const": "bar"}]}
+
+    Returns None if no enum pattern is found.
+    """
+    # Pattern 1: enum field
+    if "enum" in definition:
+        enum_values = definition["enum"]
+        if isinstance(enum_values, list) and len(enum_values) > 0:
+            return enum_values
+
+    # Pattern 2: anyOf with const values
+    if "anyOf" in definition:
+        any_of = definition["anyOf"]
+        if isinstance(any_of, list) and all(
+            isinstance(item, dict) and "const" in item for item in any_of
+        ):
+            return [item["const"] for item in any_of]
+
+    return None
+
+def _format_enum_type(enum_values: list) -> str:
+    """Format enum values as a pipe-separated type union.
+
+    Examples:
+      ["foo", "bar"] -> '"foo"|"bar"'
+      [1, 2, 3] -> '1|2|3'
+      ["foo", 1, True] -> '"foo"|1|true'
+    """
+    formatted: list = []
+    for value in enum_values:
+        if isinstance(value, bool):
+            # Python bool is subclass of int, check bool first
+            formatted.append("true" if value else "false")
+        elif isinstance(value, str):
+            # Escape quotes in the value and wrap in double quotes
+            escaped = value.replace('"', '\\"')
+            formatted.append(f'"{escaped}"')
+        elif isinstance(value, (int, float)):
+            formatted.append(str(value))
+        else:
+            # Fallback: use JSON representation
+            formatted.append(json.dumps(value, ensure_ascii=False))
+    return "|".join(formatted)
 
 def _tool_usage_signature(name: str) -> str:
     """Summarize a registered tool's top-level inputs without guessing defaults."""
@@ -54,26 +102,35 @@ def _tool_usage_signature(name: str) -> str:
     if not isinstance(properties, dict) or not properties:
         return "()"
     required = set(schema.get("required", []))
-    short_types = {"integer": "int", "number": "float", "boolean": "bool"}
-    arguments = []
+    short_types: dict = {"integer": "int", "number": "float", "boolean": "bool"}
+    arguments: list = []
     for arg, definition in properties.items():
         definition = definition if isinstance(definition, dict) else {}
-        arg_type = definition.get("type", "any")
-        if isinstance(arg_type, list):
-            arg_type = "|".join(short_types.get(t, t) for t in arg_type)
+        # Check for enum values first (bug fix: embed enum values in signature)
+        enum_values = _extract_enum_values(definition)
+        if enum_values is not None:
+            arg_type = _format_enum_type(enum_values)
         else:
-            arg_type = short_types.get(arg_type, arg_type)
+            # Fall back to type-based logic for non-enum parameters
+            arg_type = definition.get("type", "any")
+            if isinstance(arg_type, list):
+                arg_type = "|".join(short_types.get(t, t) for t in arg_type)
+            else:
+                arg_type = short_types.get(arg_type, arg_type)
         if arg in required:
             arguments.append(f"{arg}: {arg_type}")
         else:
             value = f"{arg}?: {arg_type}"
             if "default" in definition:
                 default = definition["default"]
-                rendered_default = repr(default) if isinstance(default, str) else json.dumps(default, ensure_ascii=False)
+                rendered_default = (
+                    repr(default)
+                    if isinstance(default, str)
+                    else json.dumps(default, ensure_ascii=False)
+                )
                 value += f" = {rendered_default}"
             arguments.append(value)
     return "(" + ", ".join(arguments) + ")"
-
 
 def _tool_parameter_descriptions(name: str) -> dict[str, str]:
     """Return registered parameter descriptions for selected discovery metadata."""
@@ -152,7 +209,6 @@ SKILL_CATEGORIES = frozenset(
     for category in categories_for_tag
 )
 
-
 def get_capabilities(
     categories: Annotated[
         list[str] | None,
@@ -162,13 +218,16 @@ def get_capabilities(
         ),
     ] = None,
     file_management: Annotated[
-        bool, Field(description="Include file-management tool summaries. (Required: False)")
+        bool,
+        Field(description="Include file-management tool summaries. (Required: False)"),
     ] = False,
     code_analysis: Annotated[
-        bool, Field(description="Include code-analysis tool summaries. (Required: False)")
+        bool,
+        Field(description="Include code-analysis tool summaries. (Required: False)"),
     ] = False,
     build_test: Annotated[
-        bool, Field(description="Include build and test tool summaries. (Required: False)")
+        bool,
+        Field(description="Include build and test tool summaries. (Required: False)"),
     ] = False,
     web: Annotated[
         bool, Field(description="Include web tool summaries. (Required: False)")
@@ -177,16 +236,20 @@ def get_capabilities(
         bool, Field(description="Include system tool summaries. (Required: False)")
     ] = False,
     ai_coordination: Annotated[
-        bool, Field(description="Include AI-coordination tool summaries. (Required: False)")
+        bool,
+        Field(description="Include AI-coordination tool summaries. (Required: False)"),
     ] = False,
     image: Annotated[
-        bool, Field(description="Include image-inspection tool summaries. (Required: False)")
+        bool,
+        Field(description="Include image-inspection tool summaries. (Required: False)"),
     ] = False,
     git_management: Annotated[
-        bool, Field(description="Include git-management tool summaries. (Required: False)")
+        bool,
+        Field(description="Include git-management tool summaries. (Required: False)"),
     ] = False,
     skills: Annotated[
-        bool, Field(description="Include the skill-management tool only. (Required: False)")
+        bool,
+        Field(description="Include the skill-management tool only. (Required: False)"),
     ] = False,
     planning: Annotated[
         bool, Field(description="Include planning skills. (Required: False)")
@@ -198,11 +261,14 @@ def get_capabilities(
         bool, Field(description="Include communication skills. (Required: False)")
     ] = False,
     workspace_context: Annotated[
-        bool, Field(description="Include the configured workspace root path. (Required: False)")
+        bool,
+        Field(
+            description="Include the configured workspace root path. (Required: False)"
+        ),
     ] = False,
 ) -> dict:
     """Return only the requested capability sections."""
-    requested = {
+    requested: dict = {
         "file_management": file_management,
         "code_analysis": code_analysis,
         "build_test": build_test,
@@ -233,9 +299,20 @@ def get_capabilities(
     summaries = _load_summaries()
     tool_summaries = summaries["tools"]
     skill_summaries = summaries["skills"]
-    section_tools = {
-        "file_management": ("read_files", "create_file", "apply_edits", "find_files", "list_dir"),
-        "code_analysis": ("code_polish", "search_text", "code_get_diagnostics", "code_intel"),
+    section_tools: dict = {
+        "file_management": (
+            "read_files",
+            "create_file",
+            "apply_edits",
+            "find_files",
+            "list_dir",
+        ),
+        "code_analysis": (
+            "code_polish",
+            "search_text",
+            "code_get_diagnostics",
+            "code_intel",
+        ),
         "build_test": ("build_project", "run_tests"),
         "web": ("web_search", "web_fetch_docs", "capture_url_screenshot"),
         "system": ("terminal_exec",),
@@ -262,7 +339,7 @@ def get_capabilities(
     screenshot_available = screenshot_note = None
     if requested["web"]:
         screenshot_available, screenshot_note = gowitness_available()
-    indexer = None
+    indexer: None = None
     if requested["code_analysis"]:
         try:
             indexer = code_index.index_status()
@@ -278,24 +355,31 @@ def get_capabilities(
             else:
                 indexer["worker_alive"] = None
         except Exception as exc:
-            indexer = {"state": "unavailable", "worker_alive": None, "message": str(exc)}
-    subagent_backend = None
-    continue_info = None
+            indexer: dict = {
+                "state": "unavailable",
+                "worker_alive": None,
+                "message": str(exc),
+            }
+    subagent_backend: None = None
+    continue_info: None = None
     if requested["ai_coordination"]:
         subagent_backend = resolve_backend()
         continue_models = resolve_continue_models()
         if subagent_backend.startswith("continue:"):
             resolved = resolve_continue()
             if resolved is not None:
-                continue_info = {**resolved.model.safe_summary(), "config_path": resolved.config_path}
+                continue_info: dict = {
+                    **resolved.model.safe_summary(),
+                    "config_path": resolved.config_path,
+                }
         if continue_models:
-            continue_info = {
+            continue_info: dict = {
                 **(continue_info or {}),
                 "models": [item.model.safe_summary() for item in continue_models],
                 "config_path": continue_models[0].config_path,
             }
 
-    metadata = {
+    metadata: dict = {
         "read_files": {"available": True, "note": "always enabled"},
         "create_file": {"available": True, "note": "always enabled"},
         "apply_edits": {"available": True, "note": "always enabled"},
@@ -304,40 +388,103 @@ def get_capabilities(
         "search_text": {"available": True, "note": "Python regex or literal search"},
         "find_files": {"available": True, "note": "always enabled"},
         "list_dir": {"available": True, "note": "always enabled"},
-        "skills_manage": {"available": True, "note": "list, get, or save skills; base dir: HANDY_CODER_SKILLS_DIR"},
-        "orchestrator": {"available": True, "note": "orchestrate tasks; actions: bootstrap, update_task_status"},
-        "run_tests": {"available": pytest_ok, "note": "pytest missing" if not pytest_ok else "pytest installed"},
-        "git_manage": {"available": git_ok, "note": "git missing" if not git_ok else "git installed"},
-        "build_project": {"available": True, "ecosystems": ["python", "node", "dotnet"], "python_build_available": python_build_ok, "python_interpreter": python_build_python, "note": "checks build tools for selected project; Python build is available" if python_build_ok else "checks build tools for selected project; Python build unavailable: install 'build' in the selected Python interpreter"},
-        "code_get_diagnostics": {"available": True, "estimated_checks": ["package.json typecheck/check/lint scripts", "pyproject Ruff/mypy", "Makefile check/lint/typecheck/validate targets"], "note": "runs first configured, installed check"},
-        "web_search": {"available": True, "note": "web search; DDG Lite first, Bing fallback on error or no hits; fallback=true forces Bing; needs network"},
-        "capture_url_screenshot": {"available": screenshot_available, "note": "screenshots URLs to tmp/ via gowitness; " + (f"binary: {screenshot_note.removeprefix('gowitness found at ')}" if screenshot_available else "gowitness missing; install or add external_bin/gowitness")},
-        "code_intel": {"available": True, "note": "navigate the automatically maintained multilingual source index with search_code, get_symbol, or find_references", "indexer": indexer},
+        "skills_manage": {
+            "available": True,
+            "note": "list, get, or save skills; base dir: HANDY_CODER_SKILLS_DIR",
+        },
+        "orchestrator": {
+            "available": True,
+            "note": "orchestrate tasks; actions: bootstrap, update_task_status",
+        },
+        "run_tests": {
+            "available": pytest_ok,
+            "note": "pytest missing" if not pytest_ok else "pytest installed",
+        },
+        "git_manage": {
+            "available": git_ok,
+            "note": "git missing" if not git_ok else "git installed",
+        },
+        "build_project": {
+            "available": True,
+            "ecosystems": ["python", "node", "dotnet"],
+            "python_build_available": python_build_ok,
+            "python_interpreter": python_build_python,
+            "note": "checks build tools for selected project; Python build is available"
+            if python_build_ok
+            else "checks build tools for selected project; Python build unavailable: install 'build' in the selected Python interpreter",
+        },
+        "code_get_diagnostics": {
+            "available": True,
+            "estimated_checks": [
+                "package.json typecheck/check/lint scripts",
+                "pyproject Ruff/mypy",
+                "Makefile check/lint/typecheck/validate targets",
+            ],
+            "note": "runs first configured, installed check",
+        },
+        "web_search": {
+            "available": True,
+            "note": "web search; DDG Lite first, Bing fallback on error or no hits; fallback=true forces Bing; needs network",
+        },
+        "capture_url_screenshot": {
+            "available": screenshot_available,
+            "note": "screenshots URLs to tmp/ via gowitness; "
+            + (
+                f"binary: {screenshot_note.removeprefix('gowitness found at ')}"
+                if screenshot_available
+                else "gowitness missing; install or add external_bin/gowitness"
+            ),
+        },
+        "code_intel": {
+            "available": True,
+            "note": "navigate the automatically maintained multilingual source index with search_code, get_symbol, or find_references",
+            "indexer": indexer,
+        },
         "web_fetch_docs": {"available": True, "note": "fetch public HTTP(S) text"},
-        "subagent_manage": {"available": True, **({"backend": subagent_backend} if requested["ai_coordination"] else {}), "roles": {name: {"result_format": role.result_format} for name, role in ROLES.items()}, "note": "manage subagents; actions: run, status, result, complete, cancel"},
-        "inspect_image": {"available": True, "note": "inspect workspace image via generalist multimodal backend"},
+        "subagent_manage": {
+            "available": True,
+            **({"backend": subagent_backend} if requested["ai_coordination"] else {}),
+            "roles": {
+                name: {"result_format": role.result_format}
+                for name, role in ROLES.items()
+            },
+            "note": "manage subagents; actions: run, status, result, complete, cancel",
+        },
+        "inspect_image": {
+            "available": True,
+            "note": "inspect workspace image via generalist multimodal backend",
+        },
     }
     result: dict = {}
     tools_result: dict = {}
-    conditional = {"run_tests", "git_manage", "capture_url_screenshot"}
+    conditional: set = {"run_tests", "git_manage", "capture_url_screenshot"}
     runtime_only = conditional | {"build_project", "code_intel", "subagent_manage"}
     for section, names in section_tools.items():
         if not requested[section]:
             continue
-        always = {}
-        runtime = {}
+        always: dict = {}
+        runtime: dict = {}
         for name in names:
             item = metadata[name]
-            entry = {"description": tool_summaries.get(name, _five_words(item.get("note", name))), "usage": _tool_usage_signature(name)}
+            entry: dict = {
+                "description": tool_summaries.get(
+                    name, _five_words(item.get("note", name))
+                ),
+                "usage": _tool_usage_signature(name),
+            }
             if name == "git_manage":
                 entry["parameters"] = _tool_parameter_descriptions(name)
             if name == "skills_manage":
                 entry["note"] = item["note"]
             if name in runtime_only:
-                runtime[name] = {"description": entry["description"], "usage": entry["usage"], **{key: value for key, value in item.items() if key != "note"}}
+                runtime[name] = {
+                    "description": entry["description"],
+                    "usage": entry["usage"],
+                    **{key: value for key, value in item.items() if key != "note"},
+                }
             else:
                 always[name] = entry
-        category = {}
+        category: dict = {}
         if always:
             category["always_enabled"] = always
         if runtime:
@@ -346,11 +493,11 @@ def get_capabilities(
     result["tools"] = tools_result
     if requested["workspace_context"]:
         result["workspace_root"] = str(support.ROOT)
-    selected_categories = {
+    selected_categories: set = {
         category for category, selected in requested.items() if selected
     }
     if selected_categories & SKILL_CATEGORIES:
-        matched_skills = []
+        matched_skills: list = []
         for item in _list_skills()["skills"]:
             categories_for_skill = set()
             if item.get("name") == "plan":
@@ -376,7 +523,10 @@ def get_capabilities(
             "Invoke simple tools with clear descriptions directly through invoke_tool. Use get_tool_details when arguments, behavior, or constraints remain unclear; use skills_manage to retrieve full skill content."
         )
     if requested["ai_coordination"]:
-        result["subagents"] = {"backend": subagent_backend, **({"continue": continue_info} if continue_info else {})}
+        result["subagents"] = {
+            "backend": subagent_backend,
+            **({"continue": continue_info} if continue_info else {}),
+        }
     return result
 
 def register(mcp):

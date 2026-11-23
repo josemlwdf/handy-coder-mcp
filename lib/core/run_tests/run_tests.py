@@ -18,7 +18,6 @@ from ...support import (
     path_escape_message,
 )
 
-
 def _has_python_test_setup(root) -> bool:
     """Has python test setup function."""
     if any((root / name).is_file() for name in ("pytest.ini",)):
@@ -44,7 +43,6 @@ def _has_python_test_setup(root) -> bool:
         for directory in (root / "test", root / "tests")
     )
 
-
 def _pytest_preflight_notes(root: Path, target: Path | None) -> list[str]:
     """Pytest preflight notes function."""
     notes: list[str] = []
@@ -59,7 +57,6 @@ def _pytest_preflight_notes(root: Path, target: Path | None) -> list[str]:
         )
     return notes
 
-
 def _pytest_failure_hints(output: str) -> list[str]:
     """Pytest failure hints function."""
     hints: list[str] = []
@@ -70,7 +67,6 @@ def _pytest_failure_hints(output: str) -> list[str]:
             "and prefer invoking pytest as `python -m pytest` in tooling."
         )
     return hints
-
 
 def _venv_python(root: Path) -> str | None:
     """Venv python function."""
@@ -89,12 +85,10 @@ def _venv_python(root: Path) -> str | None:
                 return str(candidate)
     return None
 
-
 def _pytest_command(root: Path) -> list[str]:
     """Pytest command function."""
     python_binary = _venv_python(root) or sys.executable
     return [python_binary, "-m", "pytest"]
-
 
 def _package_config(root) -> dict:
     """Package config function."""
@@ -102,7 +96,6 @@ def _package_config(root) -> dict:
     if not package.is_file():
         return {}
     return json.loads(package.read_text(encoding="utf-8"))
-
 
 def _package_runner_markers(package: dict) -> tuple[set[str], dict[str, str]]:
     """Package runner markers function."""
@@ -113,7 +106,6 @@ def _package_runner_markers(package: dict) -> tuple[set[str], dict[str, str]]:
             configured.update(dependencies)
     scripts = package.get("scripts", {})
     return configured, scripts if isinstance(scripts, dict) else {}
-
 
 def _has_js_framework_config(root: Path, package: dict, framework: str) -> bool:
     """Has js framework config function."""
@@ -127,7 +119,6 @@ def _has_js_framework_config(root: Path, package: dict, framework: str) -> bool:
             return True
     return False
 
-
 def _has_js_test_script(scripts: dict[str, str], framework: str) -> bool:
     """Has js test script function."""
     for script_name, script_command in scripts.items():
@@ -136,7 +127,6 @@ def _has_js_test_script(scripts: dict[str, str], framework: str) -> bool:
         if framework in str(script_command):
             return True
     return False
-
 
 def _has_test_setup(root, framework: str) -> bool:
     """Has test setup function."""
@@ -154,7 +144,6 @@ def _has_test_setup(root, framework: str) -> bool:
         )
     return False
 
-
 def _detect_framework(root) -> str | None:
     """Detect framework function."""
     if _has_test_setup(root, "vitest"):
@@ -164,7 +153,6 @@ def _detect_framework(root) -> str | None:
     if _has_python_test_setup(root):
         return "pytest"
     return None
-
 
 def _js_preflight_check(root: Path, framework: str) -> dict | None:
     """Js preflight check function."""
@@ -194,7 +182,6 @@ def _js_preflight_check(root: Path, framework: str) -> dict | None:
         }
     return None
 
-
 def _js_framework_failure(output: str, framework: str) -> dict | None:
     """Js framework failure function."""
     lowered = output.lower()
@@ -214,6 +201,35 @@ def _js_framework_failure(output: str, framework: str) -> dict | None:
         }
     return None
 
+def _split_pytest_node_id(filter_path: str) -> tuple[str, str | None]:
+    """Split a pytest node ID into the file path and optional test selector.
+
+    Pytest node IDs use '::' as a separator between the file path and the test
+    selector. This function extracts the file path portion (before the first '::')
+    for filesystem validation, while preserving the full node ID for execution.
+
+    Args:
+        filter_path: A path string that may or may not contain '::' separators.
+
+    Returns:
+        A tuple of (file_path, selector) where:
+        - file_path is the portion before the first '::' (or the full string if no '::')
+        - selector is '::' + everything after the first '::' (or None if no '::')
+
+    Examples:
+        >>> _split_pytest_node_id("test/foo.py::test_bar")
+        ('test/foo.py', '::test_bar')
+        >>> _split_pytest_node_id("test/foo.py::TestClass::test_method")
+        ('test/foo.py', '::TestClass::test_method')
+        >>> _split_pytest_node_id("test/foo.py::test_case[param]")
+        ('test/foo.py', '::test_case[param]')
+        >>> _split_pytest_node_id("test/foo.py")
+        ('test/foo.py', None)
+    """
+    if "::" not in filter_path:
+        return filter_path, None
+    file_path, rest = filter_path.split("::", 1)
+    return file_path, "::" + rest
 
 def _parse_pytest_output(stdout: str) -> dict | None:
     """Extract summary counts and per-test failure identifiers from pytest terminal output.
@@ -261,7 +277,6 @@ def _parse_pytest_output(stdout: str) -> dict | None:
         result["failures"] = failures
     return result
 
-
 def _parse_js_test_output(stdout: str) -> dict | None:
     """Extract common Jest/Vitest test summary counts and failed test names."""
     import re
@@ -288,7 +303,6 @@ def _parse_js_test_output(stdout: str) -> dict | None:
     if failures:
         counts["failures"] = failures
     return counts
-
 
 def run_tests(
     test_framework: Annotated[
@@ -327,19 +341,30 @@ def run_tests(
         bool, Field(description="Request verbose test output. (Required: False)")
     ] = False,
 ) -> dict:
-    """Run tests function."""
+    """Run tests function.
+
+    For pytest, filter_path supports pytest node ID syntax to run individual tests:
+      - Simple function:  ``test/foo.py::test_bar``
+      - Class method:     ``test/foo.py::TestClass::test_method``
+      - Parametrized:     ``test/foo.py::test_case[param]``
+
+    The file path portion before ``::`` must exist within the workspace and be a file.
+    The full node ID (including selector) is passed to pytest for selective execution.
+    Jest and Vitest do not use ``::`` node ID syntax; their filter_path is validated
+    as a plain filesystem path.
+    """
     if is_empty_value(filter_path):
-        filter_path = None
+        filter_path: None = None
     if is_empty_value(test_framework):
-        test_framework = None
+        test_framework: None = None
     if is_empty_value(parallel):
-        parallel = None
+        parallel: None = None
     if is_empty_value(fail_fast):
-        fail_fast = False
+        fail_fast: bool = False
     if is_empty_value(coverage):
-        coverage = False
+        coverage: bool = False
     if is_empty_value(verbose):
-        verbose = False
+        verbose: bool = False
     root = inside(".")
     framework = test_framework
     detection_trace: list[dict[str, str]] = []
@@ -366,14 +391,26 @@ def run_tests(
             "message": "No Jest, Vitest, or pytest setup detected.",
             "detection_trace": detection_trace,
         }
+    # Detect pytest node ID syntax (e.g. "test/foo.py::test_bar").
+    # For pytest node IDs, only the file path portion before '::' is validated
+    # as a filesystem path; the full node ID is passed to pytest for execution.
+    is_pytest_node_id = (
+        framework == "pytest" and filter_path is not None and "::" in filter_path
+    )
     if filter_path:
+        # Extract the validation path: for pytest node IDs, use only the file
+        # portion; for all other cases, validate the entire filter_path.
+        if is_pytest_node_id:
+            validation_path, _ = _split_pytest_node_id(filter_path)
+        else:
+            validation_path = filter_path
         try:
-            target = inside(filter_path, must_exist=True)
+            target = inside(validation_path, must_exist=True)
         except FileNotFoundError:
             return {
                 "supported": False,
                 "error_code": "not_found",
-                "message": f"Test filter path not found: {filter_path}",
+                "message": f"Test filter path not found: {validation_path}",
                 "path": filter_path,
             }
         except ValueError:
@@ -383,7 +420,17 @@ def run_tests(
                 "message": path_escape_message(filter_path),
                 "path": filter_path,
             }
-        if not target.is_file() and not target.is_dir():
+        # For pytest node IDs the validated portion must be a file (not a directory).
+        # For plain paths, preserve the existing file-or-directory check.
+        if is_pytest_node_id:
+            if not target.is_file():
+                return {
+                    "supported": False,
+                    "error_code": "not_a_file_or_directory",
+                    "message": f"Test filter path is not a file: {validation_path}",
+                    "path": filter_path,
+                }
+        elif not target.is_file() and not target.is_dir():
             return {
                 "supported": False,
                 "error_code": "not_a_file_or_directory",
@@ -425,13 +472,19 @@ def run_tests(
     preflight_notes: list[str] = []
     if framework == "pytest":
         preflight_notes = _pytest_preflight_notes(root, target)
+        # For pytest node IDs, pass the original filter_path (full node ID including
+        # '::' selector) so pytest can run the specific test. For plain paths, use
+        # the resolved target path as before.
+        pytest_arg = (
+            filter_path if is_pytest_node_id else (str(target) if target else None)
+        )
         cmd = (
             _pytest_command(root)
             + (["-x"] if fail_fast else [])
             + (["-n", str(parallel)] if parallel else [])
             + (["--cov"] if coverage else [])
             + (["-v"] if verbose else [])
-            + ([str(target)] if target else [])
+            + ([pytest_arg] if pytest_arg else [])
         )
     else:
         cmd = (
@@ -493,7 +546,6 @@ def run_tests(
             if failure:
                 out.update(failure)
     return out
-
 
 def register(mcp):
     """Register function."""

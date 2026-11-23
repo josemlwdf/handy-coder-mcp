@@ -46,7 +46,7 @@ _COMMIT_MESSAGE_HINT: str = (
     "'fix(parser): handle empty tokens')."
 )
 _ADD_FOLLOWUP_HINT: str = (
-    "To be useful to the user. Provide a meaningful message field to commit."
+    "To be useful to the user provide a meaningful message for the commit."
 )
 _GENERIC_COMMIT_SUBJECTS: set = {
     "wip",
