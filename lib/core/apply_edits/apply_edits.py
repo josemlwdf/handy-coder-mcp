@@ -1,21 +1,21 @@
 """Module documentation."""
 
 import ast
+import base64
+import binascii
 import difflib
 import logging
 import re
 from pathlib import Path
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ...error_handler import is_empty_value
 from ...support import inside, describe, path_escape_message
 from ...utils.change_summary import SUMMARY_DESCRIPTION, validate_summary
 from ..code_polish import polish_paths
 
-
 _LOGGER = logging.getLogger(__name__)
-
 
 class Position(BaseModel):
     """Position class."""
@@ -30,7 +30,6 @@ class Position(BaseModel):
         description="1-based column where the first regex match search begins. (Required: True)",
     )
 
-
 class Edit(BaseModel):
     """Edit class."""
 
@@ -39,16 +38,58 @@ class Edit(BaseModel):
         description="Workspace-relative path of the existing file to edit. (Required: True)"
     )
     pattern: str = Field(
-        description="Required Python regular expression used to locate text. Capture groups can be referenced with expand_groups=true. (Required: True)"
+        default="",
+        description=(
+            "Python regular expression used to locate text. "
+            "Supply either pattern or pattern_b64 (base64-encoded), not both. "
+            "Use pattern_b64 when the pattern contains backslashes, quotes, braces, or other "
+            "characters that are difficult to escape inside JSON. "
+            "Capture groups can be referenced with expand_groups=true. (Required: False)"
+        ),
+    )
+    pattern_b64: str = Field(
+        default="",
+        description=(
+            "Base64-encoded form of the Python regular expression. "
+            "Encode the raw regex bytes with standard base64 (no line breaks). "
+            "Mutually exclusive with pattern; use this when the regex contains characters "
+            "that are hard to escape inside JSON (backslashes, quotes, braces, etc.). (Required: False)"
+        ),
     )
     replacement: str = Field(
-        description="Required replacement text. Literal by default; with expand_groups=true, Python re capture references such as \\1 and \\g<name> are expanded. (Required: True)"
+        default="",
+        description=(
+            "Replacement text. Literal by default; with expand_groups=true, "
+            "Python re capture references such as \\1 and \\g<name> are expanded. "
+            "Supply either replacement or replacement_b64 (base64-encoded), not both. "
+            "Use replacement_b64 when the replacement contains backslashes, quotes, braces, "
+            "newlines, or other characters that are hard to escape inside JSON. (Required: False)"
+        ),
+    )
+    replacement_b64: str = Field(
+        default="",
+        description=(
+            "Base64-encoded form of the replacement text. "
+            "Encode the raw replacement bytes with standard base64 (no line breaks). "
+            "Mutually exclusive with replacement; use this when the replacement contains characters "
+            "that are hard to escape inside JSON. (Required: False)"
+        ),
     )
     position: Position | None = Field(
         default=None,
         description="Optional object with 1-based line and col keys that limits the search to the first match at or after that position. (Required: False)",
     )
 
+    @model_validator(mode="after")
+    def _check_pattern_replacement(self) -> "Edit":
+        """Validate that pattern/pattern_b64 and replacement/replacement_b64 are not both set, and that at least one form of each is supplied."""
+        if self.pattern and self.pattern_b64:
+            raise ValueError("Provide pattern or pattern_b64, not both.")
+        if not self.pattern and not self.pattern_b64:
+            raise ValueError("One of pattern or pattern_b64 is required.")
+        if self.replacement and self.replacement_b64:
+            raise ValueError("Provide replacement or replacement_b64, not both.")
+        return self
 
 def _edit_error(
     code: str, edit_index: int, message: str, dry_run: bool, hint: str | None = None
@@ -66,18 +107,15 @@ def _edit_error(
         payload["hint"] = hint
     return payload
 
-
 def _expand(match: re.Match, template: str, expand_groups: bool) -> str:
     # match.expand raises re.error for unknown group references or bad escapes.
     """Expand function."""
     return match.expand(template) if expand_groups else template
 
-
 def _prepare_diff_lines(text: str) -> list[str]:
     """Return diff-safe lines, preserving endings and adding missing terminal newlines."""
     lines = text.splitlines(keepends=True)
     return [line if line.endswith(("\n", "\r")) else f"{line}\n" for line in lines]
-
 
 def _unified_diff(before: str, after: str, path: str) -> str:
     """Build unified diff with stable per-line separation, including EOF-no-newline cases."""
@@ -90,7 +128,6 @@ def _unified_diff(before: str, after: str, path: str) -> str:
         )
     )
 
-
 def _changed_line_count(unified_diff_text: str) -> int:
     """Count changed (+/-) lines excluding diff metadata headers."""
     return sum(
@@ -99,13 +136,36 @@ def _changed_line_count(unified_diff_text: str) -> int:
         if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
     )
 
+def _b64_decode(
+    value: str, field: str, edit_index: int, dry_run: bool
+) -> tuple[str, dict | None]:
+    """Decode a base64 string to UTF-8 text; return (decoded, None) or ('', error_dict)."""
+    try:
+        raw = base64.b64decode(value, validate=True)
+    except binascii.Error as exc:
+        return "", _edit_error(
+            "invalid_b64",
+            edit_index,
+            f"Invalid base64 in {field}: {exc}",
+            dry_run,
+            hint="Encode the raw string with standard base64 (no line breaks). Example: base64.b64encode(text.encode()).decode()",
+        )
+    try:
+        return raw.decode("utf-8"), None
+    except UnicodeDecodeError as exc:
+        return "", _edit_error(
+            "invalid_b64",
+            edit_index,
+            f"{field} base64 decoded to non-UTF-8 bytes: {exc}",
+            dry_run,
+        )
 
 def apply_edits(
     edits: Annotated[
         list[Edit],
         Field(
             min_length=1,
-            description="Ordered edits to apply to workspace files. Each edit requires path, pattern, and replacement, and may include position with 1-based line and col keys (search start). Edits are staged in order; later edits run against earlier staged changes, including repeated edits to the same file. (Required: True)",
+            description="Ordered edits to apply to workspace files. Each edit requires path and either pattern or pattern_b64 (base64-encoded regex). replacement or replacement_b64 (base64-encoded text) is also required. Use the _b64 variants when pattern or replacement contains backslashes, quotes, braces, newlines, or other characters that are hard to escape in JSON. Edits are staged in order; later edits run against earlier staged changes, including repeated edits to the same file. (Required: True)",
         ),
     ],
     replace_all: Annotated[
@@ -147,26 +207,28 @@ def apply_edits(
     ] = False,
     include_diff: Annotated[
         bool,
-        Field(description="Include per-edit and per-file unified diffs. Defaults to false; diffs are included automatically when syntax checking or code polish reports a problem. (Required: False)"),
+        Field(
+            description="Include per-edit and per-file unified diffs. Defaults to false; diffs are included automatically when syntax checking or code polish reports a problem. (Required: False)"
+        ),
     ] = False,
     *,
     summary: Annotated[str, Field(description=SUMMARY_DESCRIPTION)],
 ) -> dict:
     """Apply edits function."""
     if is_empty_value(max_replacements):
-        max_replacements = None
+        max_replacements: None = None
     if is_empty_value(replace_all):
-        replace_all = False
+        replace_all: bool = False
     if is_empty_value(case_insensitive):
-        case_insensitive = False
+        case_insensitive: bool = False
     if is_empty_value(dry_run):
-        dry_run = False
+        dry_run: bool = False
     if is_empty_value(expand_groups):
-        expand_groups = False
+        expand_groups: bool = False
     if is_empty_value(automatic_commit):
-        automatic_commit = False
+        automatic_commit: bool = False
     if is_empty_value(include_diff):
-        include_diff = False
+        include_diff: bool = False
     summary_error = validate_summary(summary)
     if summary_error:
         return {
@@ -226,8 +288,26 @@ def apply_edits(
             staged_contents[resolved_key] = disk_text
 
         before = staged_contents[resolved_key]
-        pattern = edit.pattern
-        replacement_text = edit.replacement
+
+        # Resolve pattern: plain string or base64-encoded form.
+        if edit.pattern_b64:
+            pattern, b64_err = _b64_decode(
+                edit.pattern_b64, "pattern_b64", edit_index, dry_run
+            )
+            if b64_err:
+                return b64_err
+        else:
+            pattern = edit.pattern
+
+        # Resolve replacement: plain string or base64-encoded form.
+        if edit.replacement_b64:
+            replacement_text, b64_err = _b64_decode(
+                edit.replacement_b64, "replacement_b64", edit_index, dry_run
+            )
+            if b64_err:
+                return b64_err
+        else:
+            replacement_text = edit.replacement
 
         try:
             rx = re.compile(pattern, re.IGNORECASE if case_insensitive else 0)
@@ -512,7 +592,12 @@ def apply_edits(
         "files": files,
         "written_files": written_files,
         "dry_run": dry_run,
-        "polish_status": "changed" if any(isinstance(f, dict) and f.get("changed") for f in polish_report.get("files", [])) else "unchanged",
+        "polish_status": "changed"
+        if any(
+            isinstance(f, dict) and f.get("changed")
+            for f in polish_report.get("files", [])
+        )
+        else "unchanged",
     }
     if checked_files:
         if len(checked_files) == 1:
@@ -548,16 +633,30 @@ def apply_edits(
         and _adds_import(original_contents[path], new_text)
         for path, new_text in staged_contents.items()
     ):
-        response["warning"] = (response.get("warning", "") + " Python imports changed; review requirements.txt for new third-party dependencies.").strip()
+        response["warning"] = (
+            response.get("warning", "")
+            + " Python imports changed; review requirements.txt for new third-party dependencies."
+        ).strip()
     if polish_problem:
-        response["warning"] = (response.get("warning", "") + " Code polish reported a problem; review the affected files and polish diagnostics.").strip()
+        response["warning"] = (
+            response.get("warning", "")
+            + " Code polish reported a problem; review the affected files and polish diagnostics."
+        ).strip()
     for entry in files:
         try:
-            content = staged_contents.get(str(inside(entry["path"]))) if dry_run else inside(entry["path"]).read_text(encoding="utf-8")
+            content = (
+                staged_contents.get(str(inside(entry["path"])))
+                if dry_run
+                else inside(entry["path"]).read_text(encoding="utf-8")
+            )
             if content is not None:
                 entry["bytes"] = len(content.encode("utf-8"))
                 entry["lines"] = len(content.splitlines())
-                entry["polish_status"] = "changed" if entry.get("code_polish", {}).get("changed") else "unchanged"
+                entry["polish_status"] = (
+                    "changed"
+                    if entry.get("code_polish", {}).get("changed")
+                    else "unchanged"
+                )
         except Exception:
             pass
     syntax_problem = any(not chk.get("ok") for _, chk in checked_files)
@@ -573,7 +672,6 @@ def apply_edits(
             entry.pop("tool_outputs", None)
             entry.pop("code_polish", None)
     return response
-
 
 def _adds_import(before: str, after: str) -> bool:
     """Adds import function."""
@@ -592,7 +690,6 @@ def _adds_import(before: str, after: str) -> bool:
 
     return bool(imports(after) - imports(before))
 
-
 def register(mcp):
     """Register function."""
     return mcp.tool(
@@ -603,11 +700,12 @@ def register(mcp):
             "include_diff=false omits per-edit and per-file diffs from compact success responses; set true to include them. Diffs are included automatically when syntax or polish reports a problem. Success responses retain dry_run, written paths, match counts, changed-file paths and sizes, polish/syntax status, and actionable warnings; generic guidance and verbose polish details are omitted. "
             "Validates and stages the entire batch before writing; a later invalid edit leaves earlier edits unapplied. "
             "Edits are processed in order against staged content, so repeated/overlapping edits on the same file are order-sensitive. "
-            "Each edit requires pattern and replacement; legacy old_str/new_str aliases are rejected by schema validation. "
+            "Each edit requires pattern (or pattern_b64) and replacement (or replacement_b64); legacy old_str/new_str aliases are rejected by schema validation. "
+            "Use pattern_b64 / replacement_b64 (standard base64, no line breaks) whenever pattern or replacement contains backslashes, quotes, braces, newlines, or other characters that are difficult to escape inside JSON — this avoids JSON payload invalidity entirely. "
             "pattern is a Python regular expression (re module); replacement text is literal unless expand_groups=true (Python re template: \\1, \\g<name>). "
             "replace_all=true replaces all matches, or at most max_replacements when provided. case_insensitive=true ignores case. position is an object with 1-based line and col keys and limits search to the first match starting at or after that coordinate. "
             "Error messages include the zero-based edit index ([edit N]) for easy identification. "
-            "Edit failures return error_code (invalid_summary, invalid_regex, invalid_replacement, no_match, not_found, path_escape, not_a_file, binary_file, io_error, invalid_edit) "
+            "Edit failures return error_code (invalid_summary, invalid_regex, invalid_replacement, invalid_b64, no_match, not_found, path_escape, not_a_file, binary_file, io_error, invalid_edit) "
             "with edit_index and message instead of raising; nothing is written. "
             "Each edit result retains matches (count of replacements made). Changed files include workspace-relative paths, byte and line counts, polish status, and syntax status. dry_run previews exact edits without polish or writing. written_files lists paths written to disk (only changed files; always empty on dry_run). Diffs are omitted by default; include_diff=true returns per-edit diffs and per-file submitted_diff/diff, while syntax or polish problems include diffs automatically. Verbose polish details and generic guidance are omitted from compact success responses. Syntax problems include actionable warnings. Unsupported file types return ok with no findings. "
             "Note: The code_polish tool is applied automatically after apply_edits writes files. Do not attempt to revert these changes, undo polish diffs, or rebase the repo due to polish updates. Treat these automated changes as the baseline standard of the repository. "

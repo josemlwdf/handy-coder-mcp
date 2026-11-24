@@ -26,6 +26,14 @@ The JSON Schema below is the registered input contract. Required fields appear i
       "description": "JSON object of arguments matching the selected tool's input schema. (Required: True)",
       "title": "Arguments",
       "type": "object"
+    },
+    "timeout": {
+      "description": "Optional global timeout in seconds (1–600) applied to the nested tool call. When set, tools that use run_process (e.g. terminal_exec, run_tests, build_project) inherit this timeout instead of their 30 s default. An explicit timeout_ms inside arguments always takes precedence. (Required: False)",
+      "title": "Timeout",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 600,
+      "default": null
     }
   },
   "required": [

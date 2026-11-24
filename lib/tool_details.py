@@ -24,11 +24,8 @@ _ROUTER_PUBLIC_TOOLS = frozenset(
 _ROOT_TOOLS_MESSAGE = (
     "Check the native tools section for this tool's description and parameters."
 )
-_ROUTER_ONLY_GUIDANCE = (
-    "all calls must go through invoke_tool."
-)
+_ROUTER_ONLY_GUIDANCE = "all calls must go through invoke_tool."
 _CONTINUE_ONLY_TOOLS = frozenset({"subagent_manage", "orchestrator"})
-
 
 def _continue_client(context: Any = None, mcp: Any = None) -> bool:
     """Return whether the current MCP session identified itself as Continue."""
@@ -138,7 +135,6 @@ def _trim_routed_result(value: Any) -> Any:
         metadata["affected"] = changes
     return result
 
-
 def _as_structured_tool_result(value: Any) -> Any:
     """Expose object results as MCP structured content with a legacy text fallback."""
     if not isinstance(value, dict):
@@ -186,7 +182,6 @@ def _published_description(name: str, description: str) -> str:
         return f"{_ROUTER_ONLY_GUIDANCE} {published[:available]}".rstrip()
     return published
 
-
 def _with_router_guidance(name: str, description: str) -> str:
     """Require router-only invocation for tools outside the public router API."""
     if name in _ROUTER_PUBLIC_TOOLS:
@@ -194,7 +189,6 @@ def _with_router_guidance(name: str, description: str) -> str:
     if description.startswith(_ROUTER_ONLY_GUIDANCE):
         return description
     return f"{_ROUTER_ONLY_GUIDANCE}\n\n{description}".rstrip()
-
 
 def _schema(tool: Any) -> dict:
     """Schema function."""
@@ -231,7 +225,7 @@ def _normalize_union_types(value: Any) -> None:
 
         schema_types = value.get("type")
         if isinstance(schema_types, list) and "null" in schema_types:
-            non_null_types = [
+            non_null_types: list = [
                 schema_type for schema_type in schema_types if schema_type != "null"
             ]
             if len(non_null_types) == 1:
@@ -535,18 +529,16 @@ def install(mcp: Any) -> None:
         manager_tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", {})
         runtime_tool = manager_tools.get(name)
         if runtime_tool is not None:
-            runtime_tool.description = _published_description(name, detailed_description)
+            runtime_tool.description = _published_description(
+                name, detailed_description
+            )
 
     mcp._tool_details_update = update_description
 
     def get_tool_details(
         tool_name: Annotated[
             str,
-            Field(
-                description=(
-                    "Registered tool name. (Required: True)"
-                )
-            ),
+            Field(description=("Registered tool name. (Required: True)")),
         ],
     ) -> dict:
         """Get tool details function."""
@@ -583,6 +575,7 @@ def install(mcp: Any) -> None:
         arguments = _arguments(schema)
 
         def _compact_detail(detail: dict) -> dict:
+            """Compact detail function."""
             item: dict = {
                 "type": detail["type"],
                 "required": detail["required"],
@@ -595,7 +588,9 @@ def install(mcp: Any) -> None:
                 item["enum"] = constraints["enum"]
             return item
 
-        arguments = {name: _compact_detail(detail) for name, detail in arguments.items()}
+        arguments: dict = {
+            name: _compact_detail(detail) for name, detail in arguments.items()
+        }
         return {
             "tool_name": resolved_name,
             "description": _brief(entry["description"]),
@@ -615,7 +610,11 @@ def install(mcp: Any) -> None:
         "inputSchema": _schema(meta_tool),
     }
 
-    def get_tool_schema(tool_name: Annotated[str, Field(description="Registered tool name. (Required: True)")]) -> dict:
+    def get_tool_schema(
+        tool_name: Annotated[
+            str, Field(description="Registered tool name. (Required: True)")
+        ],
+    ) -> dict:
         """Return full argument details, including nested fields and constraints."""
         result = get_tool_details(tool_name)
         if result.get("error_code"):
@@ -629,9 +628,15 @@ def install(mcp: Any) -> None:
             **({"definitions": schema.get("$defs", {})} if schema.get("$defs") else {}),
         }
 
-    register_schema_description = f"{_ROUTER_ONLY_GUIDANCE}\n\nInternal full-schema lookup."
-    original_tool(name="get_tool_schema", description=register_schema_description)(get_tool_schema)
-    schema_tool = getattr(getattr(mcp, "_tool_manager", None), "_tools", {}).get("get_tool_schema")
+    register_schema_description = (
+        f"{_ROUTER_ONLY_GUIDANCE}\n\nInternal full-schema lookup."
+    )
+    original_tool(name="get_tool_schema", description=register_schema_description)(
+        get_tool_schema
+    )
+    schema_tool = getattr(getattr(mcp, "_tool_manager", None), "_tools", {}).get(
+        "get_tool_schema"
+    )
     catalog["get_tool_schema"] = {
         "description": register_schema_description,
         "inputSchema": _schema(schema_tool),
@@ -655,9 +660,10 @@ def install(mcp: Any) -> None:
         }
 
     last_failed_tool: str | None = None
-    consecutive_failures = 0
+    consecutive_failures: int = 0
 
     def _with_retry_hint(result: dict, target: str) -> dict:
+        """With retry hint function."""
         nonlocal last_failed_tool, consecutive_failures
         if target == last_failed_tool:
             consecutive_failures += 1
@@ -678,9 +684,7 @@ def install(mcp: Any) -> None:
     async def invoke_tool(
         tool_name: Annotated[
             str,
-            Field(
-                description="Registered tool name to call. (Required: True)"
-            ),
+            Field(description="Registered tool name to call. (Required: True)"),
         ],
         arguments: Annotated[
             dict,
@@ -688,11 +692,27 @@ def install(mcp: Any) -> None:
                 description="JSON args matching the tool's input schema. (Required: True)"
             ),
         ],
+        timeout: Annotated[
+            int | None,
+            Field(
+                default=None,
+                ge=1,
+                le=600,
+                description=(
+                    "Optional global timeout in seconds (1–600) applied to the nested tool call. "
+                    "When set, tools that use run_process (e.g. terminal_exec, run_tests, "
+                    "build_project) inherit this timeout instead of their 30 s default. "
+                    "An explicit timeout_ms inside arguments always takes precedence. (Required: False)"
+                ),
+            ),
+        ] = None,
     ) -> Any:
         """Use get_capabilities to find tools, then invoke simple, clearly described tools here.
 
         Call every internal tool through this router with schema-valid arguments.
         Use get_tool_details when arguments, behavior, or constraints remain unclear.
+        An optional ``timeout`` (seconds) overrides the default 30 s subprocess limit for
+        the nested call; tools with an explicit ``timeout_ms`` in arguments take precedence.
         """
         requested_name = (tool_name or "").strip()
         canonical = _canonical_tool_name(requested_name)
@@ -707,18 +727,20 @@ def install(mcp: Any) -> None:
                 and canonical not in {"get_capabilities", "get_tool_details"}
             )
         ):
-            result = {
+            result: dict = {
                 "error_code": "unknown_tool",
                 "message": f"Unknown or unavailable tool: {requested_name}",
             }
             return _as_structured_tool_result(_with_retry_hint(result, canonical))
         if canonical in _CONTINUE_ONLY_TOOLS and not _continue_client(mcp=mcp):
-            return _as_structured_tool_result({
-                "error_code": "tool_unavailable",
-                "message": f"Tool is unavailable for this MCP client: {canonical}",
-            })
+            return _as_structured_tool_result(
+                {
+                    "error_code": "tool_unavailable",
+                    "message": f"Tool is unavailable for this MCP client: {canonical}",
+                }
+            )
         if not isinstance(arguments, dict):
-            result = {
+            result: dict = {
                 "error_code": "invalid_argument",
                 "message": "arguments must be a JSON object",
                 "parameter_schema": copy.deepcopy(catalog[canonical]["inputSchema"]),
@@ -727,23 +749,48 @@ def install(mcp: Any) -> None:
         tool = runtime_tools.get(canonical)
         if tool is not None:
             arguments = normalize_empty_arguments(tool, arguments)
+        # Validate and apply the caller-supplied global timeout.
+        # Converts seconds -> ms, stores in a context var so run_process and the
+        # worker supervisor can read it without changing every tool's signature.
+        from .support import _routed_timeout_ms  # local import avoids circular refs at module level
+        _timeout_token = None
+        if timeout is not None:
+            try:
+                _timeout_s = int(timeout)
+            except (TypeError, ValueError):
+                result = {
+                    "error_code": "invalid_argument",
+                    "field": "timeout",
+                    "message": "timeout must be an integer number of seconds (1–600)",
+                }
+                return _as_structured_tool_result(result)
+            if not 1 <= _timeout_s <= 600:
+                result = {
+                    "error_code": "invalid_argument",
+                    "field": "timeout",
+                    "message": "timeout must be between 1 and 600 seconds",
+                }
+                return _as_structured_tool_result(result)
+            _timeout_token = _routed_timeout_ms.set(_timeout_s * 1000)
         try:
             result = await manager.call_tool(canonical, arguments)
-            if isinstance(result, dict) and result.get("error_code"):
-                return _as_structured_tool_result(
-                    _with_retry_hint(result, canonical)
-                )
-            last_failed_tool, consecutive_failures = None, 0
-            return _as_structured_tool_result(_trim_routed_result(result))
         except (
             Exception
         ) as exc:  # manager errors are returned as structured router errors
-            result = {
+            result: dict = {
                 "error_code": "tool_invocation_failed",
                 "tool_name": canonical,
                 "message": str(exc),
             }
             return _as_structured_tool_result(_with_retry_hint(result, canonical))
+        finally:
+            if _timeout_token is not None:
+                _routed_timeout_ms.reset(_timeout_token)
+        
+        if isinstance(result, dict) and result.get("error_code"):
+            return _as_structured_tool_result(_with_retry_hint(result, canonical))
+        last_failed_tool, consecutive_failures = None, 0
+        return _as_structured_tool_result(_trim_routed_result(result))
 
     register_meta(
         "invoke_tool",
@@ -761,13 +808,15 @@ def install(mcp: Any) -> None:
         original_call_tool = manager.call_tool
 
         @functools.wraps(original_call_tool)
-        async def guarded_call_tool(name, arguments, context=None, convert_result=False):
+        async def guarded_call_tool(
+            name, arguments, context: None = None, convert_result: bool = False
+        ):
             """Reject direct dispatch of Continue-only tools from other clients."""
             canonical = _canonical_tool_name(name)
             if canonical in _CONTINUE_ONLY_TOOLS and not _continue_client(
                 context=context, mcp=mcp
             ):
-                result = {
+                result: dict = {
                     "error_code": "tool_unavailable",
                     "message": f"Tool is unavailable for this MCP client: {canonical}",
                 }

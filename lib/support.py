@@ -1,6 +1,7 @@
 """Shared workspace, MCP, and subprocess support."""
 
 from __future__ import annotations
+import contextvars
 import fnmatch
 import os
 import re
@@ -11,6 +12,12 @@ import threading
 import signal
 from collections.abc import Iterator
 from pathlib import Path
+
+# Holds a routed timeout (ms) set by invoke_tool's optional ``timeout`` parameter.
+# Tools that call run_process without an explicit timeout_ms use this as a fallback.
+_routed_timeout_ms: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+    "_routed_timeout_ms", default=None
+)
 
 ROOT = os.environ.get("PWD")
 WORKING_DIRECTORY = ""
@@ -45,7 +52,6 @@ WORKER_DEADLINE_SECONDS = 30.0
 HANDY_CODER_STATE_DIRNAME = ".handy-coder"
 STATE_DIR: Path | None = None
 
-
 def setup_required(
     *,
     missing_requirements: list[str],
@@ -65,7 +71,6 @@ def setup_required(
         "documentation_url": documentation_url,
     }
 
-
 def get_handy_coder_state_dir(root: Path | None = None) -> Path:
     """Return the active handy-coder state directory."""
     if (
@@ -75,7 +80,6 @@ def get_handy_coder_state_dir(root: Path | None = None) -> Path:
     ):
         return STATE_DIR
     return ensure_handy_coder_state_dir(root)
-
 
 def ensure_handy_coder_state_dir(root: Path | None = None) -> Path:
     """Ensure the per-workspace orchestration state directory exists, falling back to /tmp or ~ if inaccessible."""
@@ -107,7 +111,7 @@ def ensure_handy_coder_state_dir(root: Path | None = None) -> Path:
     except (PermissionError, OSError) as primary_exc:
         import sys
 
-        fallbacks = [
+        fallbacks: list = [
             Path("/tmp") / HANDY_CODER_STATE_DIRNAME,
             Path(os.path.expanduser("~")) / HANDY_CODER_STATE_DIRNAME,
         ]
@@ -132,7 +136,6 @@ def ensure_handy_coder_state_dir(root: Path | None = None) -> Path:
 
         raise last_exc from primary_exc
 
-
 def configure(root: str, shell: str | None = None) -> None:
     """Configure function."""
     global ROOT, WORKING_DIRECTORY, SHELL, STATE_DIR
@@ -149,7 +152,6 @@ def configure(root: str, shell: str | None = None) -> None:
     # Warn when the workspace root is a home directory or drive root — scanning
     # these trees often causes timeouts in large environments.
     _warn_high_risk_root(ROOT)
-
 
 def _warn_high_risk_root(root: Path) -> None:
     """Emit a startup warning when the workspace is a home dir or drive root."""
@@ -175,14 +177,11 @@ def _warn_high_risk_root(root: Path) -> None:
     except RuntimeError:
         pass
 
-
 PATH_ESCAPE_MESSAGE = "Path escapes authorized workspace root"
-
 
 def path_escape_message(path: object) -> str:
     """Single wording for every workspace path-escape error."""
     return f"{PATH_ESCAPE_MESSAGE}: {path}"
-
 
 def inside(path: str | Path, *, must_exist: bool = False) -> Path:
     """Inside function."""
@@ -199,7 +198,6 @@ def inside(path: str | Path, *, must_exist: bool = False) -> Path:
     except ValueError:
         raise ValueError(path_escape_message(path))
     return p
-
 
 def iter_workspace_files(
     *,
@@ -306,7 +304,6 @@ def iter_workspace_files(
                 )
         pending.extend(reversed(child_directories))
 
-
 def _glob_prefix(pattern: str | None) -> tuple[str, ...]:
     """Glob prefix function."""
     if not pattern:
@@ -322,7 +319,6 @@ def _glob_prefix(pattern: str | None) -> tuple[str, ...]:
         prefix.append(part)
     return tuple(prefix)
 
-
 def _may_match_glob_scope(path_parts: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
     """May match glob scope function."""
     if not prefix:
@@ -332,7 +328,6 @@ def _may_match_glob_scope(path_parts: tuple[str, ...], prefix: tuple[str, ...]) 
     if len(path_parts) <= len(prefix):
         return prefix[: len(path_parts)] == path_parts
     return path_parts[: len(prefix)] == prefix
-
 
 def run_process(
     command: str | list[str],
@@ -347,6 +342,11 @@ def run_process(
 ) -> dict:
     # Resolve at call time: a `cwd=ROOT` default would freeze the import-time value.
     """Run process function."""
+    # Apply the routed timeout when the caller did not supply an explicit value.
+    # Tools without a timeout_ms parameter (e.g. run_tests) benefit automatically.
+    routed = _routed_timeout_ms.get()
+    if timeout_ms == DEFAULT_TIMEOUT_MS and routed is not None:
+        timeout_ms = max(1, min(routed, 600_000))
     work = inside(ROOT if cwd is None else cwd, must_exist=True)
     if not work.is_dir():
         raise ValueError(f"Working directory is not a directory: {work}")
@@ -455,7 +455,6 @@ def run_process(
         "duration_ms": round((time.monotonic() - start) * 1000),
     }
 
-
 def validate_shell_command(
     command: str, cwd: Path, *, env: dict[str, str] | None = None
 ) -> None:
@@ -520,7 +519,7 @@ def validate_shell_command(
             ):
                 if current_cmd:
                     check_blacklisted_command(current_cmd)
-                    current_cmd = []
+                    current_cmd: list = []
             elif not (
                 token
                 and all(ch in _SHELL_PUNCTUATION for ch in token)
@@ -564,30 +563,30 @@ def validate_shell_command(
                 requires_directory_target, saw_directory_target = False, False
             continue
         if expect_target:
-            expect_target = False
+            expect_target: bool = False
             _check_shell_token(token, cwd)
             continue
         if expect_script:
-            expect_script = False
+            expect_script: bool = False
             validate_shell_command(token, cwd, env=env)
             continue
         if at_command:
             if re.match(r"[A-Za-z_]\w*=", token):  # leading VAR=value assignment
                 _check_shell_token(token, cwd)
                 continue
-            at_command = False
+            at_command: bool = False
             command_name = re.sub(
                 r"\.exe$", "", Path(token.replace("\\", "/")).name.lower()
             )
             requires_directory_target = command_name in _DIR_CHANGE_COMMANDS
-            saw_directory_target = False
+            saw_directory_target: bool = False
             _check_shell_token(token, cwd, command_position=True)
             continue
         if command_name in _SHELL_INTERPRETERS and (
             re.fullmatch(r"-[A-Za-z]*c", token)
             or token.lower() in ("-command", "/c", "/k")
         ):
-            expect_script = True
+            expect_script: bool = True
             continue
         if command_name == "eval":
             validate_shell_command(token, cwd, env=env)
@@ -601,11 +600,10 @@ def validate_shell_command(
                 raise ValueError(
                     f"'{command_name} {token}' is not allowed outside a fully isolated shell"
                 )
-            saw_directory_target = True
+            saw_directory_target: bool = True
         _check_shell_token(token, cwd)
 
     _finish_command()
-
 
 _SHELL_PUNCTUATION = frozenset("();<>|&")
 _SHELL_INTERPRETERS = frozenset(
@@ -626,7 +624,6 @@ _PWD_RE = re.compile(r"\$(?:PWD)\b|\$\{PWD(?::-[^}]*)?\}", re.I)
 _OLDPWD_RE = re.compile(r"\$(?:OLDPWD)\b|\$\{OLDPWD(?::-[^}]*)?\}", re.I)
 _PARENT_SEGMENT_RE = re.compile(r"(?:^|[\\/])\.\.(?:[\\/]|$)")
 
-
 def _reject_unsafe_pwd_expansion(candidate: str) -> None:
     """Reject unsafe pwd expansion function."""
     if not _PWD_PATTERN_RE.search(candidate):
@@ -639,7 +636,6 @@ def _reject_unsafe_pwd_expansion(candidate: str) -> None:
         raise ValueError(
             "PWD parent traversal may resolve outside the authorized workspace"
         )
-
 
 def _split_unquoted_newlines(command: str) -> str:
     """Turn unquoted newlines into `;` separators and drop backslash-newline continuations."""
@@ -669,7 +665,6 @@ def _split_unquoted_newlines(command: str) -> str:
             continue
         out.append(ch)
     return "".join(out)
-
 
 def _check_shell_token(
     token: str, cwd: Path, *, command_position: bool = False
@@ -708,7 +703,6 @@ def _check_shell_token(
             raise ValueError(
                 f"Command token '{candidate}' looks like a path outside the authorized workspace. If this is not a path (e.g. a division operator), rewrite the command to avoid ambiguity."
             )
-
 
 def describe(text: str, *, include_working_directory: bool = False) -> str:
     """Describe function."""

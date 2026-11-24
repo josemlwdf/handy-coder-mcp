@@ -38,11 +38,10 @@ _NO_WORKER_TOOLS: set = {
 
 _TIMEOUT_METADATA_KEYS = ("timed_out", "timeout_reason", "duration_ms")
 
-
 def _omit_non_timeout_metadata(value: Any) -> Any:
     """Remove timeout metadata from non-timeout tool results."""
     if isinstance(value, dict):
-        result = {
+        result: dict = {
             key: _omit_non_timeout_metadata(item) for key, item in value.items()
         }
         if result.get("timed_out") is not True:
@@ -54,7 +53,6 @@ def _omit_non_timeout_metadata(value: Any) -> Any:
     if isinstance(value, tuple):
         return tuple(_omit_non_timeout_metadata(item) for item in value)
     return value
-
 
 def _worker_entrypoint(
     mod_name: str,
@@ -102,7 +100,6 @@ def _worker_entrypoint(
         conn.send(("exception", exc))
     finally:
         conn.close()
-
 
 def run_tool_in_worker(
     fn: Callable,
@@ -198,7 +195,6 @@ def run_tool_in_worker(
             "message": f"Tool worker process terminated unexpectedly (exit code {proc.exitcode})",
             "duration_ms": duration_ms,
         }
-
 
 def supervise_fastmcp_tools(mcp: Any) -> None:
     """Wrap registered FastMCP tools so incoming tool calls run through the worker supervisor."""
@@ -303,12 +299,30 @@ def supervise_fastmcp_tools(mcp: Any) -> None:
                     result = _target_fn(*args, **kwargs)
                 else:
                     deadline = DEFAULT_WORKER_DEADLINE
-                    if _tool_name in {"terminal_exec", "build_project"}:
+                    # Priority 1: explicit timeout_ms in the tool's own kwargs
+                    # (only meaningful for tools that declare this param).
+                    if _tool_name in {
+                        "terminal_exec",
+                        "build_project",
+                        "code_get_diagnostics",
+                    }:
                         timeout_ms = kwargs.get("timeout_ms")
                         if timeout_ms is not None:
                             try:
                                 ms = int(timeout_ms)
                                 deadline = max(30.0, (ms / 1000.0) + 5.0)
+                            except (ValueError, TypeError):
+                                pass
+                    # Priority 2: global routed timeout set by invoke_tool(timeout=N).
+                    # Only applied when the per-tool kwarg did not already raise the
+                    # deadline above the default, so explicit args always win.
+                    if deadline == DEFAULT_WORKER_DEADLINE:
+                        from .support import _routed_timeout_ms
+
+                        routed_ms = _routed_timeout_ms.get()
+                        if routed_ms is not None:
+                            try:
+                                deadline = max(30.0, (int(routed_ms) / 1000.0) + 5.0)
                             except (ValueError, TypeError):
                                 pass
                     result = run_tool_in_worker(

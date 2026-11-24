@@ -6,7 +6,26 @@ Apply structured edits to existing workspace files with validation and change su
 
 ## When and how to call it
 
-Call this tool through `invoke_tool` with `tool_name="apply_edits"` and an arguments object. Use `get_tool_details("apply_edits")` for the authoritative runtime parameter schema, including required fields, defaults, nested properties, and validation constraints. The schema is generated from the registered implementation and is kept unchanged by this module move.
+Call this tool through `invoke_tool` with `tool_name="apply_edits"` and an arguments object. Use `get_tool_details("apply_edits")` for the authoritative runtime parameter schema, including required fields, defaults, nested properties, and validation constraints. The schema is generated from the registered implementation and is kept in sync with this document.
+
+## Escaping complex text (b64 fields)
+
+When `pattern` or `replacement` contain backslashes, quotes, braces, newlines, or other characters that are hard to escape inside JSON, use the base64-encoded variants instead:
+
+- `pattern_b64` — base64-encoded form of the Python regular expression
+- `replacement_b64` — base64-encoded form of the replacement text
+
+Encode the raw string with standard base64, no line breaks:
+
+```python
+import base64
+base64.b64encode(raw_string.encode()).decode()
+```
+
+Rules:
+- Supply `pattern` **or** `pattern_b64`, not both. At least one is required.
+- Supply `replacement` **or** `replacement_b64`, not both. If neither is supplied, `replacement` defaults to `""` (empty string — deletes the match).
+- Bad base64 returns `error_code: "invalid_b64"` with `edit_index` and a descriptive message.
 
 ## Parameters and defaults
 
@@ -28,34 +47,39 @@ The JSON Schema below is the registered input contract. Required fields appear i
               "type": "string"
             },
             "pattern": {
-              "description": "Required Python regular expression used to locate text. (Required: True)",
+              "default": "",
+              "description": "Python regular expression used to locate text. Supply either pattern or pattern_b64, not both. Use pattern_b64 when the pattern contains backslashes, quotes, braces, or other characters that are difficult to escape inside JSON. (Required: False)",
               "title": "Pattern",
               "type": "string"
             },
+            "pattern_b64": {
+              "default": "",
+              "description": "Base64-encoded form of the Python regular expression. Mutually exclusive with pattern. (Required: False)",
+              "title": "Pattern B64",
+              "type": "string"
+            },
             "replacement": {
-              "description": "Required replacement text. (Required: True)",
+              "default": "",
+              "description": "Replacement text. Literal by default; with expand_groups=true, Python re capture references such as \\1 and \\g<name> are expanded. Supply either replacement or replacement_b64, not both. (Required: False)",
               "title": "Replacement",
+              "type": "string"
+            },
+            "replacement_b64": {
+              "default": "",
+              "description": "Base64-encoded form of the replacement text. Mutually exclusive with replacement. (Required: False)",
+              "title": "Replacement B64",
               "type": "string"
             },
             "position": {
               "anyOf": [
-                {
-                  "$ref": "#/$defs/Position"
-                },
-                {
-                  "type": "null"
-                }
+                {"$ref": "#/$defs/Position"},
+                {"type": "null"}
               ],
               "default": null,
-              "description": "Optional object with 1-based line and col keys that limits the search to the first match at or after that position. (Required: False)",
-              "type": "null"
+              "description": "Optional object with 1-based line and col keys that limits the search to the first match at or after that position. (Required: False)"
             }
           },
-          "required": [
-            "path",
-            "pattern",
-            "replacement"
-          ],
+          "required": ["path"],
           "title": "Edit",
           "type": "object"
         },
@@ -76,18 +100,13 @@ The JSON Schema below is the registered input contract. Required fields appear i
               "type": "integer"
             }
           },
-          "required": [
-            "line",
-            "col"
-          ],
+          "required": ["line", "col"],
           "title": "Position",
           "type": "object"
         }
       },
       "description": "Ordered edits to apply to workspace files. (Required: True)",
-      "items": {
-        "$ref": "#/$defs/Edit"
-      },
+      "items": {"$ref": "#/$defs/Edit"},
       "minItems": 1,
       "type": "array"
     },
@@ -98,10 +117,7 @@ The JSON Schema below is the registered input contract. Required fields appear i
     "max_replacements": {
       "description": "Optional maximum replacements per edit. (Required: False)",
       "minimum": 1,
-      "type": [
-        "integer",
-        "null"
-      ]
+      "type": ["integer", "null"]
     },
     "case_insensitive": {
       "description": "Compile patterns with case-insensitive matching. (Required: False)",
@@ -124,13 +140,28 @@ The JSON Schema below is the registered input contract. Required fields appear i
       "type": "string"
     }
   },
-  "required": [
-    "edits",
-    "summary"
-  ],
+  "required": ["edits", "summary"],
   "additionalProperties": false
 }
 ```
+
+## Error codes
+
+| `error_code` | Meaning |
+|---|---|
+| `invalid_summary` | summary is missing or malformed |
+| `invalid_regex` | pattern is not valid Python `re` syntax |
+| `invalid_replacement` | replacement template references a non-existent group (expand_groups=true) |
+| `invalid_b64` | pattern_b64 or replacement_b64 is not valid base64, or decodes to non-UTF-8 bytes |
+| `no_match` | pattern did not match in the (staged) file content |
+| `not_found` | file path does not exist in the workspace |
+| `path_escape` | path would escape the workspace root |
+| `not_a_file` | path exists but is not a regular file |
+| `binary_file` | file is not valid UTF-8 |
+| `io_error` | OS-level read/write error |
+| `invalid_edit` | edit object failed schema validation |
+
+All edit errors include `edit_index` (zero-based) and `message`. Nothing is written on error.
 
 ## Results
 
