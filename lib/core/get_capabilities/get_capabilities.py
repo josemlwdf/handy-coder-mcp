@@ -118,9 +118,9 @@ def _tool_usage_signature(name: str) -> str:
             else:
                 arg_type = short_types.get(arg_type, arg_type)
         if arg in required:
-            arguments.append(f"{arg}: {arg_type}")
+            arg_signature = f"{arg}: {arg_type}"
         else:
-            value = f"{arg}?: {arg_type}"
+            arg_signature = f"{arg}?: {arg_type}"
             if "default" in definition:
                 default = definition["default"]
                 rendered_default = (
@@ -128,8 +128,13 @@ def _tool_usage_signature(name: str) -> str:
                     if isinstance(default, str)
                     else json.dumps(default, ensure_ascii=False)
                 )
-                value += f" = {rendered_default}"
-            arguments.append(value)
+                arg_signature += f" = {rendered_default}"
+        
+        # Add constraint hint for git_manage message parameter
+        if name == "git_manage" and arg == "message":
+            arg_signature += " (required for commit; must not contain word 'commit')"
+        
+        arguments.append(arg_signature)
     return "(" + ", ".join(arguments) + ")"
 
 def _tool_parameter_descriptions(name: str) -> dict[str, str]:
@@ -481,6 +486,7 @@ def get_capabilities(
                     "description": entry["description"],
                     "usage": entry["usage"],
                     **{key: value for key, value in item.items() if key != "note"},
+                    **({'parameters': entry['parameters']} if 'parameters' in entry else {}),
                 }
             else:
                 always[name] = entry

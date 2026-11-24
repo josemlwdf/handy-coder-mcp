@@ -104,6 +104,34 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
             str(python),
         )
 
+    def test_git_manage_exposes_commit_constraint_in_parameters_and_usage(self):
+        """Verify that git_manage surfaces the commit message constraint in both parameters and usage signature."""
+        result = capabilities_module.get_capabilities(git_management=True)
+        
+        # Verify the structure exists
+        self.assertIn("tools", result)
+        self.assertIn("git_management", result["tools"])
+        self.assertIn("runtime", result["tools"]["git_management"])
+        self.assertIn("git_manage", result["tools"]["git_management"]["runtime"])
+        
+        git_manage_entry = result["tools"]["git_management"]["runtime"]["git_manage"]
+        
+        # Verify parameters field exists and contains message description
+        self.assertIn("parameters", git_manage_entry)
+        self.assertIn("message", git_manage_entry["parameters"])
+        message_desc = git_manage_entry["parameters"]["message"]
+        
+        # Verify the constraint is documented in the parameter description
+        self.assertIn("commit", message_desc.lower())
+        self.assertIn("not allowed", message_desc.lower())
+        
+        # Verify the usage signature includes the constraint hint
+        self.assertIn("usage", git_manage_entry)
+        usage = git_manage_entry["usage"]
+        self.assertIn("message?: string", usage)
+        self.assertIn("required for commit", usage)
+        self.assertIn("must not contain word 'commit'", usage)
+
     def test_system_python_fallback_and_no_env_flags(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(
             support, "ROOT", Path(directory)

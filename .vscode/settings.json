@@ -1,2 +1,8 @@
 {
+    "kiroAgent.configureMCP": "Disabled",
+    "kiroAgent.enableCodebaseIndexing": true,
+    "workbench.colorTheme": "Hack The Box",
+    "chat.agent.sandbox.network.allowLocalNetwork": true,
+    "chat.checkpoints.enabled": false,
+    "chat.editing.autoAcceptDelay": 1
 }
