@@ -252,7 +252,7 @@ Returns: File path, line number, severity, and message
 ### Build & Test Automation
 
 - `build_project` — detects Python/Node/C# projects and builds them
-- `run_tests` — auto-detects pytest (Python), jest (Node), etc.
+- `run_tests` — auto-detects pytest (Python), jest (Node), etc. Always runs as a subprocess, so all pytest fixtures (`monkeypatch`, `tmp_path`, `capsys`, …) are injected by the pytest runtime. Use `run_tests` — never call test functions directly.
 - Both return structured output with failure summaries
 
 ### Git Integration

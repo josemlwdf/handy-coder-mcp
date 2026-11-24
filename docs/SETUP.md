@@ -157,6 +157,23 @@ Fix:
 2. Tool uses `python -m pytest` (proper path setup)
 3. Use `filter_path` to isolate failing tests during troubleshooting
 
+**Pytest fixtures (`monkeypatch`, `tmp_path`, `capsys`, `request`, …)**
+
+`run_tests` always invokes pytest as a subprocess (`python -m pytest`). This means
+all standard pytest fixtures are injected automatically by the pytest runtime — the
+same as running `pytest` from the terminal. **Never call test functions directly**
+(e.g. importing a test module and calling `my_test_fn(monkeypatch=...)`) as a
+substitute for `run_tests`: fixture parameters cannot be filled that way, causing
+tests to be silently skipped or errored instead of executed.
+
+Agent rule:
+- Always use `run_tests(test_framework="pytest", filter_path="test/my_test.py")` to
+  run Python tests — even when only a single test file or node ID is needed.
+- Do **not** import test modules and call their functions directly; that bypasses
+  the pytest runner and breaks fixture injection.
+- Use `filter_path` with a pytest node ID (`test/foo.py::TestClass::test_method`)
+  for targeted single-test runs — this still goes through the full subprocess.
+
 ### JavaScript/Node
 
 `run_tests` auto-detects:
