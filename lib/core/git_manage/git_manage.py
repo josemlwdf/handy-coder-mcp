@@ -1,6 +1,7 @@
 """Module documentation."""
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -12,7 +13,19 @@ from typing import Annotated, Any, Literal
 from pydantic import Field
 
 from ... import support
+
 from ...support import inside, run_process, describe, path_escape_message
+from .staging_validation import (  # noqa: F401
+    FileClassifier,
+    PolicyManager,
+    RiskPolicy,  # noqa: F401
+    StagingOrchestrator,
+    StagingToken,  # noqa: F401
+    ValidationError,
+    ValidationGate,  # noqa: F401
+)
+
+logger = logging.getLogger(__name__)
 
 _REPOSITORIES: tuple[str, ...] | None = None
 _DISCOVERY_ERRORS: tuple[dict[str, str], ...] = ()
@@ -64,7 +77,6 @@ _GENERIC_COMMIT_SUBJECTS: set = {
 }
 _DISALLOWED_COMMIT_WORD = re.compile(r"\bcommit\b", re.IGNORECASE)
 
-
 def _is_empty(val: Any) -> bool:
     """Return True if val represents an empty argument (None, empty string, empty collection)."""
     if val is None:
@@ -72,7 +84,6 @@ def _is_empty(val: Any) -> bool:
     if val is False or val is True:
         return False
     return val == "" or val == [] or val == {} or val == set()
-
 
 def _pending_change_summaries_for_paths(
     paths: list[str], repo_root: Path
@@ -410,7 +421,6 @@ def _commit_message_hint_for(message: str) -> str | None:
         return f"Commit message '{subject}' looks generic. {_COMMIT_MESSAGE_HINT}"
     return None
 
-
 def _staged_diff_summary(git: str, repo_path: Path) -> dict[str, Any]:
     """Return a compact summary of the current index without patch contents."""
     result = run_process([git, "diff", "--cached", "--numstat"], cwd=repo_path)
@@ -435,12 +445,13 @@ def _staged_diff_summary(git: str, repo_path: Path) -> dict[str, Any]:
         "files": files,
     }
 
-
 def _uncommitted_changes_summary(git: str, repo_path: Path) -> dict:
     """Summarize remaining index/worktree changes without exposing patch text."""
     summary: dict = {"staged": [], "unstaged": [], "untracked_files": []}
-    for key, args in (("staged", ["diff", "--cached", "--numstat"]),
-                      ("unstaged", ["diff", "--numstat"])):
+    for key, args in (
+        ("staged", ["diff", "--cached", "--numstat"]),
+        ("unstaged", ["diff", "--numstat"]),
+    ):
         result = run_process([git, *args], cwd=repo_path)
         if result.get("exit_code") != 0:
             continue
@@ -448,17 +459,20 @@ def _uncommitted_changes_summary(git: str, repo_path: Path) -> dict:
             parts = line.split("\t", 2)
             if len(parts) == 3:
                 additions, deletions, path = parts
-                summary[key].append({
-                    "file": path,
-                    "additions": additions,
-                    "deletions": deletions,
-                })
+                summary[key].append(
+                    {
+                        "file": path,
+                        "additions": additions,
+                        "deletions": deletions,
+                    }
+                )
     status = run_process(
         [git, "status", "--porcelain=v1", "--untracked-files=all"], cwd=repo_path
     )
     if status.get("exit_code") == 0:
         summary["untracked_files"] = [
-            line[3:] for line in status.get("stdout", "").splitlines()
+            line[3:]
+            for line in status.get("stdout", "").splitlines()
             if line.startswith("?? ")
         ]
     return summary
@@ -583,11 +597,16 @@ def git_manage(
         ),
     ] = None,
     diff_stat: Annotated[
-        bool | None, Field(description="Show diff statistics. Valid only for action='diff'. (Required: False)")
+        bool | None,
+        Field(
+            description="Show diff statistics. Valid only for action='diff'. (Required: False)"
+        ),
     ] = None,
     name_only: Annotated[
         bool | None,
-        Field(description="Show only changed file names. Valid only for action='diff'. (Required: False)"),
+        Field(
+            description="Show only changed file names. Valid only for action='diff'. (Required: False)"
+        ),
     ] = None,
     add_paths: Annotated[
         list[str] | None,
@@ -614,7 +633,10 @@ def git_manage(
         ),
     ] = None,
     remote: Annotated[
-        str | None, Field(description="Remote name for action='push' or action='pull'. (Required: False)")
+        str | None,
+        Field(
+            description="Remote name for action='push' or action='pull'. (Required: False)"
+        ),
     ] = None,
     branch: Annotated[
         str | None,
@@ -623,7 +645,8 @@ def git_manage(
         ),
     ] = None,
     set_upstream: Annotated[
-        bool | None, Field(description="Set upstream when action='push'. (Required: False)")
+        bool | None,
+        Field(description="Set upstream when action='push'. (Required: False)"),
     ] = None,
     force_with_lease: Annotated[
         bool | None,
@@ -632,7 +655,8 @@ def git_manage(
         ),
     ] = None,
     tags: Annotated[
-        bool | None, Field(description="Push tags when action='push'. (Required: False)")
+        bool | None,
+        Field(description="Push tags when action='push'. (Required: False)"),
     ] = None,
     dry_run: Annotated[
         bool | None,
@@ -642,15 +666,21 @@ def git_manage(
     ] = None,
     count: Annotated[
         int | None,
-        Field(description="Maximum number of commits returned by action='log'. (Required: False)"),
+        Field(
+            description="Maximum number of commits returned by action='log'. (Required: False)"
+        ),
     ] = None,
     oneline: Annotated[
         bool | None,
-        Field(description="Use compact one-line output for action='log'. (Required: False)"),
+        Field(
+            description="Use compact one-line output for action='log'. (Required: False)"
+        ),
     ] = None,
     decorate: Annotated[
         bool | None,
-        Field(description="Show ref decorations in action='log' output. (Required: False)"),
+        Field(
+            description="Show ref decorations in action='log' output. (Required: False)"
+        ),
     ] = None,
     all_refs: Annotated[
         bool | None,
@@ -676,15 +706,21 @@ def git_manage(
     ] = None,
     stash_operation: Annotated[
         Literal["list", "push", "pop", "apply", "drop"] | None,
-        Field(description="Stash operation for action='stash': list, push, pop, apply, or drop. (Required: False)"),
+        Field(
+            description="Stash operation for action='stash': list, push, pop, apply, or drop. (Required: False)"
+        ),
     ] = None,
     stash_message: Annotated[
         str | None,
-        Field(description="Optional stash message for action='stash' with stash_operation='push'. (Required: False)"),
+        Field(
+            description="Optional stash message for action='stash' with stash_operation='push'. (Required: False)"
+        ),
     ] = None,
     refs: Annotated[
         list[str] | None,
-        Field(description="One or more refs required by action='merge' or action='rebase'. (Required: False)"),
+        Field(
+            description="One or more refs required by action='merge' or action='rebase'. (Required: False)"
+        ),
     ] = None,
     blame_path: Annotated[
         str | None,
@@ -692,9 +728,59 @@ def git_manage(
             description="Single repository-relative file required by action='blame'. (Required: False)"
         ),
     ] = None,
+    preview_only: Annotated[
+        bool | None,
+        Field(
+            description="For action='add': if True, classify files and return a preview without staging anything. If False (default), classify and execute git add for safe files. (Required: False)"
+        ),
+    ] = None,
+    risk_policy: Annotated[
+        str | None,
+        Field(
+            description="Risk policy for staging validation on action='add' and action='commit'. Values: 'balanced' (default) or 'strict'. Balanced allows normal, large-binary, unknown files; strict allows only normal source files. (Required: False)"
+        ),
+    ] = None,
+    exclude_paths: Annotated[
+        list[str] | None,
+        Field(
+            description="Glob patterns for files to exclude from staging during action='add' (e.g. ['*.log', 'temp/**']). Excluded files are listed in the response but not staged. (Required: False)"
+        ),
+    ] = None,
+    allow_risky: Annotated[
+        list[str] | None,
+        Field(
+            description="Risk categories to promote from excluded to safe during action='add'. Allowed values: ['large-binary', 'unknown']. 'sensitive' can never be allowed. (Required: False)"
+        ),
+    ] = None,
+    validation_token: Annotated[
+        str | None,
+        Field(
+            description="JSON staging token from a previous action='add' run. If provided during action='commit', the token is verified against the current index state before committing. (Required: False)"
+        ),
+    ] = None,
+    skip_validation: Annotated[
+        bool | None,
+        Field(
+            description="If True, bypass staging validation entirely for action='add' and action='commit'. Defaults to False. Bypass is audit-logged. (Required: False)"
+        ),
+    ] = None,
 ) -> dict:
     """Git manage function."""
     target_mcp = _MCP
+    # Normalize new staging-validation params
+    if _is_empty(preview_only):
+        preview_only: None = None
+    if _is_empty(risk_policy):
+        risk_policy: None = None
+    if _is_empty(exclude_paths):
+        exclude_paths: None = None
+    if _is_empty(allow_risky):
+        allow_risky: None = None
+    if _is_empty(validation_token):
+        validation_token: None = None
+    if _is_empty(skip_validation):
+        skip_validation: None = None
+
     supplied: dict = {
         "add_paths": add_paths,
         "all": all,
@@ -721,10 +807,24 @@ def git_manage(
         "name_only": name_only,
         "mode": mode,
         "diff_paths": diff_paths,
+        "preview_only": preview_only,
+        "risk_policy": risk_policy,
+        "exclude_paths": exclude_paths,
+        "allow_risky": allow_risky,
+        "validation_token": validation_token,
+        "skip_validation": skip_validation,
     }
     applicable: dict = {
-        "add": {"add_paths", "all"},
-        "commit": {"message"},
+        "add": {
+            "add_paths",
+            "all",
+            "preview_only",
+            "risk_policy",
+            "exclude_paths",
+            "allow_risky",
+            "skip_validation",
+        },
+        "commit": {"message", "validation_token", "skip_validation"},
         "checkout": {"ref"},
         "push": {
             "remote",
@@ -766,29 +866,29 @@ def git_manage(
             "all=true cannot be combined with add_paths; use either all=true or add_paths"
         )
     if _is_empty(add_paths):
-        add_paths = None
+        add_paths: None = None
     if _is_empty(repo_path):
-        repo_path = None
+        repo_path: None = None
     if _is_empty(diff_paths):
-        diff_paths = None
+        diff_paths: None = None
     if _is_empty(refs):
-        refs = None
+        refs: None = None
     if _is_empty(ref):
-        ref = None
+        ref: None = None
     if _is_empty(remote):
-        remote = None
+        remote: None = None
     if _is_empty(branch):
-        branch = None
+        branch: None = None
     if _is_empty(message):
-        message = None
+        message: None = None
     if _is_empty(blame_path):
-        blame_path = None
+        blame_path: None = None
     if _is_empty(stash_operation):
-        stash_operation = None
+        stash_operation: None = None
     if _is_empty(stash_message):
-        stash_message = None
+        stash_message: None = None
     if _is_empty(path_regex):
-        path_regex = None
+        path_regex: None = None
 
     args: list[str] = []
     if action == "add":
@@ -1296,7 +1396,136 @@ def git_manage(
             and str(selected_path / ".gitignore") not in git_args
         ):
             git_args.append(str(selected_path / ".gitignore"))
+
+        # --- Staging validation integration (Task 4.5) ---
+        _do_validate = (
+            not skip_validation and add_paths is None
+        )  # validate only on full-add
+        if not skip_validation and add_all:
+            _do_validate: bool = True
+        if skip_validation:
+            logger.info(
+                "git_manage add: skip_validation=True — bypassing staging validation (audit log)"
+            )
+        elif _do_validate or (not add_all and add_paths is None):
+            try:
+                _policy = PolicyManager.parse_policy(risk_policy or "balanced")
+                _policy_override = PolicyManager.load_override(selected_path)
+                _classifier = FileClassifier(
+                    selected_path, policy_override=_policy_override
+                )
+                _orchestrator = StagingOrchestrator(
+                    repo_root=selected_path,
+                    classifier=_classifier,
+                    policy=_policy,
+                )
+                _staging_result = _orchestrator.prepare_staging(
+                    preview_only=bool(preview_only),
+                    exclude_paths=list(exclude_paths) if exclude_paths else None,
+                    allow_risky=list(allow_risky) if allow_risky else None,
+                )
+
+                if preview_only:
+                    # Return classification preview without staging
+                    return {
+                        "supported": True,
+                        "preview": True,
+                        "outcome": _staging_result.outcome,
+                        "safe_staging_set": _staging_result.safe_staging_set,
+                        "excluded_files": _staging_result.excluded_files,
+                        "files_requiring_review": [
+                            f.to_dict() for f in _staging_result.files_requiring_review
+                        ],
+                        "blocked_files": [
+                            f.to_dict() for f in _staging_result.blocked_files
+                        ],
+                        "already_staged": _staging_result.already_staged,
+                        "exit_code": 0,
+                        "hint": (
+                            "Preview only — no files were staged. "
+                            "Call again with preview_only=False to execute staging."
+                        ),
+                    }
+
+                if not _staging_result.is_safe_to_stage():
+                    return {
+                        "supported": True,
+                        "error": "validation_failed",
+                        "error_code": "staging_blocked",
+                        "outcome": _staging_result.outcome,
+                        "blocked_files": [
+                            f.to_dict() for f in _staging_result.blocked_files
+                        ],
+                        "excluded_files": _staging_result.excluded_files,
+                        "suggested_actions": [
+                            "Remove sensitive or policy-violating files from the working tree.",
+                            "Use exclude_paths to skip specific files.",
+                            "Add files to .gitignore to prevent future detection.",
+                            "Use skip_validation=True to bypass validation (audit logged).",
+                        ],
+                        "exit_code": 1,
+                    }
+
+                # Staging was already executed by orchestrator — skip raw git add below
+                _token = _staging_result.staging_token
+                _diff_summary = _staged_diff_summary(git, selected_path)
+                _result: dict = {
+                    "supported": True,
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "outcome": _staging_result.outcome,
+                    "safe_staging_set": _staging_result.safe_staging_set,
+                    "excluded_files": _staging_result.excluded_files,
+                    "files_requiring_review": [
+                        f.to_dict() for f in _staging_result.files_requiring_review
+                    ],
+                    "staged_diff_summary": _diff_summary,
+                    "hint": _ADD_FOLLOWUP_HINT,
+                }
+                if _token is not None:
+                    _result["validation_token"] = _token.to_json()
+                return _result
+
+            except ValidationError as exc:
+                return exc.to_dict() | {"exit_code": 1, "supported": True}
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Staging validation error (falling back to raw add): %s", exc
+                )
+                # Fall through to raw git add on unexpected errors
+
     elif action == "commit":
+        # --- Validation gate integration (Task 4.6) ---
+        if not skip_validation:
+            try:
+                _policy = PolicyManager.parse_policy(risk_policy or "balanced")
+                _policy_override = PolicyManager.load_override(selected_path)
+                _classifier = FileClassifier(
+                    selected_path, policy_override=_policy_override
+                )
+                _gate = ValidationGate(
+                    repo_root=selected_path,
+                    classifier=_classifier,
+                    policy=_policy,
+                )
+                # Parse token if provided
+                _token_obj: StagingToken | None = None
+                if validation_token:
+                    try:
+                        _token_obj = StagingToken.from_json(validation_token)
+                    except (ValueError, Exception) as _tok_exc:  # noqa: BLE001
+                        logger.warning("Invalid validation_token: %s", _tok_exc)
+                _gate.validate_commit(_token_obj)
+            except ValidationError as exc:
+                return exc.to_dict() | {"exit_code": 1, "supported": True}
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Validation gate error (allowing commit): %s", exc)
+        else:
+            logger.info(
+                "git_manage commit: skip_validation=True — bypassing validation gate (audit log)"
+            )
+
         # Capture the exact staged snapshot before the commit empties the index.
         staged_diff_summary = _staged_diff_summary(git, selected_path)
     if action == "diff":
@@ -1341,6 +1570,39 @@ def git_manage(
     elif action == "commit" and result.get("exit_code") == 0:
         result["uncommitted_changes"] = _uncommitted_changes_summary(git, selected_path)
         result.pop("hint", None)
+        # --- Post-commit verification (Task 4.7) ---
+        try:
+            _verify_result = run_process(
+                [git, "show", "--name-only", "--format=", "HEAD"],
+                cwd=selected_path,
+            )
+            _committed_files: list = [
+                line.strip()
+                for line in _verify_result.get("stdout", "").splitlines()
+                if line.strip()
+            ]
+            _verification: dict = {
+                "status": "passed",
+                "committed_files": _committed_files,
+            }
+            # If a validation_token was provided, compare committed files against it
+            if validation_token:
+                try:
+                    _tok = StagingToken.from_json(validation_token)
+                    _unexpected = set(_committed_files) - set(_tok.staged_files)
+                    if _unexpected:
+                        _verification["status"] = "warning"
+                        _verification["unexpected_files"] = sorted(_unexpected)
+                        logger.warning(
+                            "post-commit: unexpected files in commit: %s",
+                            sorted(_unexpected),
+                        )
+                except Exception:  # noqa: BLE001
+                    pass
+            result["verification"] = _verification
+        except Exception as _ve:  # noqa: BLE001
+            logger.warning("post-commit verification failed: %s", _ve)
+            result["verification"] = {"status": "skipped", "reason": str(_ve)}
     if result.get("exit_code") != 0 and not result.get("hint"):
         result["hint"] = (
             "Correct invalid arguments before trying again. If the Git diagnostic indicates a transient failure, "
