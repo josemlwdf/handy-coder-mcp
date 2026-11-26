@@ -9,7 +9,9 @@ from types import SimpleNamespace
 
 from mcp.server.fastmcp import FastMCP
 
-from lib import error_handler, tool_details, worker_supervisor
+from lib.utils import error_handler
+from lib.utils import tool_router as tool_details
+from lib.utils import worker_supervisor
 
 
 def _structured(result):
@@ -167,7 +169,7 @@ def test_non_continue_cannot_directly_dispatch_coordination_tools() -> None:
 def test_schema_helper_is_hidden_from_capabilities() -> None:
     server = _server()
     capabilities_module = importlib.import_module(
-        "lib.core.get_capabilities.get_capabilities"
+        "lib.workspace_context.get_capabilities.get_capabilities"
     )
     previous_mcp = capabilities_module._MCP
     capabilities_module._MCP = server

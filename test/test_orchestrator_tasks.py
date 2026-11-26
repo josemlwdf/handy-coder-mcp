@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib import support
-from lib.core import orchestrator
+from lib.utils import support
+from lib.ai_coordination import orchestrator
 
 
 class OrchestratorTaskStatusTests(unittest.TestCase):

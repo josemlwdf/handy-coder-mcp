@@ -9,9 +9,11 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from lib import support
-from lib.core import apply_edits, read_files, terminal_exec
-from lib.worker_supervisor import (
+from lib.utils import support
+from lib.file_management import apply_edits
+from lib.file_management import read_files
+from lib.system import terminal_exec
+from lib.utils.worker_supervisor import (
     run_tool_in_worker,
     supervise_fastmcp_tools,
 )
@@ -191,7 +193,7 @@ class WorkerSupervisorTests(unittest.TestCase):
 
         supervise_fastmcp_tools(mcp)
 
-        with patch("lib.worker_supervisor.run_tool_in_worker") as run_worker:
+        with patch("lib.utils.worker_supervisor.run_tool_in_worker") as run_worker:
             result = tool.fn(image_path="photo.png", prompt="Describe")
 
         run_worker.assert_not_called()

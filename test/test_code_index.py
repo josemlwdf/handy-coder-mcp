@@ -5,8 +5,9 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from lib import code_index, support
-from lib.core import code_navigator as code_navigator_tool
+from lib.utils import code_index
+from lib.utils import support
+from lib.code_analysis import code_intel as code_navigator_tool
 
 
 class CodeIndexTests(unittest.TestCase):
@@ -126,7 +127,7 @@ class CodeIndexTests(unittest.TestCase):
             seen.add(grammar)
         self.assertTrue(seen)
         path = self.root / "fallback.py"
-        with patch("lib.code_index._extract", side_effect=ImportError), patch(
+        with patch("lib.utils.code_index._extract", side_effect=ImportError), patch(
             "tree_sitter_language_pack.get_parser", side_effect=ImportError
         ):
             _, refs, _, mode = code_index._extract_for(path, b"value = target")
@@ -326,7 +327,7 @@ class CodeIndexTests(unittest.TestCase):
     def test_lexical_fallback_is_reported(self) -> None:
         source = self.root / "fallback.swift"
         source.write_text("func doWork() { callTarget() }\n")
-        with patch("lib.code_index.get_parser", side_effect=ImportError, create=True):
+        with patch("lib.utils.code_index.get_parser", side_effect=ImportError, create=True):
             with patch.dict("sys.modules", {"tree_sitter_language_pack": None}):
                 result = code_index.index_codebase()
         self.assertEqual(result["parsed"], 2)

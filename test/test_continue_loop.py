@@ -8,11 +8,11 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.subagents import loop
-from lib.subagents.continue_config import ContinueModel
-from lib.subagents.roles import get_role
-from lib.subagents import tools as subagent_tools
+from lib.utils import support
+from lib.utils.subagents import loop
+from lib.utils.subagents.continue_config import ContinueModel
+from lib.utils.subagents.roles import get_role
+from lib.utils.subagents import runtime as subagent_tools
 
 KEY = "sk-secret-1234"
 HDR = "hdr-secret-5678"
@@ -330,7 +330,7 @@ class HelperTests(unittest.TestCase):
 
     def test_prompt_describes_tool_arguments_and_status_tools(self) -> str:
         """Test prompt describes tool arguments and status tools function."""
-        from lib.subagents.roles import get_role
+        from lib.utils.subagents.roles import get_role
 
         role = get_role("explorer")
         seen: dict = {}
@@ -350,14 +350,14 @@ class HelperTests(unittest.TestCase):
         from unittest.mock import patch
 
         with patch(
-            "lib.subagents.tools.subagent_status", return_value={"state": "done"}
+            "lib.utils.subagents.runtime.subagent_status", return_value={"state": "done"}
         ) as status:
             self.assertEqual(
                 loop._ALLOWED_TOOLS["subagent_status"](task_id="t_1"), {"state": "done"}
             )
             status.assert_called_once_with(task_id="t_1")
         with patch(
-            "lib.subagents.tools.subagent_result", return_value={"result": "ok"}
+            "lib.utils.subagents.runtime.subagent_result", return_value={"result": "ok"}
         ) as result:
             self.assertEqual(
                 loop._ALLOWED_TOOLS["subagent_result"](task_id="t_1"), {"result": "ok"}
@@ -415,7 +415,7 @@ class HelperTests(unittest.TestCase):
 
     def test_manager_update_progress_only_while_active(self) -> None:
         """Test manager update progress only while active function."""
-        from lib.subagents.manager import SubagentManager
+        from lib.utils.subagents.manager import SubagentManager
 
         manager = SubagentManager()
         task = manager.create_task("explorer", "x", "sampling", None, None)

@@ -6,8 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib import support
-from lib.core import apply_edits, create_file
+from lib.utils import support
+from lib.file_management import apply_edits
+from lib.file_management import create_file
 from lib.utils.syntax_checker import syntax_checker
 
 

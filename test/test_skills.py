@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import get_args, get_type_hints
 from unittest import mock
 
-from lib.core import skills
+from lib.skills import skills_manage as skills
 
 
 class FakeMCP:
@@ -228,7 +228,7 @@ class SkillsToolTests(unittest.TestCase):
     def test_capabilities_uses_new_summary_immediately(self) -> None:
         self.save()
         capabilities = importlib.import_module(
-            "lib.core.get_capabilities.get_capabilities"
+            "lib.workspace_context.get_capabilities.get_capabilities"
         )
         with mock.patch.object(
             capabilities,

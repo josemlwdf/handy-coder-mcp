@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import sys
 sys.path.insert(0, '/opt/handy-coder-mcp')
 
-from lib.core.get_capabilities.get_capabilities import _tool_usage_signature
+from lib.workspace_context.get_capabilities.get_capabilities import _tool_usage_signature
 
 def test_string_enum():
     """Test that string enum values should be embedded in usage signatures."""
@@ -22,7 +22,7 @@ def test_string_enum():
         'required': ['action']
     }
     
-    with patch('lib.core.get_capabilities.get_capabilities._MCP') as mock_mcp:
+    with patch('lib.workspace_context.get_capabilities.get_capabilities._MCP') as mock_mcp:
         mock_manager = MagicMock()
         mock_manager._tools = {'test_tool': mock_tool}
         mock_mcp._tool_manager = mock_manager
@@ -57,7 +57,7 @@ def test_integer_enum():
         'required': ['priority']
     }
     
-    with patch('lib.core.get_capabilities.get_capabilities._MCP') as mock_mcp:
+    with patch('lib.workspace_context.get_capabilities.get_capabilities._MCP') as mock_mcp:
         mock_manager = MagicMock()
         mock_manager._tools = {'test_tool': mock_tool}
         mock_mcp._tool_manager = mock_manager
@@ -93,7 +93,7 @@ def test_anyof_const():
         'required': ['mode']
     }
     
-    with patch('lib.core.get_capabilities.get_capabilities._MCP') as mock_mcp:
+    with patch('lib.workspace_context.get_capabilities.get_capabilities._MCP') as mock_mcp:
         mock_manager = MagicMock()
         mock_manager._tools = {'test_tool': mock_tool}
         mock_mcp._tool_manager = mock_manager
@@ -132,7 +132,7 @@ def test_git_manage_action():
         'required': ['action']
     }
     
-    with patch('lib.core.get_capabilities.get_capabilities._MCP') as mock_mcp:
+    with patch('lib.workspace_context.get_capabilities.get_capabilities._MCP') as mock_mcp:
         mock_manager = MagicMock()
         mock_manager._tools = {'git_manage': mock_tool}
         mock_mcp._tool_manager = mock_manager

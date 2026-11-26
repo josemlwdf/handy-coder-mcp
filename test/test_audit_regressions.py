@@ -9,22 +9,24 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 
-from lib import code_index, support, tool_details, worker_supervisor
-from lib.core import (
-    apply_edits,
-    build_project,
-    diagnostics,
-    find_files,
-    git_manage,
-    orchestrator,
-    read_files,
-    run_tests,
-    skills,
-    system_info,
-    web_search_tool,
-)
-from lib.extras import code_format_lint, web_fetch
-from lib.subagents import tools as subagent_tools
+from lib.utils import code_index
+from lib.utils import support
+from lib.utils import tool_router as tool_details
+from lib.utils import worker_supervisor
+from lib.file_management import apply_edits
+from lib.build_test import build_project
+from lib.code_analysis import code_get_diagnostics as diagnostics
+from lib.file_management import find_files
+from lib.git_management import git_manage
+from lib.ai_coordination import orchestrator
+from lib.file_management import read_files
+from lib.build_test import run_tests
+from lib.skills import skills_manage as skills
+from lib.utils import system_info
+from lib.web import web_search as web_search_tool
+from lib.utils import code_format_lint
+from lib.web import web_fetch_docs as web_fetch
+from lib.utils.subagents import runtime as subagent_tools
 
 
 class AuditRegressionTests(unittest.TestCase):
@@ -68,7 +70,7 @@ class AuditRegressionTests(unittest.TestCase):
 
     def test_missing_test_filter_returns_not_found_without_running(self) -> None:
         """Test missing test filter returns not found without running function."""
-        with patch("lib.core.run_tests.run_process") as run:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as run:
             result = run_tests.run_tests(
                 test_framework="pytest", filter_path="missing_test.py"
             )
@@ -182,7 +184,7 @@ class AuditRegressionTests(unittest.TestCase):
         read_files.register(mcp)
         worker_supervisor.supervise_fastmcp_tools(mcp)
         handler = mcp._tool_manager._tools["get_tool_details"].fn
-        with patch("lib.worker_supervisor.run_tool_in_worker") as run_worker:
+        with patch("lib.utils.worker_supervisor.run_tool_in_worker") as run_worker:
             details = mcp._tool_manager._tools["get_tool_schema"].fn(tool_name="read_files")
         run_worker.assert_not_called()
         self.assertEqual(details["tool_name"], "read_files")
@@ -562,11 +564,11 @@ class AuditRegressionTests(unittest.TestCase):
         (self.root / "package.json").write_text('{"scripts":{"build":"rollup"}}')
         with (
             patch(
-                "lib.core.build_project._build_command",
+                "lib.build_test.build_project.build_project._build_command",
                 return_value=(["fake-build"], None),
             ),
             patch(
-                "lib.core.build_project.run_process",
+                "lib.build_test.build_project.build_project.run_process",
                 return_value={
                     "exit_code": 0,
                     "stdout": "ok",
@@ -596,13 +598,13 @@ class AuditRegressionTests(unittest.TestCase):
     def test_web_fetch_reports_offset_and_ssrf_errors(self) -> None:
         """Test web fetch reports offset and ssrf errors function."""
         with patch(
-            "lib.extras.web_fetch._request",
+            "lib.web.web_fetch_docs.web_fetch_docs._request",
             return_value=(b"plain", "https://example.test", "text/plain", 200, False),
         ):
             offset = web_fetch.web_fetch_docs("https://example.test", offset=8)
         self.assertEqual(offset["error_code"], "invalid_range")
         with patch(
-            "lib.extras.web_fetch._public_http_url",
+            "lib.web.web_fetch_docs.web_fetch_docs._public_http_url",
             side_effect=ValueError(
                 "Requests to local, private, or reserved network addresses are not allowed"
             ),
@@ -840,8 +842,8 @@ class AuditRegressionTests(unittest.TestCase):
             {"exit_code": 0, "stdout": "unstaged", "stderr": ""},
         ]
         with (
-            patch("lib.core.git_manage.shutil.which", return_value="git"),
-            patch("lib.core.git_manage.run_process", side_effect=calls),
+            patch("lib.git_management.git_manage.shutil.which", return_value="git"),
+            patch("lib.git_management.git_manage.run_process", side_effect=calls),
         ):
             diff = git_manage.git_manage("diff", repo_path=".", mode="both")
         self.assertEqual(diff["stdout"], "stagedunstaged")
@@ -850,9 +852,9 @@ class AuditRegressionTests(unittest.TestCase):
         self.assertNotIn("unstaged_diff", diff)
 
         with (
-            patch("lib.core.git_manage.shutil.which", return_value="git"),
+            patch("lib.git_management.git_manage.shutil.which", return_value="git"),
             patch(
-                "lib.core.git_manage.run_process",
+                "lib.git_management.git_manage.run_process",
                 return_value={"exit_code": 0, "stdout": "true", "stderr": ""},
             ),
         ):
@@ -870,8 +872,8 @@ class AuditRegressionTests(unittest.TestCase):
             {"exit_code": 0, "stdout": "[main abc1234] msg", "stderr": ""},
         ]
         with (
-            patch("lib.core.git_manage.shutil.which", return_value="git"),
-            patch("lib.core.git_manage.run_process", side_effect=calls),
+            patch("lib.git_management.git_manage.shutil.which", return_value="git"),
+            patch("lib.git_management.git_manage.run_process", side_effect=calls),
         ):
             result = git_manage.git_manage("commit", message="meaningful staged change", repo_path=".")
         self.assertEqual(result["exit_code"], 0)

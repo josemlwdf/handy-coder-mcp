@@ -27,7 +27,7 @@ result = git_manage(
     action="add",
     risk_policy="balanced"
 )
-# Returns: validation_token, staged_diff_summary, outcome
+# Returns: staged_diff_summary, outcome
 ```
 
 ### Commit with validation
@@ -36,16 +36,6 @@ result = git_manage(
 result = git_manage(
     action="commit",
     message="feat: add new feature",
-    validation_token=result["validation_token"]  # from add step
-)
-```
-
-### Bypass validation (audit logged)
-
-```python
-result = git_manage(
-    action="add",
-    skip_validation=True
 )
 ```
 
@@ -59,8 +49,6 @@ result = git_manage(
 | `risk_policy` | `add`, `commit` | `"balanced"` | Policy: `"balanced"` or `"strict"` |
 | `exclude_paths` | `add` | `None` | Glob patterns for files to skip (e.g. `["*.log"]`) |
 | `allow_risky` | `add` | `None` | Risk categories to promote: `["large-binary", "unknown"]` |
-| `validation_token` | `commit` | `None` | JSON token from previous `add` run |
-| `skip_validation` | `add`, `commit` | `False` | Bypass validation entirely (logged) |
 
 ---
 
@@ -199,15 +187,13 @@ print(preview["safe_staging_set"])   # files to be staged
 print(preview["excluded_files"])     # excluded runtime artifacts
 print(preview["blocked_files"])      # any sensitive files (should be empty!)
 
-# 2. Execute staging (gets validation token)
+# 2. Execute staging
 stage_result = git_manage(action="add", risk_policy="balanced")
-token = stage_result["validation_token"]
 
-# 3. Commit with token verification
+# 3. Commit (ValidationGate validates the staged index directly)
 git_manage(
     action="commit",
     message="feat: implement new feature",
-    validation_token=token
 )
 ```
 
@@ -238,17 +224,13 @@ git_manage(
 )
 ```
 
-### Bypass validation (emergency / legacy flow)
+### Direct index validation flow
 
 ```python
-git_manage(
-    action="add",
-    skip_validation=True  # Audit logged
-)
+git_manage(action="add", risk_policy="balanced")
 git_manage(
     action="commit",
-    message="emergency: hotfix",
-    skip_validation=True  # Audit logged
+    message="fix: apply hotfix",
 )
 ```
 
@@ -266,7 +248,6 @@ git_manage(
   "files_requiring_review": [],
   "blocked_files": [],
   "staged_diff_summary": { "file_count": 2, "additions": 50, "deletions": 10 },
-  "validation_token": "{ \"version\": \"1.0\", ... }",
   "hint": "To be useful to the user provide a meaningful message for the commit."
 }
 ```
@@ -300,8 +281,7 @@ git_manage(
   ],
   "suggested_actions": [
     "Remove sensitive files from staging: git restore --staged .env",
-    "Add sensitive files to .gitignore to prevent future staging.",
-    "Use skip_validation=True to bypass validation (audit logged)."
+    "Add sensitive files to .gitignore to prevent future staging."
   ],
   "exit_code": 1
 }
@@ -332,7 +312,7 @@ credentials or private key material. Options:
 1. **Remove the secret**: Delete the file or remove the sensitive content.
 2. **Add to .gitignore**: Prevents future detection.
 3. **Use exclude_paths**: Skip the specific file this time.
-4. **Use skip_validation=True**: Emergency bypass (always audit logged).
+4. **Re-run staging validation**: run `git_manage(action="add")` after resolving blocked files.
 
 ### I want to commit a large binary file
 

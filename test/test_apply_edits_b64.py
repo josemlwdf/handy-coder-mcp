@@ -10,9 +10,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib import support
-from lib.core import apply_edits
-from lib.core.apply_edits.apply_edits import Edit
+from lib.utils import support
+from lib.file_management import apply_edits
+from lib.file_management.apply_edits.apply_edits import Edit
 
 def b64(s: str) -> str:
     """Encode a string to standard base64 (no line breaks)."""

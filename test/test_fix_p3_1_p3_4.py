@@ -5,8 +5,9 @@ from unittest.mock import patch
 
 from mcp.server.fastmcp import FastMCP
 
-from lib import support
-from lib.core import apply_edits, build_project
+from lib.utils import support
+from lib.file_management import apply_edits
+from lib.build_test import build_project
 
 
 class ApplyEditsWrittenFilesTests(unittest.TestCase):
@@ -102,8 +103,8 @@ class BuildProjectRawOutputTests(unittest.TestCase):
     def test_raw_output_is_stdout_followed_by_stderr(self):
         (self.root / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
         fake = {"exit_code": 0, "stdout": "OUT\n", "stderr": "ERR\n", "timed_out": False, "duration_ms": 1}
-        with patch("lib.core.build_project._build_command", return_value=(["build"], None)), \
-             patch("lib.core.build_project.run_process", return_value=fake):
+        with patch("lib.build_test.build_project.build_project._build_command", return_value=(["build"], None)), \
+             patch("lib.build_test.build_project.build_project.run_process", return_value=fake):
             result = build_project.build_project(path=".", include_raw_output=True)
         self.assertEqual(result["raw_output"], "OUT\nERR\n")
         self.assertNotIn("stdout", result)

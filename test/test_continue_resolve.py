@@ -5,10 +5,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.core import system_info
-from lib.subagents import continue_config
-from lib.subagents.resolve import resolve_backend, resolve_continue
+from lib.utils import support
+from lib.utils import system_info
+from lib.utils.subagents import continue_config
+from lib.utils.subagents.resolve import resolve_backend, resolve_continue
 
 KEY = 'sk-resolve-ZZZZ'
 

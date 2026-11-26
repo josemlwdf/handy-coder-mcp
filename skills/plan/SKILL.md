@@ -1,123 +1,151 @@
 ---
 name: plan
-description: Plan and deliver non-trivial work with Handy Coder. Delegate tasks, track progress, integrate, and validate.
-tags: planning, delegation, task-management, validation
+description: Analyze feature, application, architectural change, or large code modification. Produce project-grounded, dependency-aware implementation plan. Use before substantial implementation needing investigation, design, sequencing, or risk analysis.
+tags: plan, architecture, requirements, implementation
 ---
 
-# Plan & Delegate
+# Implementation Planning
 
-Plan non-trivial work. Carry implementation through integration and validation. Never stop at planning. Use Handy Coder MCP tools (usually prefixed by `handy_coder_`).
+## Purpose
 
-## Related Tools
+Turn software change request into clear, technically grounded plan. Execution agent or developer can implement without rediscovering requirements, architecture, dependencies, or intended approach.
 
-- `orchestrator`: Bootstrap plans, update task status.
-- `subagent_manage`: Run, monitor, complete, cancel subagents.
-- `list_dir`, `read_files`, `search_text`, `code_get_diagnostics`, `run_tests`, `build_project`: Scoped investigation, validation.
+Planning only. Investigate and design work, then deliver plan. Do not implement, edit project files, delegate work, orchestrate agents, or run builds and tests.
 
-## Related Skills
+## When to Use
 
-- `grill-me`: Resolve unsettled decisions.
-- `implement`: Direct implementation.
-- `diagnosing-bugs`, `dotnet-tests`, `python-fact-grounded-coding`: Task-specific workflows.
+Use for:
+- Multi-component new features.
+- New applications or substantial subsystems.
+- Architectural changes and large refactors.
+- Cross-cutting changes touching APIs, data models, integrations, or infrastructure.
+- Requests needing implementation order, dependencies, or regression risk analysis.
 
-## Managed Files
+Keep plan proportionate for small, isolated changes with obvious implementation. Do not invent phases or docs adding no value.
 
-- `.handy-coder/implementation-plan.md`: Plan, context, Generalist Assessment, validation strategy.
-- `.handy-coder/tasks.md`: Task tracker using format `[ ] [status: non_started] <task>`.
+## Inputs & Constraints
 
-Valid statuses: `non_started`, `interrupted`, `complete`, `failed`.
-Status changes ONLY via `orchestrator(action='update_task_status', ...)`. Never edit tracker manually.
+- Use user request and conversation context as intent source.
+- Inspect repository when present and available using read-only tools only. Discover available tools; do not assume tool existence.
+- Respect stated constraints, existing decisions, and explicit non-goals. Do not ask info discoverable from codebase.
+- Record high-impact missing decisions as open questions. Ask user only when planning cannot proceed responsibly without answer; otherwise state reasonable assumption and continue.
+- Do not edit, create, delete, or format project files.
+- Do not install dependencies or change config.
+- Do not run builds, tests, diagnostics, migrations, or app commands.
+- Do not invoke implementation, delegation, or orchestration workflows.
+- Do not report planned work as completed or describe unexecuted verification.
+- Do not continue into implementation after delivering plan.
 
 ## Workflow
 
-1. **Bootstrap:** Run `orchestrator(action='bootstrap', user_task, context)`. Read previous progress via `read_files` if resuming.
-2. **Select Models:** Inspect `get_capabilities` (`subagents.continue.models`). Select target model per task. Record choices for final report.
-3. **Assess:** Run `generalist` via `subagent_manage(action='run')`. Save output under `Generalist Assessment` in plan. Resolve key ambiguities via `grill-me`; supply answers as context.
-4. **Plan:** Run `planner`. Enforce small, actionable tasks containing:
-   - One concrete outcome.
-   - Prerequisites and dependencies.
-   - Exact file ownership.
-   - Testable acceptance criteria.
-   - Validation strategy.
-   Reject vague tasks.
-5. **Review:** Verify scope, ownership, sequential dependency, and no file edit overlap across parallel tasks. Replace tracker placeholders via orchestrator workflow.
-6. **Delegate:** Run `coder` via `subagent_manage(action='run')`. Run independent tasks concurrently; wait for dependencies to reach `complete`. Provide mandatory task brief to every subagent.
-7. **Manage Results:**
-   - `completed`: Inspect report and `git_manage(action='diff')`; verify acceptance criteria.
-   - `running`: Poll status; read output with `result` and `offset`.
-   - `delegated_to_host`: Follow host instructions, then execute `subagent_manage(action='complete')`.
-   - `unavailable`: Implement directly or reassign; record outcome.
-   - Stalled: Cancel via `subagent_manage(action='cancel', confirm=true)`. Retry once with revised instructions or take over.
-   - Unusable/Incomplete: Request missing evidence once. If still deficient, reassign or take over.
-8. **Track:** Update status exclusively via `orchestrator(action='update_task_status', ...)`. Set `complete` only after inspection and verification. Use `interrupted` or `failed` honestly.
-9. **Integrate:** Resolve conflicts and interface mismatches. Inspect final `git_manage(action='diff')`. Execute plan validation strategy. Report remaining gaps and blockers.
+### 1. Frame Work
 
-## Subagent Task Brief
+- Summarize intended outcome.
+- Classify change: feature, application, refactor, architectural change, integration, or combination.
+- Extract separately from proposed solutions:
+  - Functional requirements: required system behavior.
+  - Quality requirements: reliability, performance, security, accessibility, scalability, maintainability where relevant.
+  - Technical and environmental constraints.
+  - Compatibility requirements and behavior to preserve.
+  - Acceptance criteria: observable, testable success conditions.
+  - Non-goals: explicit out-of-scope work.
+- Do not silently expand scope.
 
-Every delegated brief must be self-contained and contain:
+### 2. Investigate Codebase
 
-- **Task:** Objective, reason, expected deliverable.
-- **Context:** Requirements, architecture, conventions, decisions, findings.
-- **Prerequisites:** Completed dependencies, settled decisions, required interfaces.
-- **File Ownership:** Exact editable paths. List read-only references separately. No broad scope.
-- **Boundaries:** Unchangeable constraints (compatibility, API, style, scope).
-- **Acceptance:** Observable, testable completion criteria.
-- **Validation:** Relevant checks and exact execution commands.
-- **Reporting:** Require standardized subagent report format.
+- Use read-only repository tools only (e.g., `list_dir`, `read_files`, `search_text` when available).
+- Inspect only relevant scope:
+  - Project structure, frameworks, entry points, architectural boundaries.
+  - Relevant modules, components, services, execution paths.
+  - Existing behavior and implementations reusable or extendable.
+  - Data models, persistence, APIs, interfaces, shared contracts.
+  - Dependency, config, and integration points.
+  - Relevant tests and established project conventions.
+  - Security, error-handling, logging, and validation patterns where applicable.
+- Trace flows across component boundaries; filenames and symbol names alone do not prove behavior.
+- Tag findings:
+  - **Verified**: directly supported by inspected source, config, tests, or docs.
+  - **Inferred**: reasonable conclusion from available evidence.
+  - **Unknown**: not established during investigation.
+- Never invent file paths, symbols, dependencies, test commands, or existing capabilities. Mark unverified locations as `to confirm during implementation` with likely module/responsibility.
+- For greenfield work, inspect available context and define suitable starting architecture instead of describing nonexistent current system.
 
-Subagents must inspect source, tests, and project patterns before editing. Verify paths and interfaces without guessing. If files/interfaces/dependencies are missing, subagents must report blockers and required evidence without inventing APIs, files, or test results.
+### 3. Design Solution
 
-## Required Subagent Report
+- Propose simplest maintainable approach meeting requirements and fitting project.
+- Cover where relevant:
+  - Components/modules and responsibilities.
+  - Main execution and data flows.
+  - Data models, schemas, persistence changes.
+  - APIs, interfaces, events, contracts.
+  - External services and third-party dependencies.
+  - Config and environment changes.
+  - Auth, authorization, and security boundaries.
+  - Migration, compatibility, deployment, and rollback considerations.
+- Explain rationale for material architecture, extensibility, compatibility, or risk choices. Mention alternatives only for meaningful choices.
+- Reuse existing project conventions and working abstractions. Recommend redesign only with concrete reason. Avoid unneeded dependencies, abstraction layers, duplicated logic, and unrelated cleanup.
 
-Every subagent must return:
+### 4. Map Dependencies & Risks
 
-- **Status:** `complete`, `blocked`, or `failed`.
-- **Outcome:** Deliverables mapped directly to acceptance criteria.
-- **Files:** Exact changed paths and purpose (`none` if unchanged).
-- **Evidence:** Symbols, diff details, or observed behavior.
-- **Validation:** Exact commands and results. Note unexecuted checks with reasons.
-- **Assumptions:** Assumptions made and decisions requiring parent review.
-- **Blockers/Risks:** Unresolved issues, side effects, follow-up items.
-- **Integration:** Interfaces, dependencies, or actions required from other tasks.
+- Identify prerequisites and component/change dependencies. Specify shared contracts or resources needed before dependent work starts.
+- For each material risk, state:
+  - Risk and affected area.
+  - Impact or failure mode.
+  - Practical mitigation or verification step.
+- Cover regressions, data integrity, API compatibility, security, performance, concurrency, external-service failure, config, and deployment where applicable. Separate real risks from remote speculation.
 
-No completion claim with unmet criteria. No passing-test claim without actual execution and observed success. Analysis tasks must provide findings and source evidence without claiming code edits.
+### 5. Decompose Into Implementation Phases
 
-## Rules
+- Sequence phases by actual architecture and dependency order (e.g., foundations, core behavior, integrations, supporting behavior, tests, docs) without forcing unnatural templates.
+- Break phases into concrete, cohesive, actionable tasks. Avoid vague items ("update architecture", "handle edge cases") lacking concrete changes.
+- Specify for each significant task:
+  - **Objective**: target result.
+  - **Changes**: required behavior or technical changes.
+  - **Location**: verified existing files/modules/components, or proposed new files.
+  - **Dependencies**: prerequisites and related tasks.
+  - **Validation**: how implementer verifies change.
+  - **Completion criteria**: observable result marking task complete.
+- Place foundational models/contracts before dependent code; integrate throughout rather than deferring to end. Note independent work as planning observation only; do not assign, delegate, or start.
 
-- Parent owns planning, delegation, tracking, review, integration, and validation. Subagents own assigned tasks only.
-- Never delegate using only a task title. Provide full context, constraints, and criteria.
-- Prevent file ownership overlap. Serialize tasks sharing identical editable files.
-- Define interfaces before starting parallel work.
-- Treat subagent claims as untrusted; verify against source, diffs, and command outputs.
-- Reject vague reports. Request missing evidence once, then take over or reassign.
-- Record failures honestly as `interrupted` or `failed`. Never drop or hide incomplete work.
-- Remain within requested scope. No unrelated refactors or external side effects.
-- Never stage or commit git changes unless explicitly requested.
-- Provide a concise `summary` for file-modifying tools.
-- On tool failure, inspect `get_capabilities` and switch to a supported alternative.
+### 6. Specify File Change Map
 
-## Tool Recommendations
+- Existing project: list expected files to create, modify, or remove (only when justified). State role and planned change per file. Include tests, config, migrations, and docs.
+- Use only verified paths for existing files; mark uncertain paths `to confirm during implementation`; never claim new files already exist.
+- New application: propose practical initial directory/module structure with short responsibility notes.
 
-Prefer Handy Coder diagnostics, lint, and hints consistent with code and requirements. Verify rejected recommendations against code/tests. Inspect automated edits with `git_manage(action='diff')`. Revert unintended changes and report reversions.
+### 7. Define Testing & Verification
 
-## Validation Execution
+- Plan validation alongside implementation: unit, integration, contract, end-to-end, regression, migration, security, performance, static-analysis, and build checks as relevant.
+- Per major phase, state tests/checks and expected results. Reference existing test conventions and commands only when verified; specify coverage to add if missing.
+- Describe checks for implementation execution; do not run them here.
 
-Execute plan Validation Strategy using relevant tools:
+### 8. Review Plan Completeness
 
-- `search_text`: Find obsolete symbols/usages.
-- `code_get_diagnostics`: Detect static analysis and HTML syntax issues.
-- `run_tests`: Run affected unit/integration tests, then full suite if relevant.
-- `build_project`: Verify build on configuration or structural changes.
+Verify before output:
+- Every requirement maps to >=1 task or explicit non-goal.
+- Design fits request and verified project context.
+- Assumptions and unknowns visible.
+- Dependencies complete; task order valid; no circular dependencies or contradictions.
+- File references accurate or marked unverified.
+- Integration boundaries and compatibility addressed.
+- Material risks have mitigations.
+- Major tasks have validation approach.
+- Acceptance criteria observable and testable.
+- No unnecessary work or fake completion/verification claims.
 
-Report every check status as `passed`, `failed`, `not run`, or `blocked`. Never claim success without execution.
+Revise if any check fails.
 
-## Final Report
+## Expected Output Format
 
-Include in final deliverable:
+Use this 10-section structure for medium, large, and massive work (combine sections for small work without omitting essential decisions):
 
-1. Completed tasks and summary of changes.
-2. Subagent models utilized.
-3. Tool recommendations accepted, modified, or rejected (with evidence).
-4. Automatic changes reverted.
-5. Exact validation execution results.
-6. Remaining gaps, blockers, and unverified criteria.
+1. **Summary**: Goal, scope, proposed approach, expected result.
+2. **Requirements and acceptance criteria**: Functional/quality requirements, constraints, compatibility expectations, non-goals, measurable acceptance criteria.
+3. **Existing-system findings**: Architecture, existing behavior, reusable components, constraints tagged `Verified`, `Inferred`, or `Unknown` (or proposed baseline for greenfield).
+4. **Proposed design**: Components/modules, flows, data/schema/persistence, APIs/contracts, dependencies/config, security boundaries, migration/compatibility/deployment/rollback, key rationale/alternatives.
+5. **Dependencies and risks**: Prerequisites, dependency order, material risks, impacts, mitigations.
+6. **File change map**: Existing files to modify, proposed new files, justified removals, purpose/change per item.
+7. **Implementation phases and tasks**: Ordered phases with tasks containing Objective, Changes, Location, Dependencies, Validation, Completion criteria.
+8. **Testing and verification plan**: Tests/checks per phase, expected outcomes, verified existing commands or coverage gaps to add.
+9. **Assumptions and open questions**: Assumptions, unknowns, high-impact questions blocking planning.
+10. **Definition of done**: Concise checklist for requirements, integration, compatibility, validation, and docs/delivery items.

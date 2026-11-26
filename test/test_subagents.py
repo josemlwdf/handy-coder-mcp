@@ -8,13 +8,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.subagents import tools as subagent_tools
-from lib.subagents import loop as subagent_loop
-from lib.subagents.manager import SubagentLimits, SubagentManager
-from lib.subagents.resolve import resolve_backend
-from lib.subagents.continue_config import ContinueModel, ResolvedContinue
-from lib.subagents.roles import get_role
+from lib.ai_coordination import subagent_manage
+from lib.image import inspect_image
+from lib.utils import support
+from lib.utils.subagents import runtime as subagent_tools
+from lib.utils.subagents import loop as subagent_loop
+from lib.utils.subagents.manager import SubagentLimits, SubagentManager
+from lib.utils.subagents.resolve import resolve_backend
+from lib.utils.subagents.continue_config import ContinueModel, ResolvedContinue
+from lib.utils.subagents.roles import get_role
 
 
 class FakeMCP:
@@ -49,8 +51,11 @@ class SubagentToolTests(unittest.TestCase):
         import importlib
 
         importlib.reload(subagent_tools)
+        importlib.reload(subagent_manage)
+        importlib.reload(inspect_image)
         self.mcp = FakeMCP()
-        subagent_tools.register(self.mcp)
+        subagent_manage.register(self.mcp)
+        inspect_image.register(self.mcp)
         # register() resolves the backend, and default-on Continue discovery could
         # pick up a real config on the developer machine; pin the cooperative floor.
         subagent_tools._BACKEND = "cooperative"
@@ -801,12 +806,12 @@ class SubagentToolTests(unittest.TestCase):
     def test_expired_cooperative_frame_is_removed_and_task_fails(self) -> None:
         """Test expired cooperative frame is removed and task fails function."""
         manager = SubagentManager(SubagentLimits())
-        with patch("lib.subagents.manager.time.time", return_value=100.0):
+        with patch("lib.utils.subagents.manager.time.time", return_value=100.0):
             task = manager.create_task("explorer", "inspect", "cooperative", None, None)
             frame = manager.make_frame(task.task_id, get_role("explorer"), "inspect")
             manager.mark_delegated(task.task_id, frame)
 
-        with patch("lib.subagents.manager.time.time", return_value=401.0):
+        with patch("lib.utils.subagents.manager.time.time", return_value=401.0):
             self.assertIsNone(manager.open_frame())
             self.assertEqual(manager.get_task(task.task_id).state, "failed")
 
@@ -1098,7 +1103,7 @@ class SubagentToolTests(unittest.TestCase):
 
     def test_startup_clean_worktree_no_repository_is_noop(self) -> None:
         """Test startup clean worktree no repository is noop function."""
-        with patch("lib.core.git_manage.discover_repositories", return_value=((), ())):
+        with patch("lib.git_management.git_manage.git_manage.discover_repositories", return_value=((), ())):
             with patch.object(subagent_tools, "subagent_run") as run_committer:
                 result = subagent_tools.enforce_clean_worktree_on_startup()
 
@@ -1121,10 +1126,10 @@ class SubagentToolTests(unittest.TestCase):
             "untracked_files": [],
         }
         with patch(
-            "lib.core.git_manage.discover_repositories", return_value=((".",), ())
+            "lib.git_management.git_manage.git_manage.discover_repositories", return_value=((".",), ())
         ):
             with patch(
-                "lib.core.git_manage.git_manage",
+                "lib.git_management.git_manage.git_manage.git_manage",
                 side_effect=[dirty_status, clean_status],
             ):
                 with patch.object(
@@ -1152,9 +1157,9 @@ class SubagentToolTests(unittest.TestCase):
             "untracked_files": ["pending.txt"],
         }
         with patch(
-            "lib.core.git_manage.discover_repositories", return_value=((".",), ())
+            "lib.git_management.git_manage.git_manage.discover_repositories", return_value=((".",), ())
         ):
-            with patch("lib.core.git_manage.git_manage", return_value=dirty_status):
+            with patch("lib.git_management.git_manage.git_manage.git_manage", return_value=dirty_status):
                 with patch.object(
                     subagent_tools,
                     "subagent_run",
@@ -1177,8 +1182,11 @@ class UnavailableBackendTests(unittest.TestCase):
         import importlib
 
         importlib.reload(subagent_tools)
+        importlib.reload(subagent_manage)
+        importlib.reload(inspect_image)
         self.mcp = FakeMCP()
-        subagent_tools.register(self.mcp)
+        subagent_manage.register(self.mcp)
+        inspect_image.register(self.mcp)
 
     def test_fallback_cooperative_returns_unavailable_and_opens_no_frame(self) -> None:
         """Test fallback cooperative returns unavailable and opens no frame function."""

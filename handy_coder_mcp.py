@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from lib import ide_detector
+from lib.utils import ide_detector
 
 
 def _is_vscode_process_dir(path: Path) -> bool:
@@ -42,30 +42,36 @@ def _load_fastmcp():
 
 
 # Imports below intentionally follow _load_fastmcp(); E402 is suppressed per line.
-from lib import error_handler  # noqa: E402
-from lib import project_logs, support, tool_details, worker_supervisor  # noqa: E402
-from lib.core import (  # noqa: E402
-    apply_edits,
-    build_project,
-    code_polish,
-    web_search,
-    capture_url_screenshot,
-    search_text,
-    create_file,
+from lib.ai_coordination import orchestrator, subagent_manage  # noqa: E402
+from lib.build_test import build_project, run_tests  # noqa: E402
+from lib.code_analysis import (  # noqa: E402
     code_get_diagnostics,
+    code_intel,
+    code_polish,
+    search_text,
+)
+from lib.documentation import get_tool_details  # noqa: E402
+from lib.file_management import (  # noqa: E402
+    apply_edits,
+    create_file,
     find_files,
     list_dir,
-    git_manage,
-    orchestrator,
     read_files,
-    run_tests,
-    skills_manage,
-    get_capabilities,
-    code_intel,
-    terminal_exec,
 )
-from lib.extras import web_fetch  # noqa: E402
-from lib.subagents import tools as subagent_tools  # noqa: E402
+from lib.git_management import git_manage  # noqa: E402
+from lib.image import inspect_image  # noqa: E402
+from lib.skills import skills_manage  # noqa: E402
+from lib.system import invoke_tool, terminal_exec  # noqa: E402
+from lib.utils import (  # noqa: E402
+    error_handler,
+    project_logs,
+    support,
+    tool_router,
+    worker_supervisor,
+)
+from lib.utils.subagents import runtime as subagent_runtime  # noqa: E402
+from lib.web import capture_url_screenshot, web_fetch_docs, web_search  # noqa: E402
+from lib.workspace_context import get_capabilities  # noqa: E402
 
 
 def _sort_registered_tools(mcp) -> None:
@@ -238,9 +244,9 @@ def main() -> None:
         raise SystemExit(1) from exc
 
     if args.enforce_clean_worktree_child:
-        subagent_tools.configure_runtime(client_capabilities=None)
+        subagent_runtime.configure_runtime(client_capabilities=None)
         try:
-            subagent_tools.enforce_clean_worktree_on_startup()
+            subagent_runtime.enforce_clean_worktree_on_startup()
         except Exception as exc:  # noqa: BLE001 - background enforcement must not affect the MCP process
             print(
                 f"[handy-coder-mcp] Background clean-worktree enforcement failed: {exc}",
@@ -258,8 +264,10 @@ def main() -> None:
     )
     FastMCP = _load_fastmcp()
     mcp = FastMCP("handy-coder-mcp")
-    tool_details.install(mcp)
+    tool_router.install_wrapper(mcp)
     for module in (
+        get_tool_details,
+        invoke_tool,
         read_files,
         create_file,
         apply_edits,
@@ -274,12 +282,13 @@ def main() -> None:
         run_tests,
         git_manage,
         build_project,
-        web_fetch,
+        web_fetch_docs,
         get_capabilities,
         code_intel,
         skills_manage,
         orchestrator,
-        subagent_tools,
+        subagent_manage,
+        inspect_image,
     ):
         module.register(mcp)
     _sort_registered_tools(mcp)
@@ -294,7 +303,7 @@ def main() -> None:
             [
                 sys.executable,
                 "-m",
-                "lib.code_index_worker",
+                "lib.utils.code_index_worker",
                 "--root",
                 support.ROOT,
                 "--parent-pid",

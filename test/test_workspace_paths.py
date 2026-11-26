@@ -4,8 +4,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.core import apply_edits, terminal_exec
+from lib.utils import support
+from lib.file_management import apply_edits
+from lib.system import terminal_exec
 
 
 class FakeMCP:

@@ -4,8 +4,9 @@ import importlib
 import unittest
 from pathlib import Path
 
-from lib import support
-from lib.subagents import tools as subagent_tools
+from lib.ai_coordination import subagent_manage
+from lib.utils import support
+from lib.utils.subagents import runtime as subagent_tools
 
 
 class FakeMCP:
@@ -37,8 +38,9 @@ class SubagentIsolationSmokeTest(unittest.TestCase):
     def setUp(self) -> None:
         """SetUp function."""
         importlib.reload(subagent_tools)
+        importlib.reload(subagent_manage)
         self.mcp = FakeMCP()
-        subagent_tools.register(self.mcp)
+        subagent_manage.register(self.mcp)
         subagent_tools._BACKEND = "cooperative"
         subagent_tools._COOP_EXPLICIT = True
 

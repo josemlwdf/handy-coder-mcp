@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib import support
-from lib.core import list_dir
+from lib.utils import support
+from lib.file_management import list_dir
 
 
 class ListDirTests(unittest.TestCase):

@@ -7,8 +7,10 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from lib import error_handler, support, tool_details, worker_supervisor
-from lib.core import git_manage
+from lib.utils import error_handler, support
+from lib.utils import tool_router as tool_details
+from lib.utils import worker_supervisor
+from lib.git_management import git_manage
 
 def _build_server():
     mcp = FastMCP("git-manage-errors")

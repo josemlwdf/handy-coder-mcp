@@ -6,14 +6,14 @@ print("Starting minimal test...")
 
 # Test imports
 try:
-    from lib import tool_details
+    from lib.utils import tool_router as tool_details
     print("✓ tool_details imported")
 except Exception as e:
     print(f"✗ tool_details import failed: {e}")
     sys.exit(1)
 
 try:
-    from lib.core import run_tests
+    from lib.build_test import run_tests
     print("✓ run_tests imported")
 except Exception as e:
     print(f"✗ run_tests import failed: {e}")

@@ -8,14 +8,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import error_handler, support
-from lib.command_blacklist import (
+from lib.utils import error_handler, support
+from lib.utils.command_blacklist import (
     ENV_DISABLE_BLACKLIST,
     GIT_MANAGE_ACTIONS,
     UnauthorizedCommandError,
 )
-from lib.core import terminal_exec
-from lib.worker_supervisor import run_tool_in_worker
+from lib.system import terminal_exec
+from lib.utils.worker_supervisor import run_tool_in_worker
 
 
 class CommandBlacklistTests(unittest.TestCase):

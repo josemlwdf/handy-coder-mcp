@@ -20,8 +20,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.core import run_tests
+from lib.utils import support
+from lib.build_test import run_tests
 
 class RunTestsUsesRealPytestSubprocessTests(unittest.TestCase):
     """run_tests must invoke a real pytest subprocess, not call test functions directly.
@@ -252,7 +252,7 @@ class RunTestsCommandLineFormatTests(unittest.TestCase):
                 "duration_ms": 100,
             }
 
-        with patch("lib.core.run_tests.run_tests.run_process", side_effect=fake_run_process):
+        with patch("lib.build_test.run_tests.run_tests.run_process", side_effect=fake_run_process):
             result = run_tests.run_tests(
                 test_framework="pytest",
                 filter_path="test/test_sample.py",

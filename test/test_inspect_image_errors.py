@@ -8,8 +8,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.subagents import tools as subagent_tools
+from lib.image import inspect_image
+from lib.utils import support
+from lib.utils.subagents import runtime as subagent_tools
 
 
 class FakeMCP:
@@ -41,8 +42,9 @@ class InspectImageErrorTests(unittest.TestCase):
     def setUp(self) -> None:
         """Reload tool module and register tools fresh for each test."""
         importlib.reload(subagent_tools)
+        importlib.reload(inspect_image)
         self.mcp = FakeMCP()
-        subagent_tools.register(self.mcp)
+        inspect_image.register(self.mcp)
 
     def test_empty_prompt_returns_empty_prompt_error(self) -> None:
         """Reject prompts that are blank or whitespace-only."""
@@ -89,7 +91,7 @@ class InspectImageErrorTests(unittest.TestCase):
             try:
                 file_path = Path(temp_dir) / "large.png"
                 file_path.write_bytes(b"\x89PNG\r\n\x1a\n" + (b"x" * 40))
-                with patch.object(subagent_tools, "_IMAGE_MAX_BYTES", 16):
+                with patch.object(inspect_image, "_IMAGE_MAX_BYTES", 16):
                     out = self.mcp.tools["inspect_image"](
                         image_path="large.png",
                         prompt="Describe this image",

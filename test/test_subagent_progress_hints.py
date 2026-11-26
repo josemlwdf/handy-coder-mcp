@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.subagents import tools as subagent_tools
-from lib.subagents.roles import get_role
+from lib.utils import support
+from lib.utils.subagents import runtime as subagent_tools
+from lib.utils.subagents.roles import get_role
 
 
 class SubagentProgressHintTests(unittest.TestCase):

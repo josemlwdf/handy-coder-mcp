@@ -11,17 +11,16 @@ from typing import get_args, get_type_hints
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.core import (
-    apply_edits,
-    code_search,
-    find_files,
-    git_manage,
-    read_files,
-    run_tests,
-)
-from lib.core import diagnostics, terminal_exec
-from lib.extras import web_fetch
+from lib.utils import support
+from lib.file_management import apply_edits
+from lib.code_analysis import search_text as code_search
+from lib.file_management import find_files
+from lib.git_management import git_manage
+from lib.file_management import read_files
+from lib.build_test import run_tests
+from lib.code_analysis import code_get_diagnostics as diagnostics
+from lib.system import terminal_exec
+from lib.web import web_fetch_docs as web_fetch
 
 
 class FakeMCP:
@@ -82,7 +81,7 @@ class CoreFeedbackTests(unittest.TestCase):
                 raise OSError(errno.ENODEV, "No such device", str(path))
             return original_scandir(path)
 
-        with patch("lib.support.os.scandir", side_effect=fail_broken):
+        with patch("lib.utils.support.os.scandir", side_effect=fail_broken):
             files = self.mcp.tools["find_files"]("*.py")
             matches = self.mcp.tools["search_text"]("needle")
 
@@ -108,7 +107,7 @@ class CoreFeedbackTests(unittest.TestCase):
             visited.append(Path(path).relative_to(self.root).as_posix())
             return original_scandir(path)
 
-        with patch("lib.support.os.scandir", side_effect=record_scandir):
+        with patch("lib.utils.support.os.scandir", side_effect=record_scandir):
             result = self.mcp.tools["search_text"]("needle", path_glob="src/**/*.py")
 
         self.assertEqual(
@@ -144,7 +143,7 @@ class CoreFeedbackTests(unittest.TestCase):
             "[project]\nname = 'sample'\n", encoding="utf-8"
         )
 
-        with patch("lib.core.run_tests.run_process") as run_process:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as run_process:
             result = self.mcp.tools["run_tests"](test_framework="pytest")
 
         self.assertFalse(result["supported"])
@@ -167,7 +166,7 @@ class CoreFeedbackTests(unittest.TestCase):
         }
 
         with patch(
-            "lib.core.run_tests.run_process", return_value=process_result
+            "lib.build_test.run_tests.run_tests.run_process", return_value=process_result
         ) as run_process:
             result = self.mcp.tools["run_tests"](
                 test_framework="pytest", filter_path="test_one.py"
@@ -199,7 +198,7 @@ class CoreFeedbackTests(unittest.TestCase):
         }
 
         with patch(
-            "lib.core.run_tests.run_process", return_value=process_result
+            "lib.build_test.run_tests.run_tests.run_process", return_value=process_result
         ) as run_process:
             result = self.mcp.tools["run_tests"](
                 test_framework="pytest", filter_path="test_one.py"
@@ -225,7 +224,7 @@ class CoreFeedbackTests(unittest.TestCase):
         }
 
         with patch(
-            "lib.core.run_tests.run_process", return_value=process_result
+            "lib.build_test.run_tests.run_tests.run_process", return_value=process_result
         ) as run_process:
             result = self.mcp.tools["run_tests"]()
 
@@ -240,7 +239,7 @@ class CoreFeedbackTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        with patch("lib.core.run_tests.run_process") as run_process:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as run_process:
             result = self.mcp.tools["run_tests"](test_framework="jest")
 
         self.assertFalse(result["supported"])
@@ -256,8 +255,8 @@ class CoreFeedbackTests(unittest.TestCase):
         )
 
         with (
-            patch("lib.core.run_tests.shutil.which", return_value=None),
-            patch("lib.core.run_tests.run_process") as run_process,
+            patch("lib.build_test.run_tests.run_tests.shutil.which", return_value=None),
+            patch("lib.build_test.run_tests.run_tests.run_process") as run_process,
         ):
             result = self.mcp.tools["run_tests"](test_framework="jest")
 
@@ -281,8 +280,8 @@ class CoreFeedbackTests(unittest.TestCase):
         }
 
         with (
-            patch("lib.core.run_tests.shutil.which", return_value="/usr/bin/npx"),
-            patch("lib.core.run_tests.run_process", return_value=process_result),
+            patch("lib.build_test.run_tests.run_tests.shutil.which", return_value="/usr/bin/npx"),
+            patch("lib.build_test.run_tests.run_tests.run_process", return_value=process_result),
         ):
             result = self.mcp.tools["run_tests"](test_framework="jest")
 
@@ -292,7 +291,7 @@ class CoreFeedbackTests(unittest.TestCase):
 
     def test_git_unavailable_returns_normalized_error(self) -> None:
         """Test git unavailable returns normalized error function."""
-        with patch("lib.core.git_manage.shutil.which", return_value=None):
+        with patch("lib.git_management.git_manage.shutil.which", return_value=None):
             result = self.mcp.tools["git_manage"]("status")
 
         self.assertFalse(result["supported"])
@@ -307,9 +306,9 @@ class CoreFeedbackTests(unittest.TestCase):
             "exit_code": 128,
         }
         with (
-            patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
+            patch("lib.git_management.git_manage.shutil.which", return_value="/usr/bin/git"),
             patch(
-                "lib.core.git_manage.run_process", return_value=check_result
+                "lib.git_management.git_manage.run_process", return_value=check_result
             ) as run_process,
         ):
             result = self.mcp.tools["git_manage"]("diff")
@@ -336,9 +335,9 @@ class CoreFeedbackTests(unittest.TestCase):
             "duration_ms": 2,
         }
         with (
-            patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
+            patch("lib.git_management.git_manage.shutil.which", return_value="/usr/bin/git"),
             patch(
-                "lib.core.git_manage.run_process",
+                "lib.git_management.git_manage.run_process",
                 side_effect=[check_result, push_result],
             ) as run_process,
         ):
@@ -383,7 +382,7 @@ class CoreFeedbackTests(unittest.TestCase):
     def test_git_discovery_is_deferred_until_first_tool_call(self) -> None:
         """Test git discovery is deferred until first tool call function."""
         mcp = FakeMCP()
-        with patch("lib.core.git_manage.discover_repositories") as discover:
+        with patch("lib.git_management.git_manage.discover_repositories") as discover:
             git_manage.register(mcp)
 
         discover.assert_not_called()
@@ -433,9 +432,9 @@ class CoreFeedbackTests(unittest.TestCase):
             "duration_ms": 1,
         }
         with (
-            patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
+            patch("lib.git_management.git_manage.shutil.which", return_value="/usr/bin/git"),
             patch(
-                "lib.core.git_manage.run_process", return_value=result
+                "lib.git_management.git_manage.run_process", return_value=result
             ) as run_process,
         ):
             mcp.tools["git_manage"]("status", repo_path="second")
@@ -477,8 +476,8 @@ class CoreFeedbackTests(unittest.TestCase):
             return result
 
         with (
-            patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
-            patch("lib.core.git_manage.run_process", side_effect=initialize),
+            patch("lib.git_management.git_manage.shutil.which", return_value="/usr/bin/git"),
+            patch("lib.git_management.git_manage.run_process", side_effect=initialize),
         ):
             initialized = self.mcp.tools["git_manage"]("init")
 
@@ -495,7 +494,7 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIn("node_modules/", ignore_text)
         self.assertIn("__pycache__/", ignore_text)
         self.assertIn("dist/", ignore_text)
-        with patch("lib.core.git_manage.os.walk", side_effect=AssertionError("must not walk")):
+        with patch("lib.git_management.git_manage.os.walk", side_effect=AssertionError("must not walk")):
             git_manage._maintain_gitignore(self.root)
         self.assertEqual(
             (self.root / ".gitignore").read_text(encoding="utf-8"), ignore_text
@@ -503,7 +502,7 @@ class CoreFeedbackTests(unittest.TestCase):
 
     def test_init_inside_existing_repository_is_rejected(self):
         (self.root / ".git").mkdir()
-        with patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"):
+        with patch("lib.git_management.git_manage.shutil.which", return_value="/usr/bin/git"):
             with self.assertRaisesRegex(ValueError, "inside existing repository"):
                 self.mcp.tools["git_manage"]("init", repo_path="nested")
 
@@ -542,7 +541,7 @@ class CoreFeedbackTests(unittest.TestCase):
         mcp = FakeMCP()
         git_manage.register(mcp)
 
-        with patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"):
+        with patch("lib.git_management.git_manage.shutil.which", return_value="/usr/bin/git"):
             with self.assertRaisesRegex(ValueError, "inside existing repository"):
                 mcp.tools["git_manage"]("init", repo_path="project/subdir")
 
@@ -711,7 +710,7 @@ class CoreFeedbackTests(unittest.TestCase):
             "duration_ms": 300,
         }
 
-        with patch("lib.core.run_tests.run_process", return_value=process_result):
+        with patch("lib.build_test.run_tests.run_tests.run_process", return_value=process_result):
             result = self.mcp.tools["run_tests"]()
 
         self.assertIn("parsed", result)
@@ -732,8 +731,8 @@ class CoreFeedbackTests(unittest.TestCase):
         }
 
         with (
-            patch("lib.support.run_process", return_value=process_result),
-            patch("lib.core.diagnostics.run_process", return_value=process_result),
+            patch("lib.utils.support.run_process", return_value=process_result),
+            patch("lib.code_analysis.code_get_diagnostics.code_get_diagnostics.run_process", return_value=process_result),
         ):
             result = self.mcp.tools["code_get_diagnostics"]()
 
@@ -800,7 +799,7 @@ class CoreFeedbackTests(unittest.TestCase):
 
     def test_create_file_octal_permission_strings(self) -> None:
         """Test create file octal permission strings function."""
-        from lib.core import create_file
+        from lib.file_management import create_file
 
         self.assertEqual(
             create_file.create_file(
@@ -822,9 +821,9 @@ class CoreFeedbackTests(unittest.TestCase):
         self.assertIn("rebase", str(hints["action"]))
         dirty: dict = {"exit_code": 0, "stdout": "?? untracked\n", "stderr": ""}
         with (
-            patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
+            patch("lib.git_management.git_manage.shutil.which", return_value="/usr/bin/git"),
             patch(
-                "lib.core.git_manage.run_process",
+                "lib.git_management.git_manage.run_process",
                 side_effect=[{"exit_code": 0, "stdout": "true\n", "stderr": ""}, dirty],
             ) as run,
         ):
@@ -835,7 +834,7 @@ class CoreFeedbackTests(unittest.TestCase):
     def test_git_manage_rediscovers_newly_created_repo(self) -> None:
         """A repo created after the first git_manage call must be accepted."""
         # First call populates the cache with an empty repo list.
-        with patch("lib.core.git_manage.shutil.which", return_value=None):
+        with patch("lib.git_management.git_manage.shutil.which", return_value=None):
             self.mcp.tools["git_manage"]("status")
 
         # Now create a repo under the workspace.
@@ -850,8 +849,8 @@ class CoreFeedbackTests(unittest.TestCase):
             "duration_ms": 1,
         }
         with (
-            patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
-            patch("lib.core.git_manage.run_process", return_value=ok_result),
+            patch("lib.git_management.git_manage.shutil.which", return_value="/usr/bin/git"),
+            patch("lib.git_management.git_manage.run_process", return_value=ok_result),
         ):
             result = self.mcp.tools["git_manage"]("status", repo_path="project")
 
@@ -871,8 +870,8 @@ class CoreFeedbackTests(unittest.TestCase):
             "duration_ms": 1,
         }
         with (
-            patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
-            patch("lib.core.git_manage.run_process", return_value=ok_result),
+            patch("lib.git_management.git_manage.shutil.which", return_value="/usr/bin/git"),
+            patch("lib.git_management.git_manage.run_process", return_value=ok_result),
         ):
             with self.assertRaises(ValueError) as ctx:
                 mcp.tools["git_manage"]("log", message="not a log field")
@@ -900,14 +899,14 @@ class CoreFeedbackTests(unittest.TestCase):
 
     def test_terminal_exec_division_operator_not_rejected(self) -> None:
         """A shell command containing bare '/' (division) must not be rejected."""
-        from lib.support import validate_shell_command
+        from lib.utils.support import validate_shell_command
 
         # Should not raise — '/' is the division operator here, not a path.
         validate_shell_command("echo $((10 / 2))", self.root)
 
     def test_terminal_exec_error_message_names_bad_token(self) -> None:
         """The path-guard error message must include the rejected token."""
-        from lib.support import validate_shell_command
+        from lib.utils.support import validate_shell_command
 
         with self.assertRaises(ValueError) as ctx:
             validate_shell_command("cat /etc/passwd", self.root)
@@ -940,7 +939,7 @@ class CoreFeedbackTests(unittest.TestCase):
                 return real_monotonic() + 100.0
             return real_monotonic()
 
-        with patch("lib.core.code_search.time.monotonic", side_effect=fake_monotonic):
+        with patch("lib.code_analysis.search_text.search_text.time.monotonic", side_effect=fake_monotonic):
             result = self.mcp.tools["search_text"]("needle")
 
         self.assertTrue(result["truncated"])
@@ -980,9 +979,9 @@ class CoreFeedbackTests(unittest.TestCase):
                 return entry
 
         with (
-            patch("lib.support.os.scandir", side_effect=AdvancingScandir),
+            patch("lib.utils.support.os.scandir", side_effect=AdvancingScandir),
             patch(
-                "lib.core.code_search.time.monotonic",
+                "lib.code_analysis.search_text.search_text.time.monotonic",
                 side_effect=lambda: entries_seen[0],
             ),
         ):
@@ -1033,7 +1032,7 @@ class CoreFeedbackTests(unittest.TestCase):
             "duration_ms": 1,
         }
 
-        with patch("lib.core.diagnostics.run_process", return_value=process_result):
+        with patch("lib.code_analysis.code_get_diagnostics.code_get_diagnostics.run_process", return_value=process_result):
             result = self.mcp.tools["code_get_diagnostics"]()
 
         self.assertTrue(result["supported"])
@@ -1204,7 +1203,7 @@ class CoreFeedbackTests(unittest.TestCase):
 
     def test_terminal_exec_quoted_slash_not_rejected(self) -> None:
         """A token like '// comment' inside quotes must not trigger the path guard."""
-        from lib.support import validate_shell_command
+        from lib.utils.support import validate_shell_command
 
         validate_shell_command('echo "// changed by script"', self.root)
 
@@ -1241,7 +1240,7 @@ class CoreFeedbackTests(unittest.TestCase):
             "timed_out": False,
             "duration_ms": 10,
         }
-        with patch("lib.core.diagnostics.run_process", return_value=process_result):
+        with patch("lib.code_analysis.code_get_diagnostics.code_get_diagnostics.run_process", return_value=process_result):
             result = self.mcp.tools["code_get_diagnostics"]()
         self.assertTrue(result["ok"])
 
@@ -1257,7 +1256,7 @@ class CoreFeedbackTests(unittest.TestCase):
             "timed_out": False,
             "duration_ms": 10,
         }
-        with patch("lib.core.diagnostics.run_process", return_value=process_result):
+        with patch("lib.code_analysis.code_get_diagnostics.code_get_diagnostics.run_process", return_value=process_result):
             result = self.mcp.tools["code_get_diagnostics"]()
         self.assertFalse(result["ok"])
         self.assertIn("hint", result)
@@ -1287,7 +1286,7 @@ class CoreFeedbackTests(unittest.TestCase):
         }
 
         call_results: list = [ruff_missing, mypy_ok]
-        with patch("lib.core.diagnostics.run_process", side_effect=call_results):
+        with patch("lib.code_analysis.code_get_diagnostics.code_get_diagnostics.run_process", side_effect=call_results):
             result = self.mcp.tools["code_get_diagnostics"]()
 
         self.assertTrue(result["supported"])
@@ -1333,7 +1332,7 @@ class CoreFeedbackTests(unittest.TestCase):
             "duration_ms": 5,
         }
         with patch(
-            "lib.core.diagnostics.run_process", side_effect=[ruff_missing, mypy_ok]
+            "lib.code_analysis.code_get_diagnostics.code_get_diagnostics.run_process", side_effect=[ruff_missing, mypy_ok]
         ):
             result = self.mcp.tools["code_get_diagnostics"]()
         self.assertEqual(result["check"], "mypy")
@@ -1353,7 +1352,7 @@ class CoreFeedbackTests(unittest.TestCase):
             "duration_ms": 9,
         }
         with patch(
-            "lib.core.diagnostics.run_process", return_value=process_result
+            "lib.code_analysis.code_get_diagnostics.code_get_diagnostics.run_process", return_value=process_result
         ) as run:
             result = self.mcp.tools["code_get_diagnostics"](check="tsc_no_emit")
 
@@ -1402,9 +1401,9 @@ class CoreFeedbackTests(unittest.TestCase):
             return shutil.which(name)
 
         with (
-            patch("lib.core.diagnostics.shutil.which", side_effect=fake_which),
+            patch("lib.code_analysis.code_get_diagnostics.code_get_diagnostics.shutil.which", side_effect=fake_which),
             patch(
-                "lib.core.diagnostics.run_process", return_value=process_result
+                "lib.code_analysis.code_get_diagnostics.code_get_diagnostics.run_process", return_value=process_result
             ) as run,
         ):
             result = self.mcp.tools["code_get_diagnostics"](check="shell_syntax")
@@ -1438,9 +1437,9 @@ class CoreFeedbackTests(unittest.TestCase):
             return shutil.which(name)
 
         with (
-            patch("lib.core.diagnostics.shutil.which", side_effect=fake_which),
+            patch("lib.code_analysis.code_get_diagnostics.code_get_diagnostics.shutil.which", side_effect=fake_which),
             patch(
-                "lib.core.diagnostics.run_process", return_value=process_result
+                "lib.code_analysis.code_get_diagnostics.code_get_diagnostics.run_process", return_value=process_result
             ) as run,
         ):
             result = self.mcp.tools["code_get_diagnostics"](check="shell_syntax")
@@ -1486,9 +1485,9 @@ class CoreFeedbackTests(unittest.TestCase):
             "duration_ms": 1,
         }
         with (
-            patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
-            patch("lib.core.git_manage.run_process", return_value=ok_result),
-            patch("lib.core.git_manage.discover_repositories") as discover,
+            patch("lib.git_management.git_manage.shutil.which", return_value="/usr/bin/git"),
+            patch("lib.git_management.git_manage.run_process", return_value=ok_result),
+            patch("lib.git_management.git_manage.discover_repositories") as discover,
         ):
             mcp.tools["git_manage"]("status", repo_path="myrepo")
 
@@ -1514,8 +1513,8 @@ class CoreFeedbackTests(unittest.TestCase):
             }
 
         with (
-            patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
-            patch("lib.core.git_manage.run_process", side_effect=initialize),
+            patch("lib.git_management.git_manage.shutil.which", return_value="/usr/bin/git"),
+            patch("lib.git_management.git_manage.run_process", side_effect=initialize),
         ):
             result = mcp.tools["git_manage"]("init", repo_path="subproject")
 

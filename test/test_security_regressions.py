@@ -22,15 +22,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.core import (
-    code_search,
-    git_manage,
-    gowitness_screenshot,
-    read_files,
-    terminal_exec,
-)
-from lib.extras import web_fetch
+from lib.utils import support
+from lib.code_analysis import search_text as code_search
+from lib.git_management import git_manage
+from lib.web import capture_url_screenshot as gowitness_screenshot
+from lib.file_management import read_files
+from lib.system import terminal_exec
+from lib.web import web_fetch_docs as web_fetch
 
 SECRET = "TOPSECRET-OUTSIDE-WORKSPACE"
 
@@ -337,7 +335,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
     def test_transient_git_failure_advises_backoff(self) -> None:
         with (
             patch(
-                "lib.core.git_manage.run_process",
+                "lib.git_management.git_manage.run_process",
                 side_effect=[
                     {"exit_code": 0, "stdout": "true\n", "stderr": ""},
                     {
@@ -347,7 +345,7 @@ class GitCheckoutSafetyTests(_WorkspaceTestCase):
                     },
                 ],
             ),
-            patch("lib.core.git_manage.shutil.which", return_value="/usr/bin/git"),
+            patch("lib.git_management.git_manage.shutil.which", return_value="/usr/bin/git"),
         ):
             result = git_manage.git_manage("status", repo_path=".")
         self.assertEqual(result["exit_code"], 128)

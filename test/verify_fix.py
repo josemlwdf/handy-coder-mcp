@@ -10,13 +10,13 @@ temp_dir = tempfile.TemporaryDirectory()
 root = Path(temp_dir.name).resolve()
 
 # Configure support module
-from lib import support
+from lib.utils import support
 support.configure(str(root))
 
 # Import and setup MCP server
 from mcp.server.fastmcp import FastMCP
-from lib.core.git_manage import git_manage
-from lib.core.get_capabilities import get_capabilities
+from lib.git_management.git_manage import git_manage
+from lib.workspace_context.get_capabilities import get_capabilities
 
 mcp = FastMCP("test")
 git_manage.register(mcp)

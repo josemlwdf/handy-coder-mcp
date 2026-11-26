@@ -10,9 +10,9 @@ import json
 import unittest
 from unittest.mock import patch
 
-from lib.subagents import loop
-from lib.subagents.continue_config import ContinueModel
-from lib.subagents.roles import get_role
+from lib.utils.subagents import loop
+from lib.utils.subagents.continue_config import ContinueModel
+from lib.utils.subagents.roles import get_role
 
 PARENT_CANARY: str = "ORCH-CANARY-7f3a91"
 FAKE_KEY: str = "sk-isolation-test-0000"

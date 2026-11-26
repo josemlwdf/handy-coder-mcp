@@ -102,7 +102,7 @@ class PythonPostprocessTests(unittest.TestCase):
         ast.parse(updated)
 
     def test_git_manage_register_reset_assignments_remain_parseable(self) -> None:
-        from lib.core import git_manage
+        from lib.git_management import git_manage
 
         source = Path(git_manage.__file__).read_text(encoding="utf-8")
         tree = ast.parse(source)

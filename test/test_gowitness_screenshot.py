@@ -7,8 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.core import gowitness_screenshot
+from lib.utils import support
+from lib.web import capture_url_screenshot as gowitness_screenshot
 
 
 class GowitnessScreenshotTests(unittest.TestCase):

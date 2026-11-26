@@ -10,15 +10,15 @@ from types import SimpleNamespace
 
 from mcp.server.fastmcp import FastMCP
 
-from lib import error_handler, support, tool_details, worker_supervisor
-from lib.core import (
-    find_files,
-    git_manage,
-    orchestrator,
-    read_files,
-    terminal_exec,
-    web_search_tool,
-)
+from lib.utils import error_handler, support
+from lib.utils import tool_router as tool_details
+from lib.utils import worker_supervisor
+from lib.file_management import find_files
+from lib.git_management import git_manage
+from lib.ai_coordination import orchestrator
+from lib.file_management import read_files
+from lib.system import terminal_exec
+from lib.web import web_search as web_search_tool
 
 
 class StructuredErrorTests(unittest.TestCase):
@@ -156,7 +156,7 @@ class StructuredErrorTests(unittest.TestCase):
 
     def test_find_files_sort_option_is_removed(self) -> None:
         """Removed sort options no longer appear in the function signature."""
-        from lib.core import find_files
+        from lib.file_management import find_files
 
         class SchemaMCP:
             def tool(self, description):

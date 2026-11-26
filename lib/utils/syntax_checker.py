@@ -202,7 +202,7 @@ def check_javascript(content: str) -> dict:
 def check_html(content: str) -> dict:
     """Check HTML syntax using html_syntax_check."""
     try:
-        from ..core.html_syntax_check import check_html as _check_html
+        from .html_syntax_check import check_html as _check_html
 
         return _check_html(content)
     except Exception:

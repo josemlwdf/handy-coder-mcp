@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import ide_detector
+from lib.utils import ide_detector
 import handy_coder_mcp
 
 
@@ -90,7 +90,7 @@ class IdeDetectorTests(unittest.TestCase):
                 }
             }))
 
-            with patch("lib.ide_detector.find_ide_user_data_dirs", return_value=[fake_user]):
+            with patch("lib.utils.ide_detector.find_ide_user_data_dirs", return_value=[fake_user]):
                 recovered = ide_detector.recover_workspace_roots("vscode")
                 self.assertEqual(recovered, [project_dir.resolve()])
 
@@ -118,7 +118,7 @@ class IdeDetectorTests(unittest.TestCase):
 
             # An invalid environment root is ignored and normal detection continues.
             with patch.dict(os.environ, {"HANDY-CODER_ROOT": str(tmp_path / "missing")}):
-                with patch("lib.ide_detector.recover_workspace_roots", return_value=[]):
+                with patch("lib.utils.ide_detector.recover_workspace_roots", return_value=[]):
                     with patch("pathlib.Path.cwd", return_value=tmp_path):
                         self.assertEqual(
                             ide_detector.detect_working_dir(script_dir=p1),
@@ -127,7 +127,7 @@ class IdeDetectorTests(unittest.TestCase):
 
             # Unexpanded variable is ignored, falls back to IDE settings or script_dir
             with patch.dict(os.environ, {"HANDY-CODER_ROOT": "${workspaceFolder}"}):
-                with patch("lib.ide_detector.recover_workspace_roots", return_value=[]):
+                with patch("lib.utils.ide_detector.recover_workspace_roots", return_value=[]):
                     with patch("pathlib.Path.cwd", return_value=Path("/mnt/c/Users/josel")):
                         res = ide_detector.detect_working_dir(candidate="${workspaceFolder}", script_dir=tmp_path)
                         self.assertEqual(res, str(tmp_path.resolve()))
@@ -150,7 +150,7 @@ class IdeDetectorTests(unittest.TestCase):
                 }
             }))
 
-            with patch("lib.ide_detector.find_ide_user_data_dirs", return_value=[fake_user]):
+            with patch("lib.utils.ide_detector.find_ide_user_data_dirs", return_value=[fake_user]):
                 with patch.dict(os.environ, {}, clear=True):
                     # Mock CWD to user profile so CWD fallback doesn't shadow recovery
                     with patch("pathlib.Path.cwd", return_value=Path("/mnt/c/Users/josel")):
@@ -171,8 +171,8 @@ class IdeDetectorTests(unittest.TestCase):
             for roots in ([workspace_a, workspace_b], [workspace_b, workspace_a]):
                 for process_workspace in (workspace_a, workspace_b):
                     with self.subTest(roots=roots, cwd=process_workspace):
-                        with patch("lib.ide_detector.detect_ide", return_value="vscode"):
-                            with patch("lib.ide_detector.recover_workspace_roots", return_value=roots):
+                        with patch("lib.utils.ide_detector.detect_ide", return_value="vscode"):
+                            with patch("lib.utils.ide_detector.recover_workspace_roots", return_value=roots):
                                 with patch("pathlib.Path.cwd", return_value=process_workspace):
                                     detected = ide_detector.detect_working_dir(script_dir=checkout)
                         self.assertEqual(detected, str(process_workspace.resolve()))
@@ -195,8 +195,8 @@ class IdeDetectorTests(unittest.TestCase):
                 }
             }))
 
-            with patch("lib.ide_detector.find_ide_user_data_dirs", return_value=[fake_user]):
-                with patch("lib.ide_detector.detect_ide", return_value="vscode"):
+            with patch("lib.utils.ide_detector.find_ide_user_data_dirs", return_value=[fake_user]):
+                with patch("lib.utils.ide_detector.detect_ide", return_value="vscode"):
                     with patch("pathlib.Path.cwd", return_value=current):
                         detected = ide_detector.detect_working_dir(script_dir=checkout)
             self.assertEqual(detected, str(current.resolve()))
@@ -209,8 +209,8 @@ class IdeDetectorTests(unittest.TestCase):
             checkout = base / "server"
             for path in (first, second, checkout):
                 path.mkdir()
-            with patch("lib.ide_detector.detect_ide", return_value="vscode"):
-                with patch("lib.ide_detector.recover_workspace_roots", return_value=[first, second]):
+            with patch("lib.utils.ide_detector.detect_ide", return_value="vscode"):
+                with patch("lib.utils.ide_detector.recover_workspace_roots", return_value=[first, second]):
                     with patch("pathlib.Path.cwd", return_value=Path("/mnt/c/Users/josel")):
                         detected = ide_detector.detect_working_dir(script_dir=checkout)
             self.assertEqual(detected, str(checkout.resolve()))

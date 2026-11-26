@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib import support
-from lib.core import apply_edits
+from lib.utils import support
+from lib.file_management import apply_edits
 
 
 class ApplyEditsContractTests(unittest.TestCase):
@@ -254,7 +254,7 @@ class ApplyEditsContractTests(unittest.TestCase):
             return {"ok": True}
 
         with patch(
-            "lib.extras.code_format_lint.code_format_lint",
+            "lib.utils.code_format_lint",
             side_effect=format_after_diff,
         ) as formatter:
             result = apply_edits.apply_edits(
@@ -289,7 +289,7 @@ class ApplyEditsContractTests(unittest.TestCase):
         target = self.root / "sample.xyz"
         target.write_text("old", encoding="utf-8")
         with patch(
-            "lib.core.apply_edits.apply_edits.polish_paths",
+            "lib.file_management.apply_edits.apply_edits.polish_paths",
             return_value={"ok": True, "files": [{"ok": True}]},
         ):
             result = apply_edits.apply_edits(
@@ -305,7 +305,7 @@ class ApplyEditsContractTests(unittest.TestCase):
         target = self.root / "sample.txt"
         target.write_text("original", encoding="utf-8")
         with patch(
-            "lib.core.apply_edits.apply_edits.polish_paths",
+            "lib.file_management.apply_edits.apply_edits.polish_paths",
             side_effect=RuntimeError("simulated failure"),
         ):
             result = apply_edits.apply_edits(

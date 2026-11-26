@@ -4,9 +4,14 @@ import unittest
 
 from mcp.server.fastmcp import FastMCP
 
-from lib import tool_details
-from lib.core import code_navigator, gowitness_screenshot, system_info, web_search_tool
-from lib.subagents import tools as subagent_tools
+from lib.ai_coordination import subagent_manage
+from lib.image import inspect_image
+from lib.utils import tool_router as tool_details
+from lib.code_analysis import code_intel as code_navigator
+from lib.web import capture_url_screenshot as gowitness_screenshot
+from lib.utils import system_info
+from lib.web import web_search as web_search_tool
+from lib.workspace_context import get_capabilities
 
 NAMED_TOOLS: tuple = (
     "web_search",
@@ -58,8 +63,9 @@ class CapabilityNotesTests(unittest.TestCase):
         web_search_tool.register(mcp)
         gowitness_screenshot.register(mcp)
         code_navigator.register(mcp)
-        subagent_tools.register(mcp)
-        system_info.register(mcp)
+        subagent_manage.register(mcp)
+        inspect_image.register(mcp)
+        get_capabilities.register(mcp)
         registered = set(mcp._tool_manager._tools)
         for name in NAMED_TOOLS:
             self.assertIn(name, registered)

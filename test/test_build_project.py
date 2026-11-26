@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.core import build_project
+from lib.utils import support
+from lib.build_test import build_project
 
 
 class BuildProjectTests(unittest.TestCase):

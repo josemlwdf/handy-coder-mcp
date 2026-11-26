@@ -5,9 +5,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from lib import support
+from lib.utils import support
 capabilities_module = importlib.import_module(
-    "lib.core.get_capabilities.get_capabilities"
+    "lib.workspace_context.get_capabilities.get_capabilities"
 )
 
 
@@ -36,7 +36,7 @@ class GetCapabilitiesSummaryTests(unittest.TestCase):
 
     def test_list_dir_signature_and_router_guidance(self):
         from mcp.server.fastmcp import FastMCP
-        from lib.core.list_dir.list_dir import register
+        from lib.file_management.list_dir.list_dir import register
         mcp = FastMCP("capability-signature")
         register(mcp)
         previous = capabilities_module._MCP

@@ -4,11 +4,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.extras import (
-    code_format_lint,
-    web_fetch,
-)
+from lib.utils import support
+from lib.utils import code_format_lint
+from lib.web import web_fetch_docs as web_fetch
 
 
 class FakeMCP:
@@ -147,16 +145,16 @@ class Tier2ToolTests(unittest.TestCase):
         import tempfile as _tempfile
 
         with _tempfile.TemporaryDirectory() as tmp:
-            from lib import support as _support
+            from lib.utils import support as _support
 
             _support.configure(tmp)
             try:
                 target = Path(tmp) / "notes.txt"
                 target.write_text("keep this text\n", encoding="utf-8")
                 with (
-                    patch("lib.extras.code_format_lint.run_process") as run_process,
+                    patch("lib.utils.code_format_lint.run_process") as run_process,
                     patch(
-                        "lib.extras.code_format_lint.process_python_file"
+                        "lib.utils.code_format_lint.process_python_file"
                     ) as process_python,
                 ):
                     result = self.tools.tools["code_format_lint"](
@@ -183,9 +181,9 @@ class Tier2ToolTests(unittest.TestCase):
         }
         with (
             patch(
-                "lib.extras.code_format_lint.shutil.which", return_value="/usr/bin/tool"
+                "lib.utils.code_format_lint.shutil.which", return_value="/usr/bin/tool"
             ),
-            patch("lib.extras.code_format_lint.run_process", return_value=pass_result),
+            patch("lib.utils.code_format_lint.run_process", return_value=pass_result),
         ):
             py = self.tools.tools["code_format_lint"](["test/test_tier2.py"])
             js = self.tools.tools["code_format_lint"](["README.md"])
@@ -216,7 +214,7 @@ class Tier2ToolTests(unittest.TestCase):
                 return "function f() {\n  return 1;\n}\n"
 
         with _tempfile.TemporaryDirectory() as tmp:
-            from lib import support as _support
+            from lib.utils import support as _support
 
             _support.configure(tmp)
             try:
@@ -228,10 +226,10 @@ class Tier2ToolTests(unittest.TestCase):
                 )
                 with (
                     patch(
-                        "lib.extras.code_format_lint._jsbeautifier_module",
+                        "lib.utils.code_format_lint._jsbeautifier_module",
                         return_value=Formatter,
                     ),
-                    patch("lib.extras.code_format_lint._tool_path", return_value=None),
+                    patch("lib.utils.code_format_lint._tool_path", return_value=None),
                 ):
                     result = self.tools.tools["code_format_lint"](
                         ["script.js"], language="javascript"
@@ -274,7 +272,7 @@ class Tier2ToolTests(unittest.TestCase):
                 return "const value = 1;\n"
 
         with _tempfile.TemporaryDirectory() as tmp:
-            from lib import support as _support
+            from lib.utils import support as _support
 
             _support.configure(tmp)
             try:
@@ -282,10 +280,10 @@ class Tier2ToolTests(unittest.TestCase):
                 target.write_text("const value=1", encoding="utf-8")
                 with (
                     patch(
-                        "lib.extras.code_format_lint._jsbeautifier_module",
+                        "lib.utils.code_format_lint._jsbeautifier_module",
                         return_value=Formatter,
                     ),
-                    patch("lib.extras.code_format_lint._tool_path", return_value=None),
+                    patch("lib.utils.code_format_lint._tool_path", return_value=None),
                 ):
                     result = self.tools.tools["code_format_lint"](
                         ["script.js"],
@@ -306,9 +304,9 @@ class Tier2ToolTests(unittest.TestCase):
         """Test jsbeautifier missing is reported independently of eslint function."""
         with (
             patch(
-                "lib.extras.code_format_lint._jsbeautifier_module", return_value=None
+                "lib.utils.code_format_lint._jsbeautifier_module", return_value=None
             ),
-            patch("lib.extras.code_format_lint._tool_path", return_value=None),
+            patch("lib.utils.code_format_lint._tool_path", return_value=None),
         ):
             result = self.tools.tools["code_format_lint"](
                 ["README.md"], language="javascript"
@@ -338,8 +336,8 @@ class Tier2ToolTests(unittest.TestCase):
     def test_format_lint_returns_tools_run_and_tools_skipped(self) -> None:
         """Test format lint returns tools run and tools skipped function."""
         with (
-            patch("lib.extras.code_format_lint.shutil.which", return_value=None),
-            patch("lib.extras.code_format_lint._python_tool_path", return_value=None),
+            patch("lib.utils.code_format_lint.shutil.which", return_value=None),
+            patch("lib.utils.code_format_lint._python_tool_path", return_value=None),
         ):
             result = self.tools.tools["code_format_lint"](
                 ["test/test_tier2.py"], language="python"
@@ -370,8 +368,8 @@ class Tier2ToolTests(unittest.TestCase):
     def test_format_lint_tools_skipped_entries_have_reason(self) -> None:
         """tools_skipped entries must be dicts with 'tool' and 'reason' keys."""
         with (
-            patch("lib.extras.code_format_lint.shutil.which", return_value=None),
-            patch("lib.extras.code_format_lint._python_tool_path", return_value=None),
+            patch("lib.utils.code_format_lint.shutil.which", return_value=None),
+            patch("lib.utils.code_format_lint._python_tool_path", return_value=None),
         ):
             result = self.tools.tools["code_format_lint"](
                 ["test/test_tier2.py"], language="python"
@@ -394,7 +392,7 @@ class Tier2ToolTests(unittest.TestCase):
             self.skipTest("neither black nor ruff installed")
 
         with _tempfile.TemporaryDirectory() as tmp:
-            from lib import support as _support
+            from lib.utils import support as _support
 
             _support.configure(tmp)
             ugly = Path(tmp) / "ugly.py"
@@ -413,7 +411,7 @@ class Tier2ToolTests(unittest.TestCase):
         import tempfile as _tempfile
 
         with _tempfile.TemporaryDirectory() as tmp:
-            from lib import support as _support
+            from lib.utils import support as _support
 
             _support.configure(tmp)
             try:
@@ -430,7 +428,7 @@ class Tier2ToolTests(unittest.TestCase):
         import tempfile as _tempfile
 
         with _tempfile.TemporaryDirectory() as tmp:
-            from lib import support as _support
+            from lib.utils import support as _support
 
             _support.configure(tmp)
             try:
@@ -558,7 +556,7 @@ class Tier2ToolTests(unittest.TestCase):
     def test_format_lint_language_errors_return_error_codes(self) -> None:
         """Language selection failures must return distinct structured codes."""
         import tempfile as _tempfile
-        from lib import support as _support
+        from lib.utils import support as _support
 
         with _tempfile.TemporaryDirectory() as tmp:
             _support.configure(tmp)
@@ -594,9 +592,9 @@ class Tier2ToolTests(unittest.TestCase):
         }
         with (
             patch(
-                "lib.extras.code_format_lint.shutil.which", return_value="/usr/bin/ruff"
+                "lib.utils.code_format_lint.shutil.which", return_value="/usr/bin/ruff"
             ),
-            patch("lib.extras.code_format_lint.run_process", return_value=pass_result),
+            patch("lib.utils.code_format_lint.run_process", return_value=pass_result),
         ):
             result = self.tools.tools["code_format_lint"](
                 ["test/test_tier2.py"], language="python"
@@ -615,9 +613,9 @@ class Tier2ToolTests(unittest.TestCase):
         }
         with (
             patch(
-                "lib.extras.code_format_lint.shutil.which", return_value="/usr/bin/ruff"
+                "lib.utils.code_format_lint.shutil.which", return_value="/usr/bin/ruff"
             ),
-            patch("lib.extras.code_format_lint.run_process", return_value=fail_result),
+            patch("lib.utils.code_format_lint.run_process", return_value=fail_result),
         ):
             result = self.tools.tools["code_format_lint"](
                 ["test/test_tier2.py"], language="python"
@@ -636,10 +634,10 @@ class Tier2ToolTests(unittest.TestCase):
         }
         with (
             patch(
-                "lib.extras.code_format_lint.shutil.which", return_value="/usr/bin/ruff"
+                "lib.utils.code_format_lint.shutil.which", return_value="/usr/bin/ruff"
             ),
             patch(
-                "lib.extras.code_format_lint.run_process", return_value=fail_to_start
+                "lib.utils.code_format_lint.run_process", return_value=fail_to_start
             ),
         ):
             result = self.tools.tools["code_format_lint"](
@@ -654,8 +652,8 @@ class Tier2ToolTests(unittest.TestCase):
     def test_capabilities_workspace_root_tracks_configured_root(self) -> None:
         """workspace_root must reflect support.configure(), not the import-time ROOT."""
         import tempfile as _tempfile
-        from lib import support as _support
-        from lib.core import system_info
+        from lib.utils import support as _support
+        from lib.utils import system_info
 
         with _tempfile.TemporaryDirectory() as tmp:
             _support.configure(tmp)
@@ -667,7 +665,7 @@ class Tier2ToolTests(unittest.TestCase):
 
     def test_system_info_returns_expected_structure(self) -> None:
         """system_info.get_capabilities returns workspace, tools, and subagents."""
-        from lib.core import system_info
+        from lib.utils import system_info
 
         caps = system_info.get_capabilities()
         self.assertIn("workspace_root", caps)

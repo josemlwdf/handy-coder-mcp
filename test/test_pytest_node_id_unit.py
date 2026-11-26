@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from lib import support
-from lib.core.run_tests.run_tests import _split_pytest_node_id, run_tests
+from lib.utils import support
+from lib.build_test.run_tests.run_tests import _split_pytest_node_id, run_tests
 
 class TestSplitPytestNodeId(unittest.TestCase):
     """Unit tests for _split_pytest_node_id helper function."""
@@ -169,7 +169,7 @@ class TestEdgeCases(unittest.TestCase):
     def test_node_id_full_path_passed_to_pytest(self):
         """The full node ID (including selector) is passed to pytest command."""
         node_id = "lib/core/get_capabilities/test_extract_enum_values.py::test_basic_function"
-        with patch("lib.core.run_tests.run_tests.run_process") as mock_run:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as mock_run:
             mock_run.return_value = {
                 "stdout": "1 passed in 0.1s",
                 "stderr": "",
@@ -188,7 +188,7 @@ class TestEdgeCases(unittest.TestCase):
     def test_class_method_node_id_full_path_passed_to_pytest(self):
         """A class method node ID is passed in full to pytest (preserves both '::')."""
         node_id = "lib/core/get_capabilities/test_extract_enum_values.py::TestClass::test_method"
-        with patch("lib.core.run_tests.run_tests.run_process") as mock_run:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as mock_run:
             mock_run.return_value = {
                 "stdout": "1 passed in 0.1s",
                 "stderr": "",
@@ -206,7 +206,7 @@ class TestEdgeCases(unittest.TestCase):
     def test_auto_detected_pytest_framework_accepts_node_id(self):
         """Auto-detected pytest framework also supports node ID syntax."""
         node_id = "lib/core/get_capabilities/test_extract_enum_values.py::test_basic_function"
-        with patch("lib.core.run_tests.run_tests.run_process") as mock_run:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as mock_run:
             mock_run.return_value = {
                 "stdout": "1 passed in 0.1s",
                 "stderr": "",

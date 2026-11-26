@@ -18,8 +18,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from lib import support
-from lib.core.run_tests.run_tests import run_tests
+from lib.utils import support
+from lib.build_test.run_tests.run_tests import run_tests
 
 class TestPreservationPlainPytestPaths(unittest.TestCase):
     """Property 2: Preservation - Plain pytest file/directory paths behave unchanged."""
@@ -30,7 +30,7 @@ class TestPreservationPlainPytestPaths(unittest.TestCase):
 
     def _run_with_mock_process(self, **kwargs) -> dict:
         """Helper to call run_tests with mocked process execution."""
-        with patch("lib.core.run_tests.run_tests.run_process") as mock_run:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as mock_run:
             mock_run.return_value = {
                 "stdout": "1 passed in 0.1s",
                 "stderr": "",
@@ -253,7 +253,7 @@ class TestPreservationCommandConstruction(unittest.TestCase):
         Expected: pytest is called with 'test/test_workspace_paths.py' as an arg
         After fix: same behavior (no '::' splitting happens)
         """
-        with patch("lib.core.run_tests.run_tests.run_process") as mock_run:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as mock_run:
             mock_run.return_value = {
                 "stdout": "1 passed in 0.1s",
                 "stderr": "",

@@ -16,8 +16,8 @@ from unittest.mock import patch, call
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from lib import support
-from lib.core.run_tests.run_tests import run_tests
+from lib.utils import support
+from lib.build_test.run_tests.run_tests import run_tests
 
 class TestNodeIDExecutionWorkflow(unittest.TestCase):
     """Test 5.1 - Pytest node ID execution with real test file."""
@@ -29,7 +29,7 @@ class TestNodeIDExecutionWorkflow(unittest.TestCase):
     def _run_with_captured_command(self, **kwargs):
         """Run run_tests and capture the command passed to run_process."""
         captured = {}
-        with patch("lib.core.run_tests.run_tests.run_process") as mock_run:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as mock_run:
             mock_run.return_value = {
                 "stdout": "1 passed in 0.1s",
                 "stderr": "",
@@ -78,7 +78,7 @@ class TestNodeIDExecutionWorkflow(unittest.TestCase):
     def test_pytest_output_is_parsed_correctly_for_node_id_runs(self):
         """Pytest output is correctly parsed even when running via node ID."""
         node_id = "lib/core/get_capabilities/test_extract_enum_values.py::test_basic_function"
-        with patch("lib.core.run_tests.run_tests.run_process") as mock_run:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as mock_run:
             mock_run.return_value = {
                 "stdout": "1 passed in 0.05s",
                 "stderr": "",
@@ -103,7 +103,7 @@ class TestNodeIDWithPytestFlags(unittest.TestCase):
 
     def _get_command(self, **kwargs) -> list:
         """Run run_tests and return the command list passed to run_process."""
-        with patch("lib.core.run_tests.run_tests.run_process") as mock_run:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as mock_run:
             mock_run.return_value = {
                 "stdout": "1 passed in 0.1s",
                 "stderr": "",
@@ -209,7 +209,7 @@ class TestNodeIDErrorHandling(unittest.TestCase):
         """
         node_id = "lib/core/get_capabilities/test_extract_enum_values.py::test_nonexistent_xyz"
         # Simulate pytest returning a no-tests-found error (exit code 4)
-        with patch("lib.core.run_tests.run_tests.run_process") as mock_run:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as mock_run:
             mock_run.return_value = {
                 "stdout": "ERROR collecting lib/core/get_capabilities/test_extract_enum_values.py::test_nonexistent_xyz\nno tests ran",
                 "stderr": "",
@@ -243,7 +243,7 @@ class TestNodeIDErrorHandling(unittest.TestCase):
     def test_valid_file_nonexistent_selector_no_prevalidation(self):
         """run_tests does not pre-validate the selector - passes it to pytest as-is."""
         node_id = "lib/core/get_capabilities/test_extract_enum_values.py::NonExistentClass::test_method"
-        with patch("lib.core.run_tests.run_tests.run_process") as mock_run:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as mock_run:
             mock_run.return_value = {
                 "stdout": "no tests ran",
                 "stderr": "",

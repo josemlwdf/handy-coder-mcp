@@ -8,13 +8,15 @@ import asyncio
 import time
 
 # Configure support before importing other modules
-from lib import support
+from lib.utils import support
 support.configure("/opt/handy-coder-mcp", None)
 
 from mcp.server.fastmcp import FastMCP
-from lib import error_handler, tool_details, worker_supervisor
-from lib.support import _routed_timeout_ms
-from lib.core import run_tests
+from lib.utils import error_handler
+from lib.utils import tool_router as tool_details
+from lib.utils import worker_supervisor
+from lib.utils.support import _routed_timeout_ms
+from lib.build_test import run_tests
 
 def _structured(result):
     """Return the structured MCP payload when the SDK wraps a tool result."""

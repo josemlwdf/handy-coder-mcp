@@ -7,7 +7,7 @@ import time
 import unittest
 from pathlib import Path
 
-from lib import code_index_worker
+from lib.utils import code_index_worker
 
 
 class CodeIndexWorkerTests(unittest.TestCase):

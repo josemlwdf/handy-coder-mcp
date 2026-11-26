@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib import support
-from lib.core import git_manage
+from lib.utils import support
+from lib.git_management import git_manage
 
 WORDING = "Path escapes authorized workspace root: "
 

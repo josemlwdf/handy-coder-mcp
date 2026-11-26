@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from lib import support
-from lib.core import code_polish
+from lib.utils import support
+from lib.code_analysis import code_polish
 
 
 class CodePolishTests(unittest.TestCase):
@@ -92,7 +92,7 @@ class CodePolishTests(unittest.TestCase):
             return {"ok": True, "tools_run": ["ruff-format"], "tools_skipped": []}
 
         with patch(
-            "lib.extras.code_format_lint.code_format_lint", side_effect=fake_formatter
+            "lib.utils.code_format_lint", side_effect=fake_formatter
         ):
             result = code_polish.code_polish(
                 path="src", specific_file="sample.py", summary="test change"
@@ -124,7 +124,7 @@ class CodePolishTests(unittest.TestCase):
             return {"ok": True, "tools_run": ["ruff-format"], "tools_skipped": []}
 
         with patch(
-            "lib.extras.code_format_lint.code_format_lint", side_effect=fake_formatter
+            "lib.utils.code_format_lint", side_effect=fake_formatter
         ):
             result = code_polish.code_polish(
                 path="fixtures/py-app",
@@ -158,7 +158,7 @@ class CodePolishTests(unittest.TestCase):
         (src / "notes.txt").write_text("keep\n", encoding="utf-8")
 
         with patch(
-            "lib.extras.code_format_lint.code_format_lint", return_value={"ok": True}
+            "lib.utils.code_format_lint", return_value={"ok": True}
         ):
             result = code_polish.code_polish(
                 path="src", all_files=True, summary="test change"

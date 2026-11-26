@@ -17,7 +17,7 @@ handy-coder-mcp = "handy_coder_mcp:main"
 
 [tool.setuptools]
 py-modules = ["handy_coder_mcp"]
-packages = {find = {include = ["lib", "lib.*", "lib.*.*"]}}
+packages = {find = {include = ["lib", "lib.*", "lib.*.*", "lib.*.*.*"]}}
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

@@ -9,31 +9,28 @@ from typing import get_args, get_type_hints
 
 from pydantic import BaseModel, TypeAdapter
 
-from lib import support, tool_details
-from lib.core import (
-    apply_edits,
-    build_project,
-    code_search,
-    create_file,
-    code_polish,
-    diagnostics,
-    find_files,
-    list_dir,
-    git_manage,
-    gowitness_screenshot,
-    orchestrator,
-    read_files,
-    run_tests,
-    skills,
-    system_info,
-    terminal_exec,
-    web_search_tool,
-)
-from lib.extras import (
-    code_format_lint,
-    web_fetch,
-)
-from lib.subagents import tools as subagent_tools
+from lib.utils import support
+from lib.utils import tool_router as tool_details
+from lib.file_management import apply_edits
+from lib.build_test import build_project
+from lib.code_analysis import search_text as code_search
+from lib.file_management import create_file
+from lib.code_analysis import code_polish
+from lib.code_analysis import code_get_diagnostics as diagnostics
+from lib.file_management import find_files
+from lib.file_management import list_dir
+from lib.git_management import git_manage
+from lib.web import capture_url_screenshot as gowitness_screenshot
+from lib.ai_coordination import orchestrator
+from lib.file_management import read_files
+from lib.build_test import run_tests
+from lib.skills import skills_manage as skills
+from lib.utils import system_info
+from lib.system import terminal_exec
+from lib.web import web_search as web_search_tool
+from lib.utils import code_format_lint
+from lib.web import web_fetch_docs as web_fetch
+from lib.utils.subagents import runtime as subagent_tools
 
 
 class FakeMCP:

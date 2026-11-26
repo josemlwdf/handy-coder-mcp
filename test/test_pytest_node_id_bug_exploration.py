@@ -18,8 +18,8 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from lib import support
-from lib.core.run_tests.run_tests import run_tests
+from lib.utils import support
+from lib.build_test.run_tests.run_tests import run_tests
 
 class TestPytestNodeIDBugCondition(unittest.TestCase):
     """Property 1: Bug Condition - Pytest Node IDs are rejected during validation."""
@@ -30,7 +30,7 @@ class TestPytestNodeIDBugCondition(unittest.TestCase):
 
     def _run_tests_with_node_id(self, node_id: str) -> dict:
         """Helper to call run_tests with a pytest node ID and return the result."""
-        with patch("lib.core.run_tests.run_tests.run_process") as mock_run:
+        with patch("lib.build_test.run_tests.run_tests.run_process") as mock_run:
             mock_run.return_value = {
                 "stdout": "1 passed in 0.1s",
                 "stderr": "",

@@ -5,9 +5,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib import support
-from lib.core import create_file
-from lib.core import html_syntax_check
+from lib.utils import support
+from lib.file_management import create_file
+from lib.utils import html_syntax_check
 
 
 class CreateFileTests(unittest.TestCase):
@@ -277,7 +277,7 @@ class CreateFileTests(unittest.TestCase):
             return {"ok": True}
 
         with patch(
-            "lib.extras.code_format_lint.code_format_lint",
+            "lib.utils.code_format_lint",
             side_effect=format_after_diff,
         ) as formatter:
             result = create_file.create_file(
@@ -392,7 +392,7 @@ if (left < right && right > 0) { render(multiline); }
 
         with (
             patch("lib.utils.python_postprocess.process_python_file") as process,
-            patch("lib.extras.code_format_lint.code_format_lint") as formatter,
+            patch("lib.utils.code_format_lint") as formatter,
         ):
             create_file.create_file("plain.py", "x=1\n", summary="test change")
             process.assert_not_called()

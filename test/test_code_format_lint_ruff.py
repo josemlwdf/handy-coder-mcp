@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 import pytest
 
-from lib import support
-from lib.extras import code_format_lint
+from lib.utils import support
+from lib.utils import code_format_lint
 
 
 def test_python_tool_discovery_checks_mcp_environment_before_path():

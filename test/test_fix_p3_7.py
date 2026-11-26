@@ -5,17 +5,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib import support
-from lib.core import (
-    apply_edits,
-    build_project,
-    create_file,
-    diagnostics,
-    orchestrator,
-    read_files,
-    run_tests,
-)
-from lib.extras import code_format_lint
+from lib.utils import support
+from lib.file_management import apply_edits
+from lib.build_test import build_project
+from lib.file_management import create_file
+from lib.code_analysis import code_get_diagnostics as diagnostics
+from lib.ai_coordination import orchestrator
+from lib.file_management import read_files
+from lib.build_test import run_tests
+from lib.utils import code_format_lint
 
 WORDING: str = "Path escapes authorized workspace root: "
 

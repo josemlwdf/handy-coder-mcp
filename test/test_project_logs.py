@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib import project_logs, support
+from lib.utils import project_logs, support
 
 
 class ProjectLogsTests(unittest.TestCase):

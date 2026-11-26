@@ -32,8 +32,10 @@ from pathlib import Path
 import pytest
 from mcp.server.fastmcp import FastMCP
 
-from lib import error_handler, tool_details, worker_supervisor
-from lib.support import _routed_timeout_ms
+from lib.utils import error_handler
+from lib.utils import tool_router as tool_details
+from lib.utils import worker_supervisor
+from lib.utils.support import _routed_timeout_ms
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +49,7 @@ def _structured(result):
 
 def _server() -> FastMCP:
     """Build a minimal test server with tool_details and run_tests installed."""
-    from lib.core import run_tests
+    from lib.build_test import run_tests
     
     server = FastMCP("timeout-integration-test")
     tool_details.install(server)
@@ -72,7 +74,7 @@ async def _call(server, tool_name, arguments, timeout: int | None = None):
 @pytest.fixture(scope="module", autouse=True)
 def configure_workspace():
     """Configure the workspace root before any tests run."""
-    from lib import support
+    from lib.utils import support
     if not support.ROOT:
         support.configure("/opt/handy-coder-mcp", None)
 
@@ -92,7 +94,7 @@ def long_running_test_file() -> Path:
     Note:
         The test file is created in the workspace and cleaned up after the test.
     """
-    from lib import support
+    from lib.utils import support
     
     test_content = '''import time
 

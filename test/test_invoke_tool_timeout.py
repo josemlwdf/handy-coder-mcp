@@ -15,8 +15,10 @@ import asyncio
 
 from mcp.server.fastmcp import FastMCP
 
-from lib import error_handler, support, tool_details, worker_supervisor
-from lib.support import DEFAULT_TIMEOUT_MS, _routed_timeout_ms
+from lib.utils import error_handler, support
+from lib.utils import tool_router as tool_details
+from lib.utils import worker_supervisor
+from lib.utils.support import DEFAULT_TIMEOUT_MS, _routed_timeout_ms
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -157,7 +159,7 @@ def test_run_process_explicit_timeout_ms_overrides_routed_timeout() -> None:
 def test_worker_supervisor_extends_deadline_from_routed_timeout() -> None:
     """supervised_wrapper reads _routed_timeout_ms and extends the worker deadline."""
     from unittest.mock import patch
-    from lib import worker_supervisor
+    from lib.utils import worker_supervisor
 
     server = FastMCP("deadline-test")
     tool_details.install(server)

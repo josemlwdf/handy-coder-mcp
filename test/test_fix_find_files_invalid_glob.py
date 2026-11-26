@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib import support
-from lib.core import find_files
+from lib.utils import support
+from lib.file_management import find_files
 
 
 class FindFilesInvalidGlobContractTests(unittest.TestCase):

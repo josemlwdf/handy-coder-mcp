@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lib.subagents import continue_config as cc
+from lib.utils.subagents import continue_config as cc
 
 try:
     import yaml

@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from lib import support
+from lib.utils import support
 
 
 class SupportProcessTests(unittest.TestCase):

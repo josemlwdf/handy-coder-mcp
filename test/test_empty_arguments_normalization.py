@@ -13,9 +13,11 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from lib import error_handler, support, tool_details, worker_supervisor
-from lib.core import git_manage
-from lib.error_handler import is_empty_value, normalize_empty_arguments
+from lib.utils import error_handler, support
+from lib.utils import tool_router as tool_details
+from lib.utils import worker_supervisor
+from lib.git_management import git_manage
+from lib.utils.error_handler import is_empty_value, normalize_empty_arguments
 
 
 # ---------------------------------------------------------------------------
@@ -378,7 +380,7 @@ class OtherToolsEmptyArgNormalizationTests(unittest.TestCase):
 
     def test_read_files_empty_line_ranges_accepted(self):
         """read_files with line_ranges=[] or {} or '' should work like line_ranges=None."""
-        from lib.core.read_files.read_files import read_files
+        from lib.file_management.read_files.read_files import read_files
         for empty_val in ([], None):
             with self.subTest(line_ranges=empty_val):
                 result = read_files(paths=["sample.py"], line_ranges=empty_val)
@@ -387,7 +389,7 @@ class OtherToolsEmptyArgNormalizationTests(unittest.TestCase):
 
     def test_search_text_empty_extensions_accepted(self):
         """search_text with extensions=[] should behave like extensions=None (search all)."""
-        from lib.core.search_text.search_text import search_text
+        from lib.code_analysis.search_text.search_text import search_text
         for empty_val in ([], None):
             with self.subTest(extensions=empty_val):
                 result = search_text(query="x = 1", extensions=empty_val)
@@ -395,7 +397,7 @@ class OtherToolsEmptyArgNormalizationTests(unittest.TestCase):
 
     def test_search_text_empty_path_glob_accepted(self):
         """search_text with path_glob='' should behave like path_glob=None."""
-        from lib.core.search_text.search_text import search_text
+        from lib.code_analysis.search_text.search_text import search_text
         for empty_val in ("", None):
             with self.subTest(path_glob=empty_val):
                 result = search_text(query="x = 1", path_glob=empty_val)
@@ -403,7 +405,7 @@ class OtherToolsEmptyArgNormalizationTests(unittest.TestCase):
 
     def test_find_files_empty_exclude_pattern_accepted(self):
         """find_files with exclude_pattern='' or None should not error."""
-        from lib.core.find_files.find_files import find_files
+        from lib.file_management.find_files.find_files import find_files
         for empty_val in ("", None):
             with self.subTest(exclude_pattern=empty_val):
                 result = find_files(glob_pattern="sample", exclude_pattern=empty_val)
@@ -411,7 +413,7 @@ class OtherToolsEmptyArgNormalizationTests(unittest.TestCase):
 
     def test_run_tests_empty_filter_path_accepted(self):
         """run_tests with filter_path='' or None should not error on missing framework."""
-        from lib.core.run_tests.run_tests import run_tests
+        from lib.build_test.run_tests.run_tests import run_tests
         for empty_val in ("", None):
             with self.subTest(filter_path=empty_val):
                 result = run_tests(filter_path=empty_val)
@@ -421,7 +423,7 @@ class OtherToolsEmptyArgNormalizationTests(unittest.TestCase):
 
     def test_build_project_empty_path_accepted(self):
         """build_project with path='' or None should not error (treats as omitted)."""
-        from lib.core.build_project.build_project import build_project
+        from lib.build_test.build_project.build_project import build_project
         for empty_val in ("", None):
             with self.subTest(path=empty_val):
                 result = build_project(path=empty_val)

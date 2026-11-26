@@ -11,20 +11,20 @@ from unittest.mock import patch
 
 from mcp.server.fastmcp import FastMCP
 
-from lib import error_handler, support, tool_details, worker_supervisor
-from lib.core import (
-    apply_edits,
-    create_file,
-    diagnostics,
-    find_files,
-    git_manage,
-    orchestrator,
-    read_files,
-    terminal_exec,
-    web_search_tool,
-)
-from lib.subagents import tools as subagent_tools
-from lib.subagents.manager import SubagentManager
+from lib.utils import error_handler, support
+from lib.utils import tool_router as tool_details
+from lib.utils import worker_supervisor
+from lib.file_management import apply_edits
+from lib.file_management import create_file
+from lib.code_analysis import code_get_diagnostics as diagnostics
+from lib.file_management import find_files
+from lib.git_management import git_manage
+from lib.ai_coordination import orchestrator
+from lib.file_management import read_files
+from lib.system import terminal_exec
+from lib.web import web_search as web_search_tool
+from lib.utils.subagents import runtime as subagent_tools
+from lib.utils.subagents.manager import SubagentManager
 
 
 def _build_server():

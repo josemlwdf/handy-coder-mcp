@@ -7,8 +7,10 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from pydantic import ValidationError
 
-from lib import error_handler, support, worker_supervisor
-from lib.core import find_files, read_files
+from lib.utils import error_handler, support
+from lib.utils import worker_supervisor
+from lib.file_management import find_files
+from lib.file_management import read_files
 
 
 class _HandlerFixture:

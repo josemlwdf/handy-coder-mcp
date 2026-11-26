@@ -37,10 +37,10 @@ class MockMCP:
 # Import the function we're testing
 import sys
 sys.path.insert(0, '/opt/handy-coder-mcp')
-from lib.core.get_capabilities.get_capabilities import _tool_usage_signature, _tool_parameter_descriptions
+from lib.workspace_context.get_capabilities.get_capabilities import _tool_usage_signature, _tool_parameter_descriptions
 
 # Set the mock MCP
-import lib.core.get_capabilities.get_capabilities as cap_module
+import lib.workspace_context.get_capabilities.get_capabilities as cap_module
 cap_module._MCP = MockMCP()
 
 # Test usage signature
