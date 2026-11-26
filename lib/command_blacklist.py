@@ -265,6 +265,35 @@ def check_blacklisted_command(tokens: list[str]) -> None:
                 "'cmake --build' command is unauthorized. Use the 'build_project' tool instead.",
                 tool="build_project",
             )
+    if cmd == "grep":
+        raise UnauthorizedCommandError(
+            "'grep' command is unauthorized. Use the 'search_text' tool instead.",
+            tool="search_text",
+        )
+    
+    if cmd == "ls":
+        raise UnauthorizedCommandError(
+            "'ls' command is unauthorized. Use the 'list_dir' tool instead.",
+            tool="list_dir",
+        )
+    
+    if cmd == "find":
+        raise UnauthorizedCommandError(
+            "'find' command is unauthorized. Use the 'file_find' tool instead.",
+            tool="file_find",
+        )    
+
+    if cmd == "cat":
+        raise UnauthorizedCommandError(
+            "'cat' command is unauthorized. Use the 'file_read' tool instead.",
+            tool="file_read",
+        )
+    
+    if cmd == "curl":
+        raise UnauthorizedCommandError(
+            "'curl' command is unauthorized. Use the 'web_fetch' tool instead.",
+            tool="web_fetch",
+        )
 
 
 def _check_git(args: list[str]) -> None:
