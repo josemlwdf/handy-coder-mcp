@@ -840,5 +840,27 @@ class TestGitManageIntegration(unittest.TestCase):
         gs = result["git_state"]
         self.assertIs(gs["stale"], False)
 
+    def test_successful_add_hints_to_inspect_staged_diff(self) -> None:
+        """Successful staging should direct the caller to inspect the index."""
+        from lib.git_management.git_manage.git_manage import git_manage
+
+        (self.root / "new.py").write_text("value = 1\n", encoding="utf-8")
+        result = git_manage("add", add_paths=["new.py"])
+        self.assertEqual(result["exit_code"], 0)
+        self.assertIn("git_manage(action='diff', mode='staged')", result["hint"])
+
+    def test_commit_returns_post_commit_git_state(self) -> None:
+        """A successful commit includes a fresh clean snapshot and new HEAD."""
+        from lib.git_management.git_manage.git_manage import git_manage
+
+        old_head = self._status()["git_state"]["head"]
+        (self.root / "new.py").write_text("value = 1\n", encoding="utf-8")
+        git_manage("add", add_paths=["new.py"])
+        result = git_manage("commit", message="add new module")
+        self.assertEqual(result["exit_code"], 0)
+        self.assertIn("git_state", result)
+        self.assertIs(result["git_state"]["working_tree_clean"], True)
+        self.assertNotEqual(result["git_state"]["head"], old_head)
+
 if __name__ == "__main__":
     unittest.main()

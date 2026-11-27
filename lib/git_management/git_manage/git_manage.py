@@ -63,7 +63,7 @@ _COMMIT_MESSAGE_HINT: str = (
     "'fix(parser): handle empty tokens')."
 )
 _ADD_FOLLOWUP_HINT: str = (
-    "To be useful to the user provide a meaningful message for the commit."
+    "Inspect the staged diff with git_manage(action='diff', mode='staged'), then provide a meaningful commit message."
 )
 _GENERIC_COMMIT_SUBJECTS: set = {
     "wip",
@@ -1551,6 +1551,49 @@ def git_manage(
     elif action == "commit" and result.get("exit_code") == 0:
         result["uncommitted_changes"] = _uncommitted_changes_summary(git, selected_path)
         result.pop("hint", None)
+        # Return a fresh snapshot after the commit so callers do not have to
+        # infer whether the index is now clean or what HEAD points to.
+        try:
+            status_v1 = run_process(
+                [git, "status", "--porcelain=v1", "--untracked-files=all"],
+                cwd=selected_path,
+            )
+            status_v2 = run_process(
+                [git, "status", "--porcelain=v2", "--branch", "--untracked-files=all"],
+                cwd=selected_path,
+            )
+            if status_v1.get("exit_code") != 0 or status_v2.get("exit_code") != 0:
+                raise RuntimeError("post-commit git status failed")
+            working_tree: list[dict] = []
+            staged: list[dict] = []
+            untracked_files: list[str] = []
+            for line in status_v1.get("stdout", "").splitlines():
+                if len(line) < 4:
+                    continue
+                item = {
+                    "index": line[0],
+                    "worktree": line[1],
+                    "path": line[3:],
+                    "untracked": line[:2] == "??",
+                }
+                if item["worktree"] != " " or item["untracked"]:
+                    working_tree.append(item)
+                if item["index"] not in (" ", "?"):
+                    staged.append(item)
+                if item["untracked"]:
+                    untracked_files.append(item["path"])
+            result["git_state"] = _derive_git_state(
+                {
+                    "working_tree": working_tree,
+                    "staged": staged,
+                    "untracked_files": untracked_files,
+                    "_porcelain_v2": status_v2.get("stdout", ""),
+                },
+                _git_state_now_iso(),
+                None,
+            )
+        except Exception as _state_error:  # noqa: BLE001
+            logger.warning("post-commit Git state refresh failed: %s", _state_error)
         # --- Post-commit verification (Task 4.7) ---
         try:
             _verify_result = run_process(

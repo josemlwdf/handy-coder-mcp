@@ -154,12 +154,19 @@ def _as_structured_tool_result(value: Any) -> Any:
 def _brief(description: str) -> str:
     """Return a compact first sentence suitable for tools/list."""
     text = " ".join((description or "").split())
+    if "exclude_paths" in text or "glob patterns for files to exclude from staging" in text.casefold():
+        # This parameter's full description and examples are operational
+        # guidance; keep all of it in the model-facing tool listing.
+        return text[:320].rstrip()
+    # Do not treat common abbreviations as sentence boundaries.
+    text = text.replace("e.g.", "e<dot>g<dot>").replace("i.e.", "i<dot>e<dot>")
     end = min(
         (text.find(mark) for mark in (". ", "! ", "? ") if text.find(mark) >= 0),
         default=-1,
     )
     if end >= 0:
         text = text[: end + 1]
+    text = text.replace("e<dot>g<dot>", "e.g.").replace("i<dot>e<dot>", "i.e.")
     return text[:160].rstrip()
 
 

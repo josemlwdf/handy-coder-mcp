@@ -390,3 +390,31 @@ def test_router_caps_nested_results_and_preserves_small_results() -> None:
     assert large["truncated"] is True
     assert large["truncation"]["reason"] == "router_result_limit"
     assert large["truncation"]["affected"]
+
+
+def test_brief_keeps_exclude_paths_parenthetical_glob_examples() -> None:
+    """The e.g. abbreviation must not truncate exclude_paths guidance."""
+    description = (
+        "Repository-relative glob patterns for files to exclude from staging "
+        "during action='add' (e.g. ['*.log', 'temp/**']). Excluded files are "
+        "listed in the response but not staged."
+    )
+    brief = tool_details._brief(description)
+    assert "(e.g. ['*.log', 'temp/**'])" in brief
+    assert brief.endswith("staged.")
+
+def test_real_exclude_paths_schema_description_survives_compaction() -> None:
+    """The actual git_manage parameter documentation reaches compact schemas intact."""
+    from typing import get_args, get_type_hints
+
+    from lib.git_management.git_manage.git_manage import git_manage
+
+    annotation = get_type_hints(git_manage, include_extras=True)["exclude_paths"]
+    metadata = next(item for item in get_args(annotation) if hasattr(item, "description"))
+    description = metadata.description
+    schema = {"properties": {"exclude_paths": {"description": description}}}
+    tool_details._strip_descriptions(schema)
+    compact = schema["properties"]["exclude_paths"]["description"]
+    assert compact == " ".join(description.split())
+    assert "(e.g. ['*.log', 'temp/**'])" in compact
+    assert "Excluded files are listed in the response but not staged." in compact
