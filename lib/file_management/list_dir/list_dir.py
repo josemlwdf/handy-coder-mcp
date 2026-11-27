@@ -42,7 +42,7 @@ def list_dir(
                     errors.append({"path": relative, "message": exc.strerror or "Filesystem access failed"})
     except OSError as exc:
         errors.append({"path": path or ".", "message": exc.strerror or "Filesystem access failed"})
-    return {"path": path, "directories": directories, "files": files, "errors": errors}
+    return {"path": path, "directories": directories, "dir_count": len(directories), "files": files, "file_count": len(files), "errors": errors}
 
 
 def register(mcp):
